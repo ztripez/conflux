@@ -4,11 +4,15 @@
 //! execution/stability report. It is the reference path: optimized backends
 //! (later MVPs) must prove equivalence against it within declared tolerances.
 
+mod equivalence;
 mod eval;
 mod exec;
 mod plan;
 mod report;
 
+pub use equivalence::{
+    check_equivalence, EquivalenceReport, KernelComparison, PathOutcome, RulePath, Tolerance,
+};
 pub use exec::Simulation;
 pub use plan::ExecutionPlan;
 pub use report::{AssessmentOutcome, Report, RowOutcome, RuleFireReport, StepReport};

@@ -68,6 +68,12 @@ impl Simulation {
         Some(&self.data[t][c])
     }
 
+    /// All column buffers for a table, addressed as `[column][row]`. Used by the
+    /// equivalence harness to feed the kernel executor.
+    pub(crate) fn table_data(&self, table: usize) -> &[Vec<f64>] {
+        &self.data[table]
+    }
+
     /// Advances the simulation `ticks` ticks, returning a report.
     pub fn run(&mut self, ticks: u64) -> Report {
         let mut report = Report::default();
