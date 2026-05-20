@@ -56,7 +56,8 @@ pub fn recommend(trace: &Trace) -> RecommendationReport {
     let mut items = Vec::new();
     let total = trace.total_nanos();
 
-    // Hotspot: the single rule with the most traced time (ties -> first).
+    // Hotspot: the single rule with the most traced time (ties resolve to the
+    // last such rule, per `max_by_key`). Deterministic either way.
     if total > 0 {
         if let Some(hot) = trace
             .rules

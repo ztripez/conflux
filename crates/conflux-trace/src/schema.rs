@@ -119,9 +119,9 @@ pub struct AssessmentSummary {
     pub violations: usize,
 }
 
-/// A compact transfer summary, imported from a Residency
-/// [`TransferReport`](https://docs.rs/) — the trace stores the totals, not
-/// Residency's internals, so this crate never depends on Residency.
+/// A compact transfer summary, imported from a Residency transfer report — the
+/// trace stores the totals (uploaded/downloaded bytes, readbacks, warning count),
+/// not Residency's internals, so this crate never depends on Residency.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct TransferSummary {
