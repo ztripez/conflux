@@ -5,3 +5,13 @@
 //! execution targets.
 
 pub const CRATE_BOUNDARY: &str = "bounded numeric kernel ir";
+
+#[cfg(test)]
+mod tests {
+    use super::CRATE_BOUNDARY;
+
+    #[test]
+    fn crate_boundary_is_declared() {
+        assert!(!CRATE_BOUNDARY.is_empty());
+    }
+}

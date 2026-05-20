@@ -5,3 +5,13 @@
 //! reference path within declared tolerances.
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";
+
+#[cfg(test)]
+mod tests {
+    use super::CRATE_BOUNDARY;
+
+    #[test]
+    fn crate_boundary_is_declared() {
+        assert!(!CRATE_BOUNDARY.is_empty());
+    }
+}
