@@ -22,6 +22,8 @@ pub enum LowerError {
     ReservedParam(String),
     #[error("duplicate table `{0}`")]
     DuplicateTable(String),
+    #[error("duplicate rule `{0}`")]
+    DuplicateRule(String),
     #[error("table `{0}` has zero rows")]
     EmptyTable(String),
     #[error("duplicate column `{column}` in table `{table}`")]
@@ -214,8 +216,14 @@ fn lower_rules(
     // semantics exist, so commits never silently depend on rule order.
     let mut writers: std::collections::HashMap<(usize, usize), String> =
         std::collections::HashMap::new();
+    // Rule names are identities used as keys downstream (reports, the equivalence
+    // harness, the planner, WGSL module names), so they must be unique.
+    let mut names: HashSet<&str> = HashSet::new();
     for rule in &model.rules {
         let lowered = lower_rule(rule, ir, param_names)?;
+        if !names.insert(rule.name.as_str()) {
+            return Err(LowerError::DuplicateRule(lowered.name.clone()));
+        }
         if let Some(first) = writers.insert((lowered.table, lowered.target), lowered.name.clone()) {
             let table = &ir.tables[lowered.table];
             return Err(LowerError::DuplicateWriter {

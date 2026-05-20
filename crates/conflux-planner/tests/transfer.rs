@@ -47,11 +47,9 @@ fn flags_transfer_dominated_rule() {
     let (transfer, cost) = sync_and_cost(&model, &columns);
 
     let advisory = transfer_advisory("combine", cost, &transfer);
-    assert_eq!(
-        advisory.moved_bytes,
-        transfer.uploaded_bytes + transfer.downloaded_bytes
-    );
-    assert_eq!(advisory.compute_ops, cost.total_ops());
+    // 3 f32 uploaded + 3 f32 read back = 24 bytes, vs 3 compute ops (3 rows x 1).
+    assert_eq!(advisory.moved_bytes, 24);
+    assert_eq!(advisory.compute_ops, 3);
     assert!(advisory.transfer_dominates, "{advisory:?}");
     assert!(advisory.residency_warnings.is_empty());
 }

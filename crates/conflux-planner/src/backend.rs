@@ -34,6 +34,9 @@ pub(crate) fn backend_choices(
             BackendChoice::Gpu
         } else {
             BackendChoice::CpuKernel {
+                // `plan` lowers every accepted kernel, so a non-`gpu_ok` kernel is
+                // always in `gpu_rejection`. The fallback is a defensive guard for
+                // a caller that passes a `WgslReport` built from other kernels.
                 gpu_rejection: gpu_rejection
                     .get(name)
                     .cloned()

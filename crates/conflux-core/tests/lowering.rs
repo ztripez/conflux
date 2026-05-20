@@ -190,3 +190,21 @@ fn rejects_two_rules_writing_one_stock() {
         other => panic!("expected DuplicateWriter, got {other:?}"),
     }
 }
+
+#[test]
+fn rejects_duplicate_rule_names() {
+    // Rule names are identities used as keys downstream (reports, equivalence
+    // harness, planner), so two rules with the same name must be rejected — even
+    // when they write different columns and so are not duplicate writers.
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![1.0]).stock("y", vec![2.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(Rule::new("dup").on("T").propose("x", col("x")));
+    model.add_rule(Rule::new("dup").on("T").propose("y", col("y")));
+
+    match lower(&model) {
+        Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "dup"),
+        other => panic!("expected DuplicateRule, got {other:?}"),
+    }
+}
