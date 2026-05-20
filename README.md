@@ -98,12 +98,19 @@ per-row proposals within a declared tolerance — never bit-for-bit — and repo
 each rule as a matched kernel run or a fallback to the reference with its reason.
 (Assessment/diagnostic equivalence is not yet checked; that is a later rung.)
 
+The Residency bridge (MVP4) connects Conflux numeric resources to
+[Residency](https://github.com/ztripez/residency) through the `conflux-residency`
+crate. It maps a kernel's column buffers to Residency resource descriptors and
+view requests and drives a sync cycle through Residency's `SyncGraph` and a
+backend (the CPU-side `FakeBackend` for now), embedding Residency's transfer
+report in a Conflux report. Residency owns generation tracking, patches,
+readbacks, and transfer planning; only `conflux-residency` depends on it.
+
 Run the worked examples:
 
 ```sh
 cargo run -p conflux-runtime --example settlement
 cargo run -p conflux-runtime --example kernel_extraction
 cargo run -p conflux-runtime --example equivalence
+cargo run -p conflux-residency --example residency_bridge
 ```
-
-Residency integration comes after the CPU reference path is real.

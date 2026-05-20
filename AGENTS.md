@@ -21,24 +21,26 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: MVP0
+## Current stage: MVP4
 
-The project is at MVP0 (repository guardrails and skeleton). The MVP ladder in
-`docs/MVP_LADDER.md` is the source of truth for ordering. Do not jump ahead of
-the CPU reference path.
+MVP0–MVP3 are complete (guardrails, CPU reference path, kernel IR extraction,
+kernel CPU backend + equivalence harness). MVP4 adds the Residency bridge. The
+MVP ladder in `docs/MVP_LADDER.md` is the source of truth for ordering. Do not
+jump ahead of it.
 
-Hard boundary for MVP0 and until the relevant MVP says otherwise:
+Hard boundary (still in force):
 
 ```text
 No custom DSL parser.
-No GPU / shader backend.
-No Residency dependency.
-No simulation model API yet.
+No GPU / shader backend in Conflux (no wgpu/WGSL anywhere in this repo yet).
+No Residency dependency outside the `conflux-residency` bridge crate.
 No optimization passes.
 ```
 
-The parser is not the product. Do not build custom syntax until the Rust model
-API, IR, execution report, and CPU reference path are real.
+The Residency dependency (`residency-core`) is allowed **only** in
+`conflux-residency`. The core crates (`conflux-core`, `conflux-ir`,
+`conflux-kernel`, `conflux-runtime`) must never depend on Residency or contain
+buffer-movement logic. The parser is not the product.
 
 ## How to work
 
@@ -63,7 +65,8 @@ API, IR, execution report, and CPU reference path are real.
 crates/
   conflux-core/      # public model API: domains, stocks, signals, rules
   conflux-ir/        # lowered simulation IR
-  conflux-kernel/    # bounded numeric kernel IR
+  conflux-kernel/    # bounded numeric kernel IR + CPU executor
+  conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
 ```
 
