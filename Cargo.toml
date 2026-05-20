@@ -3,6 +3,7 @@ members = [
     "crates/conflux-core",
     "crates/conflux-ir",
     "crates/conflux-kernel",
+    "crates/conflux-residency",
     "crates/conflux-runtime",
 ]
 resolver = "2"
@@ -17,6 +18,11 @@ rust-version = "1.78"
 conflux-core = { path = "crates/conflux-core" }
 conflux-ir = { path = "crates/conflux-ir" }
 conflux-kernel = { path = "crates/conflux-kernel" }
+conflux-residency = { path = "crates/conflux-residency" }
 conflux-runtime = { path = "crates/conflux-runtime" }
+
+# Residency owns buffer-backed data movement; only conflux-residency depends on
+# it. Pinned for reproducibility.
+residency-core = { git = "https://github.com/ztripez/residency", rev = "6b34193d65f67f89fe8f68611ea12eb15311257f" }
 
 thiserror = "1"

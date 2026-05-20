@@ -44,6 +44,19 @@ If a change is about **what the data means**, it belongs in Conflux.
 
 If a change is about **where buffer-backed data lives or how it crosses CPU/GPU**, it belongs in Residency.
 
+## Dependency direction
+
+Residency is integrated through a single bridge crate, `conflux-residency`. It is
+the **only** crate allowed to depend on `residency-core`.
+
+- `conflux-core`, `conflux-ir`, `conflux-kernel`, and `conflux-runtime` must not
+  depend on Residency, wgpu, or any buffer-transfer crate.
+- `conflux-residency` maps Conflux numeric resources to Residency resource
+  descriptors and view requests and embeds Residency transfer reports. It does
+  not reimplement generation tracking, patches, readbacks, or transfer planning.
+
+This keeps the ownership split below enforceable by the dependency graph.
+
 ## Forbidden in Conflux core
 
 Conflux core should not implement its own:
