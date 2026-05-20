@@ -3,13 +3,21 @@
 //! The emitter is pure and deterministic: same kernel, same source. It supports
 //! the smallest accepted subset — elementwise f32 kernels — and rejects anything
 //! outside it with an explainable reason.
+//!
+//! Alongside the output column the shader also evaluates the kernel's
+//! [diagnostics](conflux_kernel::Kernel::diagnostics) into a bounded numeric
+//! buffer of per-row violation magnitudes (`0.0` = pass), so stability checks
+//! surface as data rather than being dropped. The form mirrors
+//! [`conflux_kernel::diagnose_elementwise`] exactly so the two backends agree.
 
-use conflux_kernel::{Kernel, KernelExpr, ScalarType};
+use conflux_kernel::{Assessment, Kernel, KernelExpr, ScalarType};
 
-use crate::module::{Access, BindingRequirement, ShaderModule};
+use crate::module::{Access, BindingRequirement, BindingSource, ShaderModule};
 
 const WORKGROUP_SIZE: u32 = 64;
 const ENTRY_POINT: &str = "main";
+/// WGSL variable name for the generated diagnostic output buffer.
+const DIAG_VAR: &str = "v_diagnostics";
 
 /// Why a kernel cannot lower to the WGSL backend.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
@@ -23,6 +31,11 @@ pub enum WgslError {
          inf/NaN literal"
     )]
     NonFiniteLiteral { kernel: String, value: f64 },
+    #[error(
+        "kernel `{kernel}` has a diagnostic bound ({value}) that is not finite as f32; WGSL has no \
+         inf/NaN literal to emit it"
+    )]
+    NonFiniteDiagnosticBound { kernel: String, value: f64 },
 }
 
 /// Lowers one elementwise kernel to a WGSL compute shader module.
@@ -37,12 +50,14 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
     // inf (e.g. 1e40), so reject non-finite-as-f32 literals up front rather than
     // emit a shader that fails to compile.
     check_finite_literals(&kernel.expr, &kernel.name)?;
+    // Diagnostic bounds become WGSL literals too, so they face the same rule.
+    check_finite_diagnostics(kernel)?;
 
     let bindings = build_bindings(kernel);
     let var_for = |column: usize| -> String {
         bindings
             .iter()
-            .find(|b| b.column == column)
+            .find(|b| b.column() == Some(column))
             .map(|b| b.var.clone())
             .expect("every referenced column has a binding")
     };
@@ -63,11 +78,10 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
          fn {ENTRY_POINT}(@builtin(global_invocation_id) gid: vec3<u32>) {{\n\
          \x20   let i = gid.x;\n\
          \x20   if (i >= {}u) {{ return; }}\n\
-         \x20   {}[i] = {};\n\
+         {}\
          }}\n",
         kernel.rows,
-        var_for(kernel.output.column),
-        emit_expr(&kernel.expr, kernel, &var_for),
+        emit_body(kernel, &var_for),
     ));
 
     Ok(ShaderModule {
@@ -78,6 +92,66 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
         element_count: kernel.rows,
         bindings,
     })
+}
+
+/// Emits the per-invocation body lines (after the bounds guard): the output
+/// write and, when the kernel carries diagnostics, the diagnostic-buffer writes.
+fn emit_body(kernel: &Kernel, var_for: &impl Fn(usize) -> String) -> String {
+    let output_var = var_for(kernel.output.column);
+    let expr = emit_expr(&kernel.expr, kernel, var_for);
+
+    // No diagnostics: keep the minimal, stable single-line form.
+    if kernel.diagnostics.is_empty() {
+        return format!("\x20   {output_var}[i] = {expr};\n");
+    }
+
+    let mut body = String::new();
+    // `MaxRelativeDelta` needs the prior output value. The output buffer is
+    // read-write and still holds the prior value before the write below, so read
+    // it here rather than binding a separate prior-value buffer.
+    let needs_prev = kernel
+        .diagnostics
+        .iter()
+        .any(|a| matches!(a, Assessment::MaxRelativeDelta { .. }));
+    if needs_prev {
+        body.push_str(&format!("\x20   let prev = {output_var}[i];\n"));
+    }
+    // Compute once, write, then measure the proposed value.
+    body.push_str(&format!("\x20   let out = {expr};\n"));
+    body.push_str(&format!("\x20   {output_var}[i] = out;\n"));
+    for (k, assessment) in kernel.diagnostics.iter().enumerate() {
+        let index = if k == 0 {
+            "i".to_string()
+        } else {
+            format!("{}u + i", k * kernel.rows)
+        };
+        body.push_str(&format!(
+            "\x20   {DIAG_VAR}[{index}] = {};\n",
+            diagnostic_expr(*assessment)
+        ));
+    }
+    body
+}
+
+/// The WGSL expression for one assessment's per-row violation magnitude,
+/// computed against the local `out` (and `prev` for `MaxRelativeDelta`). Mirrors
+/// `conflux_kernel::diagnose_elementwise`.
+fn diagnostic_expr(assessment: Assessment) -> String {
+    match assessment {
+        // Finite -> 0.0, non-finite -> 1.0. WGSL has no isFinite; `out * 0.0`
+        // is 0.0 for any finite value but NaN for inf/NaN, and `NaN == 0.0` is
+        // false, so this maps finiteness without an inf/NaN literal.
+        Assessment::Finite => "select(1.0, 0.0, (out * 0.0) == 0.0)".to_string(),
+        Assessment::Range { min, max } => format!(
+            "(max((out - {}), 0.0) + max(({} - out), 0.0))",
+            wgsl_literal(max),
+            wgsl_literal(min),
+        ),
+        Assessment::MaxRelativeDelta { fraction } => format!(
+            "max((abs(out - prev) - ({} * abs(prev))), 0.0)",
+            wgsl_literal(fraction),
+        ),
+    }
 }
 
 /// Walks the expression and rejects any literal that is not finite once narrowed
@@ -106,35 +180,86 @@ fn check_finite_literals(expr: &KernelExpr, kernel: &str) -> Result<(), WgslErro
     }
 }
 
+/// Rejects diagnostics whose bounds are not finite as f32, since they would need
+/// an inf/NaN literal the WGSL backend cannot emit.
+fn check_finite_diagnostics(kernel: &Kernel) -> Result<(), WgslError> {
+    let reject = |value: f64| -> Result<(), WgslError> {
+        if (value as f32).is_finite() {
+            Ok(())
+        } else {
+            Err(WgslError::NonFiniteDiagnosticBound {
+                kernel: kernel.name.clone(),
+                value,
+            })
+        }
+    };
+    for assessment in &kernel.diagnostics {
+        match assessment {
+            Assessment::Finite => {}
+            Assessment::Range { min, max } => {
+                reject(*min)?;
+                reject(*max)?;
+            }
+            Assessment::MaxRelativeDelta { fraction } => reject(*fraction)?,
+        }
+    }
+    Ok(())
+}
+
 /// Read bindings for inputs distinct from the output, then the read-write output
-/// binding last. The output buffer also serves reads of the output column.
+/// binding. The output buffer also serves reads of the output column. When the
+/// kernel carries diagnostics, a read-write diagnostic output buffer follows.
 fn build_bindings(kernel: &Kernel) -> Vec<BindingRequirement> {
     let mut bindings = Vec::new();
     let mut next = 0u32;
+    let mut push = |bindings: &mut Vec<BindingRequirement>,
+                    var: String,
+                    access: Access,
+                    source: BindingSource| {
+        bindings.push(BindingRequirement {
+            group: 0,
+            binding: next,
+            var,
+            access,
+            scalar_type: kernel.scalar_type,
+            source,
+        });
+        next += 1;
+    };
+
     for input in &kernel.inputs {
         if input.column == kernel.output.column {
             continue;
         }
-        bindings.push(BindingRequirement {
-            group: 0,
-            binding: next,
-            var: var_name(&input.name),
-            column_name: input.name.clone(),
-            column: input.column,
-            access: Access::Read,
-            scalar_type: kernel.scalar_type,
-        });
-        next += 1;
+        push(
+            &mut bindings,
+            var_name(&input.name),
+            Access::Read,
+            BindingSource::Column {
+                name: input.name.clone(),
+                index: input.column,
+            },
+        );
     }
-    bindings.push(BindingRequirement {
-        group: 0,
-        binding: next,
-        var: var_name(&kernel.output.name),
-        column_name: kernel.output.name.clone(),
-        column: kernel.output.column,
-        access: Access::ReadWrite,
-        scalar_type: kernel.scalar_type,
-    });
+    push(
+        &mut bindings,
+        var_name(&kernel.output.name),
+        Access::ReadWrite,
+        BindingSource::Column {
+            name: kernel.output.name.clone(),
+            index: kernel.output.column,
+        },
+    );
+    if !kernel.diagnostics.is_empty() {
+        push(
+            &mut bindings,
+            DIAG_VAR.to_string(),
+            Access::ReadWrite,
+            BindingSource::Diagnostics {
+                assessments: kernel.diagnostics.len(),
+            },
+        );
+    }
     bindings
 }
 
@@ -173,9 +298,9 @@ fn wgsl_scalar(scalar: ScalarType) -> &'static str {
 }
 
 /// Formats a literal as a WGSL float. The value is narrowed to f32, matching the
-/// kernel's working precision. Non-finite literals are rejected before emission
-/// (see `check_finite_literals`), so `{:?}` always yields a WGSL-legal decimal or
-/// exponent form (e.g. `1.0`, `0.5`, `1e30`).
+/// kernel's working precision. Non-finite values are rejected before emission
+/// (see `check_finite_literals` / `check_finite_diagnostics`), so `{:?}` always
+/// yields a WGSL-legal decimal or exponent form (e.g. `1.0`, `0.5`, `1e30`).
 fn wgsl_literal(value: f64) -> String {
     format!("{:?}", value as f32)
 }

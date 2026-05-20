@@ -2,12 +2,12 @@
 //!
 //! This is demonstration/equivalence plumbing, not a product backend: it runs an
 //! emitted elementwise kernel on a real GPU adapter and returns the output
-//! buffer. It deliberately lives behind a feature so the default build and CI
-//! stay GPU-free.
+//! buffer together with the diagnostic buffer. It deliberately lives behind a
+//! feature so the default build and CI stay GPU-free.
 
 use wgpu::util::DeviceExt;
 
-use crate::module::{Access, ShaderModule};
+use crate::module::{Access, BindingSource, ShaderModule};
 
 /// Errors from the wgpu execution path. Absence of a GPU adapter is not an
 /// error — [`run_on_gpu`] returns `Ok(None)` so callers can skip gracefully.
@@ -19,16 +19,25 @@ pub enum GpuError {
     Readback,
 }
 
-/// Runs an emitted shader on the GPU and returns the output column values.
+/// The result of running an emitted shader: the proposed output column and the
+/// flat diagnostic buffer (`[assessment * rows + row]`, empty when the kernel
+/// carried no diagnostics) — the same layout as
+/// [`conflux_kernel::diagnose_elementwise`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct GpuRun {
+    pub output: Vec<f32>,
+    pub diagnostics: Vec<f32>,
+}
+
+/// Runs an emitted shader on the GPU and returns its output and diagnostics.
 ///
 /// `columns` holds the source table's column data as f32, addressed
-/// `columns[column][row]`; each binding reads its `column`, which must hold at
-/// least `module.element_count` values. Returns `Ok(None)` when no GPU adapter
-/// is reachable.
-pub fn run_on_gpu(
-    module: &ShaderModule,
-    columns: &[Vec<f32>],
-) -> Result<Option<Vec<f32>>, GpuError> {
+/// `columns[column][row]`; each column-backed binding reads its column, which
+/// must hold at least `module.element_count` values. The output column buffer is
+/// also the prior-value source for `MaxRelativeDelta` diagnostics, so it must
+/// hold the start-of-step values. Returns `Ok(None)` when no GPU adapter is
+/// reachable.
+pub fn run_on_gpu(module: &ShaderModule, columns: &[Vec<f32>]) -> Result<Option<GpuRun>, GpuError> {
     let instance = wgpu::Instance::default();
     let Some(adapter) =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -54,26 +63,32 @@ pub fn run_on_gpu(
         .bindings
         .iter()
         .map(|b| {
+            let contents: Vec<f32> = match &b.source {
+                BindingSource::Column { index, .. } => columns[*index].clone(),
+                // The diagnostic buffer is a pure output; start it zeroed.
+                BindingSource::Diagnostics { assessments } => {
+                    vec![0.0f32; assessments * module.element_count]
+                }
+            };
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&b.var),
-                contents: bytemuck::cast_slice(&columns[b.column]),
+                contents: bytemuck::cast_slice(&contents),
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             })
         })
         .collect();
 
-    let out_index = module
+    // The value output is the read-write column buffer; the diagnostic buffer is
+    // the (optional) generated output. Both are read back.
+    let output_index = module
         .bindings
         .iter()
-        .position(|b| b.access == Access::ReadWrite)
-        .expect("a shader module always has a read-write output binding");
-    let output_bytes = (module.element_count * std::mem::size_of::<f32>()) as u64;
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("staging"),
-        size: output_bytes,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
+        .position(|b| b.access == Access::ReadWrite && b.column().is_some())
+        .expect("a shader module always has a read-write output column binding");
+    let diag_index = module
+        .bindings
+        .iter()
+        .position(|b| matches!(b.source, BindingSource::Diagnostics { .. }));
 
     let layout_entries: Vec<wgpu::BindGroupLayoutEntry> = module
         .bindings
@@ -123,6 +138,18 @@ pub fn run_on_gpu(
         compilation_options: wgpu::PipelineCompilationOptions::default(),
     });
 
+    // Staging buffers for each output we read back.
+    let output_bytes = (module.element_count * std::mem::size_of::<f32>()) as u64;
+    let output_staging = staging_buffer(&device, output_bytes);
+    let diag_staging = diag_index.map(|i| {
+        let assessments = match module.bindings[i].source {
+            BindingSource::Diagnostics { assessments } => assessments,
+            _ => unreachable!("diag_index points at the diagnostic binding"),
+        };
+        let bytes = (assessments * module.element_count * std::mem::size_of::<f32>()) as u64;
+        (staging_buffer(&device, bytes), bytes)
+    });
+
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
@@ -137,9 +164,35 @@ pub fn run_on_gpu(
             .max(1);
         pass.dispatch_workgroups(groups, 1, 1);
     }
-    encoder.copy_buffer_to_buffer(&buffers[out_index], 0, &staging, 0, output_bytes);
+    encoder.copy_buffer_to_buffer(&buffers[output_index], 0, &output_staging, 0, output_bytes);
+    if let (Some(i), Some((staging, bytes))) = (diag_index, &diag_staging) {
+        encoder.copy_buffer_to_buffer(&buffers[i], 0, staging, 0, *bytes);
+    }
     queue.submit(Some(encoder.finish()));
 
+    let output = read_back(&device, &output_staging)?;
+    let diagnostics = match &diag_staging {
+        Some((staging, _)) => read_back(&device, staging)?,
+        None => Vec::new(),
+    };
+    Ok(Some(GpuRun {
+        output,
+        diagnostics,
+    }))
+}
+
+/// Creates a MAP_READ staging buffer of `bytes` size.
+fn staging_buffer(device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("staging"),
+        size: bytes,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// Maps a staging buffer and reads its contents back as f32 values.
+fn read_back(device: &wgpu::Device, staging: &wgpu::Buffer) -> Result<Vec<f32>, GpuError> {
     let slice = staging.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -150,8 +203,7 @@ pub fn run_on_gpu(
         .recv()
         .map_err(|_| GpuError::Readback)?
         .map_err(|_| GpuError::Readback)?;
-
-    let output = bytemuck::cast_slice::<u8, f32>(&slice.get_mapped_range()).to_vec();
+    let values = bytemuck::cast_slice::<u8, f32>(&slice.get_mapped_range()).to_vec();
     staging.unmap();
-    Ok(Some(output))
+    Ok(values)
 }
