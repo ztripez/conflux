@@ -16,10 +16,10 @@ mod report;
 mod gpu;
 
 pub use emit::{emit_wgsl, WgslError};
-pub use module::{Access, BindingRequirement, ShaderModule};
+pub use module::{Access, BindingRequirement, BindingSource, ShaderModule};
 pub use report::{lower_kernels, RejectedShader, WgslReport};
 
 #[cfg(feature = "gpu")]
-pub use gpu::{run_on_gpu, GpuError};
+pub use gpu::{run_on_gpu, GpuError, GpuRun};
 
 pub const CRATE_BOUNDARY: &str = "wgsl compute backend for bounded numeric kernels";

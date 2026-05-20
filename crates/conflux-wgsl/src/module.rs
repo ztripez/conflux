@@ -19,22 +19,50 @@ impl Access {
     }
 }
 
+/// What a binding's storage buffer holds, so a resource layer (the Residency
+/// bridge) can map it without re-parsing the WGSL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BindingSource {
+    /// One column of the source table, addressed by index. The buffer is sized to
+    /// the table's row count.
+    Column {
+        /// Source column name.
+        name: String,
+        /// Source table column index.
+        index: usize,
+    },
+    /// The generated diagnostic output buffer: not a source column but the
+    /// executable form of the kernel's stability checks. It holds
+    /// `assessments * element_count` f32 violation magnitudes, laid out
+    /// `[assessment * element_count + row]` (`0.0` = pass).
+    Diagnostics {
+        /// Number of assessments, i.e. diagnostic rows of `element_count` each.
+        assessments: usize,
+    },
+}
+
 /// One storage-buffer binding the shader needs.
-///
-/// `column` is the source table column index, so a resource layer (the Residency
-/// bridge) can map each binding to a buffer without re-parsing the WGSL.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindingRequirement {
     pub group: u32,
     pub binding: u32,
     /// WGSL variable name for this buffer.
     pub var: String,
-    /// Source column name.
-    pub column_name: String,
-    /// Source table column index.
-    pub column: usize,
     pub access: Access,
     pub scalar_type: ScalarType,
+    /// What the buffer holds (a source column or the diagnostic output).
+    pub source: BindingSource,
+}
+
+impl BindingRequirement {
+    /// The source column index this binding maps to, or `None` for the
+    /// generated diagnostic buffer.
+    pub fn column(&self) -> Option<usize> {
+        match &self.source {
+            BindingSource::Column { index, .. } => Some(*index),
+            BindingSource::Diagnostics { .. } => None,
+        }
+    }
 }
 
 /// A lowered elementwise kernel: stable, inspectable WGSL plus the bind/resource

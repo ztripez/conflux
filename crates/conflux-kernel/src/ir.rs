@@ -85,9 +85,13 @@ pub struct Kernel {
     pub expr: KernelExpr,
     /// The stock column this kernel writes.
     pub output: KernelBinding,
-    /// Stability checks lowered from the rule, emitted as bounded outputs by a
-    /// backend rather than dropped. Lowering these to executable form is MVP3's
-    /// job; note `MaxRelativeDelta` needs the prior output value, which a backend
-    /// must bind (it is not necessarily among `inputs`).
+    /// Stability checks lowered from the rule. A backend evaluates these into a
+    /// bounded numeric diagnostic buffer (per-row violation magnitudes) alongside
+    /// the output rather than dropping them; see
+    /// [`diagnose_elementwise`](crate::diagnose_elementwise) for the CPU form and
+    /// the WGSL backend for the GPU form. `MaxRelativeDelta` needs the prior
+    /// output value (not necessarily among `inputs`): the CPU backend takes it as
+    /// an argument and the WGSL backend reads the read-write output buffer before
+    /// overwriting it.
     pub diagnostics: Vec<Assessment>,
 }
