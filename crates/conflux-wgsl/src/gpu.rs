@@ -22,8 +22,9 @@ pub enum GpuError {
 /// Runs an emitted shader on the GPU and returns the output column values.
 ///
 /// `columns` holds the source table's column data as f32, addressed
-/// `columns[column][row]`; each binding reads its `column`. Returns `Ok(None)`
-/// when no GPU adapter is reachable.
+/// `columns[column][row]`; each binding reads its `column`, which must hold at
+/// least `module.element_count` values. Returns `Ok(None)` when no GPU adapter
+/// is reachable.
 pub fn run_on_gpu(
     module: &ShaderModule,
     columns: &[Vec<f32>],

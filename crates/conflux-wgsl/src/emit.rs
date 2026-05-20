@@ -18,6 +18,11 @@ pub enum WgslError {
         "kernel `{kernel}` uses scalar type {scalar:?}; the WGSL backend supports only f32 in MVP5"
     )]
     UnsupportedScalarType { kernel: String, scalar: ScalarType },
+    #[error(
+        "kernel `{kernel}` contains a literal ({value}) that is not finite as f32; WGSL has no \
+         inf/NaN literal"
+    )]
+    NonFiniteLiteral { kernel: String, value: f64 },
 }
 
 /// Lowers one elementwise kernel to a WGSL compute shader module.
@@ -28,6 +33,10 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
             scalar: kernel.scalar_type,
         });
     }
+    // WGSL has no inf/NaN literal token, and an f64 literal can overflow f32 to
+    // inf (e.g. 1e40), so reject non-finite-as-f32 literals up front rather than
+    // emit a shader that fails to compile.
+    check_finite_literals(&kernel.expr, &kernel.name)?;
 
     let bindings = build_bindings(kernel);
     let var_for = |column: usize| -> String {
@@ -69,6 +78,32 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
         element_count: kernel.rows,
         bindings,
     })
+}
+
+/// Walks the expression and rejects any literal that is not finite once narrowed
+/// to f32 (covers f64 inf/NaN and f32 overflow such as `1e40`).
+fn check_finite_literals(expr: &KernelExpr, kernel: &str) -> Result<(), WgslError> {
+    match expr {
+        KernelExpr::Literal(value) => {
+            if (*value as f32).is_finite() {
+                Ok(())
+            } else {
+                Err(WgslError::NonFiniteLiteral {
+                    kernel: kernel.to_string(),
+                    value: *value,
+                })
+            }
+        }
+        KernelExpr::Input(_) => Ok(()),
+        KernelExpr::Neg(inner) => check_finite_literals(inner, kernel),
+        KernelExpr::Add(lhs, rhs)
+        | KernelExpr::Sub(lhs, rhs)
+        | KernelExpr::Mul(lhs, rhs)
+        | KernelExpr::Div(lhs, rhs) => {
+            check_finite_literals(lhs, kernel)?;
+            check_finite_literals(rhs, kernel)
+        }
+    }
 }
 
 /// Read bindings for inputs distinct from the output, then the read-write output
@@ -138,8 +173,9 @@ fn wgsl_scalar(scalar: ScalarType) -> &'static str {
 }
 
 /// Formats a literal as a WGSL float. The value is narrowed to f32, matching the
-/// kernel's working precision; `{:?}` always yields a decimal or exponent form
-/// (e.g. `1.0`, `0.5`) that WGSL accepts.
+/// kernel's working precision. Non-finite literals are rejected before emission
+/// (see `check_finite_literals`), so `{:?}` always yields a WGSL-legal decimal or
+/// exponent form (e.g. `1.0`, `0.5`, `1e30`).
 fn wgsl_literal(value: f64) -> String {
     format!("{:?}", value as f32)
 }

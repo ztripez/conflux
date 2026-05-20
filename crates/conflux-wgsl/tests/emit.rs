@@ -110,6 +110,26 @@ fn rejects_non_f32_scalar_type() {
 }
 
 #[test]
+fn rejects_literal_that_overflows_f32() {
+    // 1e40 is finite as f64 but overflows f32 to inf, which has no WGSL literal.
+    let mut cell = Table::new("Cell", 1);
+    cell.stock("a", vec![1.0]);
+    let mut model = Model::new("m");
+    model.add_table(cell);
+    model.add_rule(
+        Rule::new("big")
+            .on("Cell")
+            .propose("a", col("a") + lit(1e40)),
+    );
+
+    let kernel = first_kernel(&model);
+    match emit_wgsl(&kernel) {
+        Err(WgslError::NonFiniteLiteral { value, .. }) => assert_eq!(value, 1e40),
+        other => panic!("expected NonFiniteLiteral, got {other:?}"),
+    }
+}
+
+#[test]
 fn report_separates_lowered_and_rejected() {
     let kernel = first_kernel(&combine_model());
     let report = lower_kernels(&[kernel]);
