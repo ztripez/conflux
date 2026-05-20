@@ -69,3 +69,33 @@ crates/
 
 Each crate's `lib.rs` documents its own boundary. Keep code on the correct side
 of these lines.
+
+## Architecture review gate
+
+Every code review, including LLM-assisted reviews, must include an
+**Architecture hygiene** section. Do not give a generic "looks clean" verdict:
+name the concrete files, symbols, or modules that support the judgment.
+
+Check for:
+
+- **Shadow domains:** duplicate representations of the same concept, parallel
+  DTO/model/config/runtime structs without a named boundary, or scattered
+  conversions that bypass one source of truth.
+- **God modules:** files gaining unrelated responsibilities, mixed validation /
+  execution / reporting / IO logic, or helper dumps in `utils`, `common`, or
+  `helpers` modules.
+- **Boundary drift:** simulation meaning moving toward Residency, buffer movement
+  moving into Conflux, or code landing in the wrong crate for the current MVP.
+- **Modular pressure:** the file most likely to become the next god module and
+  whether it needs a split now or a follow-up issue.
+
+Review verdict rules:
+
+- Request changes for new shadow concepts unless the boundary is explicit and
+  named.
+- Request changes for duplicate writers, duplicate converters, or duplicate
+  evaluators unless there is an explicit reducer/adapter policy.
+- Request changes when a PR adds a second major responsibility to an already
+  large or mixed module.
+- Otherwise, leave a concrete follow-up suggestion with the exact split or
+  ownership clarification needed.
