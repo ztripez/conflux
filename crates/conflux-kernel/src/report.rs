@@ -6,12 +6,12 @@
 
 use std::fmt;
 
-use crate::ir::ElementwiseKernel;
+use crate::ir::Kernel;
 
 /// The result of extracting kernels from a simulation IR.
 #[derive(Clone, Debug, Default)]
 pub struct KernelReport {
-    pub accepted: Vec<ElementwiseKernel>,
+    pub accepted: Vec<Kernel>,
     pub rejected: Vec<RejectedKernel>,
 }
 
@@ -59,7 +59,7 @@ impl fmt::Display for KernelReport {
                 kernel.name,
                 kernel.shape,
                 kernel.scalar_type,
-                kernel.table,
+                kernel.table_name,
                 kernel.output.name,
                 inputs.join(", "),
                 kernel.diagnostics.len()

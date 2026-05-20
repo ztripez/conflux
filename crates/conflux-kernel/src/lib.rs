@@ -10,9 +10,7 @@ mod ir;
 mod report;
 
 pub use extract::extract;
-pub use ir::{
-    ElementwiseKernel, KernelBinding, KernelDiagnostic, KernelExpr, KernelShape, ScalarType,
-};
+pub use ir::{Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType};
 pub use report::{KernelReport, RejectedKernel, RejectionReason};
 
 pub const CRATE_BOUNDARY: &str = "bounded numeric kernel ir";

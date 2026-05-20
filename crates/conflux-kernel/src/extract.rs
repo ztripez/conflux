@@ -6,11 +6,9 @@
 //! explainable [`RejectionReason`] otherwise. It only reads the simulation IR;
 //! it never mutates it, so the CPU reference path keeps executing the original.
 
-use conflux_ir::{Assessment, Expr, RuleIr, SimIr, TableIr};
+use conflux_ir::{Expr, RuleIr, SimIr, TableIr};
 
-use crate::ir::{
-    ElementwiseKernel, KernelBinding, KernelDiagnostic, KernelExpr, KernelShape, ScalarType,
-};
+use crate::ir::{Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType};
 use crate::report::{KernelReport, RejectedKernel, RejectionReason};
 
 /// Extracts kernels from a validated simulation IR.
@@ -28,16 +26,16 @@ pub fn extract(ir: &SimIr) -> KernelReport {
     report
 }
 
-fn extract_rule(ir: &SimIr, rule: &RuleIr) -> Result<ElementwiseKernel, RejectionReason> {
+fn extract_rule(ir: &SimIr, rule: &RuleIr) -> Result<Kernel, RejectionReason> {
     let table = &ir.tables[rule.table];
 
     let mut inputs = Vec::new();
     let expr = lower_expr(&rule.expr, table, &mut inputs)?;
-    let diagnostics = rule.assessments.iter().map(lower_assessment).collect();
 
-    Ok(ElementwiseKernel {
+    Ok(Kernel {
         name: rule.name.clone(),
-        table: table.name.clone(),
+        table: rule.table,
+        table_name: table.name.clone(),
         rows: table.rows,
         shape: KernelShape::Elementwise,
         // MVP1 numeric columns are f64; bounded kernels work in f32, and MVP3's
@@ -49,7 +47,8 @@ fn extract_rule(ir: &SimIr, rule: &RuleIr) -> Result<ElementwiseKernel, Rejectio
             name: table.columns[rule.target].name.clone(),
             column: rule.target,
         },
-        diagnostics,
+        // Diagnostics are simulation assessments, carried verbatim.
+        diagnostics: rule.assessments.clone(),
     })
 }
 
@@ -98,14 +97,4 @@ fn intern_input(inputs: &mut Vec<KernelBinding>, name: &str, column: usize) -> u
         column,
     });
     inputs.len() - 1
-}
-
-fn lower_assessment(assessment: &Assessment) -> KernelDiagnostic {
-    match *assessment {
-        Assessment::Finite => KernelDiagnostic::Finite,
-        Assessment::Range { min, max } => KernelDiagnostic::Range { min, max },
-        Assessment::MaxRelativeDelta { fraction } => {
-            KernelDiagnostic::MaxRelativeDelta { fraction }
-        }
-    }
 }

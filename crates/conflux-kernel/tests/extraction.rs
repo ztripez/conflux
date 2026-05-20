@@ -1,7 +1,5 @@
 use conflux_core::{col, lit, lower, param, Assessment, Model, Rule, Table};
-use conflux_kernel::{
-    extract, KernelDiagnostic, KernelExpr, KernelShape, RejectionReason, ScalarType,
-};
+use conflux_kernel::{extract, KernelExpr, KernelShape, RejectionReason, ScalarType};
 
 fn input(n: usize) -> Box<KernelExpr> {
     Box::new(KernelExpr::Input(n))
@@ -30,7 +28,8 @@ fn accepts_elementwise_column_arithmetic() {
 
     let kernel = &report.accepted[0];
     assert_eq!(kernel.name, "fill");
-    assert_eq!(kernel.table, "T");
+    assert_eq!(kernel.table, 0);
+    assert_eq!(kernel.table_name, "T");
     assert_eq!(kernel.rows, 2);
     assert_eq!(kernel.shape, KernelShape::Elementwise);
     assert_eq!(kernel.scalar_type, ScalarType::F32);
@@ -53,8 +52,8 @@ fn accepts_elementwise_column_arithmetic() {
     assert_eq!(
         kernel.diagnostics,
         vec![
-            KernelDiagnostic::Finite,
-            KernelDiagnostic::Range {
+            Assessment::Finite,
+            Assessment::Range {
                 min: 0.0,
                 max: 100.0
             }

@@ -5,6 +5,13 @@
 //! f64, a kernel reads numbered input bindings and declares a bounded scalar
 //! element type, so a later backend (CPU kernel in MVP3, GPU in MVP5) can lower
 //! it without re-reading simulation meaning.
+//!
+//! Stability checks travel with the kernel as [`conflux_ir::Assessment`] values
+//! directly: a kernel diagnostic is exactly a simulation assessment until one
+//! needs kernel-specific data (such as an output buffer binding), at which point
+//! it earns its own type.
+
+use conflux_ir::Assessment;
 
 /// A bounded scalar element type a kernel operates on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,23 +50,18 @@ pub enum KernelExpr {
     Div(Box<KernelExpr>, Box<KernelExpr>),
 }
 
-/// A bounded numeric diagnostic over the kernel output, lowered from a
-/// simulation assessment. Diagnostics travel with the kernel so the backend can
-/// emit them as bounded outputs rather than dropping stability checks.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum KernelDiagnostic {
-    Finite,
-    Range { min: f64, max: f64 },
-    MaxRelativeDelta { fraction: f64 },
-}
-
-/// An elementwise kernel extracted from a single simulation rule.
+/// A kernel extracted from a single simulation rule.
+///
+/// The table and every column are addressed consistently by index (into the
+/// source `SimIr`), with names kept alongside for reports.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ElementwiseKernel {
+pub struct Kernel {
     /// The source rule name.
     pub name: String,
-    /// The source table name.
-    pub table: String,
+    /// Index of the source table within the `SimIr`.
+    pub table: usize,
+    /// The source table name, for reports.
+    pub table_name: String,
     /// Element count (table rows).
     pub rows: usize,
     pub shape: KernelShape,
@@ -70,5 +72,7 @@ pub struct ElementwiseKernel {
     pub expr: KernelExpr,
     /// The stock column this kernel writes.
     pub output: KernelBinding,
-    pub diagnostics: Vec<KernelDiagnostic>,
+    /// Stability checks lowered from the rule, emitted as bounded outputs by a
+    /// backend rather than dropped.
+    pub diagnostics: Vec<Assessment>,
 }
