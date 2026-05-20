@@ -75,10 +75,20 @@ crates/
 
 ## Status
 
-Fresh scaffold. The first milestone is a CPU-only vertical slice:
+The CPU-only vertical slice (MVP1) is in place:
 
 ```text
 Rust model API -> simulation IR -> execution plan -> CPU reference step -> stability report
+```
+
+Tables carry stock, signal, and derived columns; rules propose stock writes at a
+declared cadence; proposals are assessed (finite / range / max relative delta)
+before commit, with no clamp; and the report preserves raw rejected proposals.
+
+Run the worked example:
+
+```sh
+cargo run -p conflux-runtime --example settlement
 ```
 
 Residency integration comes after the CPU reference path is real.
