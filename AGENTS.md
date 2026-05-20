@@ -21,12 +21,14 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: MVP5
+## Current stage: MVP6
 
-MVP0–MVP4 are complete (guardrails, CPU reference path, kernel IR extraction,
-kernel CPU backend + equivalence harness, Residency bridge). MVP5 adds the first
-GPU compute backend (WGSL emission). The MVP ladder in `docs/MVP_LADDER.md` is
-the source of truth for ordering. Do not jump ahead of it.
+MVP0–MVP5 are complete (guardrails, CPU reference path, kernel IR extraction,
+kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL backend).
+MVP6 adds the first **advisory** optimization/planning reports (`conflux-planner`):
+backend-choice explanation, static cost hints, fusion candidates, and
+transfer-cost notes. The MVP ladder in `docs/MVP_LADDER.md` is the source of
+truth for ordering. Do not jump ahead of it.
 
 Hard boundary (still in force):
 
@@ -34,7 +36,8 @@ Hard boundary (still in force):
 No custom DSL parser.
 No GPU / shader backend outside the `conflux-wgsl` crate.
 No Residency dependency outside the `conflux-residency` bridge crate.
-No optimization passes.
+Planning is advisory only: no applied/automatic optimizer, no profile artifact,
+no silent semantic changes.
 ```
 
 Dependency boundaries, enforced by the crate graph:
@@ -45,6 +48,9 @@ Dependency boundaries, enforced by the crate graph:
 - The core crates (`conflux-core`, `conflux-ir`, `conflux-kernel`,
   `conflux-runtime`) must never depend on Residency, wgpu, or contain
   buffer-movement / shader logic.
+- `conflux-planner` depends on the backend crates only to **read** their reports;
+  it contains no shader code, no `wgpu`, no direct `residency-core`, and no
+  buffer-movement logic, and it never mutates the IR.
 
 The parser is not the product.
 
@@ -72,6 +78,7 @@ crates/
   conflux-core/      # public model API: domains, stocks, signals, rules
   conflux-ir/        # lowered simulation IR
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
+  conflux-planner/   # advisory optimization & planning reports (reads backends)
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)

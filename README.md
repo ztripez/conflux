@@ -55,21 +55,23 @@ Important constraints:
 - GPU/kernel backends only for bounded numeric kernels
 - every optimization should be explainable in a report
 
-## Initial crate layout
+## Crate layout
 
 ```text
 crates/
   conflux-core/      # public model API: domains, stocks, signals, rules
   conflux-ir/        # lowered simulation IR
-  conflux-kernel/    # bounded numeric kernel IR
+  conflux-kernel/    # bounded numeric kernel IR + CPU executor
+  conflux-planner/   # advisory optimization & planning reports (reads backends)
+  conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
+  conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
 ```
 
 Future crates:
 
 ```text
 crates/
-  conflux-wgsl/      # compute shader backend
   conflux-bevy/      # Bevy integration
 ```
 
@@ -109,9 +111,19 @@ readbacks, and transfer planning; only `conflux-residency` depends on it.
 The first GPU compute backend (MVP5) lives in `conflux-wgsl`: it lowers an
 elementwise kernel to a stable, inspectable WGSL compute shader plus the
 bind/resource requirements a backend needs, and rejects kernels outside the
-supported subset with a reason. Actual GPU execution is behind an optional `gpu`
-feature (wgpu); the equivalence example runs the shader on a real adapter and
-compares it to the CPU kernel path, skipping gracefully when no GPU is present.
+supported subset with a reason. Both backends also lower the kernel's stability
+checks to an executable per-row diagnostic buffer (violation magnitudes), so
+instability surfaces as data; the equivalence example compares the GPU output and
+diagnostics against the CPU kernel path. Actual GPU execution is behind an
+optional `gpu` feature (wgpu); the example runs on a real adapter and skips
+gracefully when no GPU is present.
+
+Advisory optimization reports (MVP6) live in `conflux-planner`: it reads the
+kernel, WGSL, and Residency reports and explains, per rule, which backend is
+available (reference / CPU kernel / GPU) and why a more-optimized path is not,
+plus static cost hints, fusion candidates, and transfer-cost notes from a
+Residency report. Everything is advisory — the planner reads the reports and
+never rewrites the IR, fuses kernels, or changes execution.
 
 Run the worked examples:
 
@@ -121,4 +133,5 @@ cargo run -p conflux-runtime --example kernel_extraction
 cargo run -p conflux-runtime --example equivalence
 cargo run -p conflux-residency --example residency_bridge
 cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
+cargo run -p conflux-planner --example optimization_report
 ```

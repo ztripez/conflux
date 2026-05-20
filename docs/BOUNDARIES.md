@@ -57,6 +57,10 @@ the **only** crate allowed to depend on `residency-core`.
 - `conflux-wgsl` is the only crate that emits shader source or depends on
   `wgpu` (behind its `gpu` feature). GPU/shader concerns never enter the core
   crates.
+- `conflux-planner` reads the kernel, WGSL, and Residency reports to produce
+  advisory optimization/planning reports. It only *reads* those reports — it
+  emits no shader source, depends on no `wgpu` or `residency-core` directly,
+  moves no buffers, and never mutates the IR or applies an optimization.
 
 This keeps the ownership split below enforceable by the dependency graph.
 

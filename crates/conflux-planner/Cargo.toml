@@ -1,0 +1,20 @@
+[package]
+name = "conflux-planner"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+conflux-ir.workspace = true
+conflux-kernel.workspace = true
+# The planner reads the backend reports to explain choices. It uses conflux-wgsl
+# only for its (GPU-free) emitter/report side, never the optional `gpu` feature,
+# and conflux-residency only for its transfer report. No buffer-movement or
+# shader logic lives here.
+conflux-wgsl.workspace = true
+conflux-residency.workspace = true
+
+[dev-dependencies]
+conflux-core.workspace = true
