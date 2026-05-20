@@ -93,9 +93,10 @@ reference path still runs the original simulation IR.
 
 The kernel CPU backend and equivalence harness (MVP3) close the loop: extracted
 kernels execute on the CPU in f32, and a model can run through both the
-simulation reference (f64) and the kernel path. The harness compares the two
-within a declared tolerance — never bit-for-bit — and reports each rule as a
-matched kernel run or a fallback to the reference with its reason.
+simulation reference (f64) and the kernel path. The harness compares their
+per-row proposals within a declared tolerance — never bit-for-bit — and reports
+each rule as a matched kernel run or a fallback to the reference with its reason.
+(Assessment/diagnostic equivalence is not yet checked; that is a later rung.)
 
 Run the worked examples:
 

@@ -81,6 +81,42 @@ fn rejected_rule_falls_back_with_reason() {
 }
 
 #[test]
+fn nan_divergence_is_not_blessed_as_match() {
+    // 0 / 0 is NaN in both f64 and f32; the harness must not report agreement.
+    let mut table = Table::new("T", 1);
+    table.stock("a", vec![0.0]).stock("b", vec![0.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(Rule::new("div").on("T").propose("a", col("a") / col("b")));
+
+    let report = check_equivalence(&lower(&model).unwrap(), Tolerance::default());
+    match &report.rules[0].outcome {
+        PathOutcome::Kernel(c) => assert!(!c.within_tolerance, "NaN must not pass as a match"),
+        other => panic!("expected kernel path, got {other:?}"),
+    }
+    assert!(!report.all_within_tolerance());
+}
+
+#[test]
+fn f32_overflow_diverges_from_finite_reference() {
+    // 1e38 * 1e38 is finite in f64 but overflows f32 to inf.
+    let mut table = Table::new("T", 1);
+    table.stock("a", vec![1e38]).stock("b", vec![1e38]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(Rule::new("mul").on("T").propose("a", col("a") * col("b")));
+
+    let report = check_equivalence(&lower(&model).unwrap(), Tolerance::default());
+    match &report.rules[0].outcome {
+        PathOutcome::Kernel(c) => {
+            assert!(!c.within_tolerance);
+            assert!(c.max_abs_diff.is_infinite());
+        }
+        other => panic!("expected kernel path, got {other:?}"),
+    }
+}
+
+#[test]
 fn compares_longer_cadence_rule_at_first_firing() {
     let mut table = Table::new("T", 1);
     table.stock("a", vec![5.0]);

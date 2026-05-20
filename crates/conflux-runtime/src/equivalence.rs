@@ -166,13 +166,24 @@ fn compare(reference: &[f64], kernel: &[f64], tolerance: Tolerance) -> KernelCom
     let mut within = true;
 
     for (&r, &k) in reference.iter().zip(kernel) {
+        // Exact equality (covers both +inf or both -inf) always passes.
+        if r == k {
+            continue;
+        }
+        // Any other non-finite case (NaN either side, finite vs inf, +inf vs
+        // -inf) is a divergence the harness must surface, never bless. A naive
+        // abs/rel test would treat NaN as in-tolerance, defeating the check.
+        if !r.is_finite() || !k.is_finite() {
+            within = false;
+            max_abs_diff = f64::INFINITY;
+            max_rel_diff = f64::INFINITY;
+            continue;
+        }
         let abs = (k - r).abs();
         let rel = if r.abs() > 0.0 {
             abs / r.abs()
-        } else if abs > 0.0 {
-            f64::INFINITY
         } else {
-            0.0
+            f64::INFINITY
         };
         if abs > max_abs_diff {
             max_abs_diff = abs;
