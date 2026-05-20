@@ -86,6 +86,8 @@ pub struct Kernel {
     /// The stock column this kernel writes.
     pub output: KernelBinding,
     /// Stability checks lowered from the rule, emitted as bounded outputs by a
-    /// backend rather than dropped.
+    /// backend rather than dropped. Lowering these to executable form is MVP3's
+    /// job; note `MaxRelativeDelta` needs the prior output value, which a backend
+    /// must bind (it is not necessarily among `inputs`).
     pub diagnostics: Vec<Assessment>,
 }

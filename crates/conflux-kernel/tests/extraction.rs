@@ -93,6 +93,35 @@ fn input_bindings_record_stock_signal_and_derived_kinds() {
 }
 
 #[test]
+fn carries_all_assessment_diagnostics_verbatim() {
+    let mut table = Table::new("T", 1);
+    table.stock("a", vec![10.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(
+        Rule::new("step")
+            .on("T")
+            .propose("a", col("a") + lit(1.0))
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, 50.0))
+            .assess(Assessment::max_relative_delta(0.5)),
+    );
+
+    let report = extract(&lower(&model).unwrap());
+    assert_eq!(
+        report.accepted[0].diagnostics,
+        vec![
+            Assessment::Finite,
+            Assessment::Range {
+                min: 0.0,
+                max: 50.0
+            },
+            Assessment::MaxRelativeDelta { fraction: 0.5 },
+        ]
+    );
+}
+
+#[test]
 fn lowers_neg_and_div() {
     let mut table = Table::new("T", 1);
     table.stock("a", vec![4.0]).stock("b", vec![2.0]);

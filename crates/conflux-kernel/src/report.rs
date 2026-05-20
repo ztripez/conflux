@@ -29,7 +29,7 @@ pub struct RejectedKernel {
 /// event, unbounded loops, non-numeric reads, unsupported types).
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
 pub enum RejectionReason {
-    #[error("reads parameter `{name}`; uniform bindings are not modeled in MVP2 kernels")]
+    #[error("reads parameter `{name}`; scalar parameter reads are not modeled in MVP2 kernels")]
     ReadsParameter { name: String },
 }
 
