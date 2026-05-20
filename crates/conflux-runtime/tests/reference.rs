@@ -85,6 +85,31 @@ fn derived_columns_are_recomputed() {
 }
 
 #[test]
+fn derived_stays_consistent_with_committed_stocks() {
+    let mut table = Table::new("T", 1);
+    table
+        .stock("x", vec![10.0])
+        .derived("twice", col("x") + col("x"));
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(
+        Rule::new("inc")
+            .on("T")
+            .propose("x", col("x") + lit(5.0))
+            .assess(Assessment::Finite),
+    );
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    approx(sim.column("T", "twice").unwrap()[0], 20.0);
+
+    sim.run(1); // x: 10 -> 15
+
+    approx(sim.column("T", "x").unwrap()[0], 15.0);
+    // Public derived state reflects the committed stock, not the stale 20.
+    approx(sim.column("T", "twice").unwrap()[0], 30.0);
+}
+
+#[test]
 fn cadence_controls_when_a_rule_fires() {
     let mut model = single_stock("x", 0.0);
     model.add_rule(

@@ -128,3 +128,65 @@ fn rejects_rule_without_proposal() {
         Err(LowerError::RuleMissingProposal(_))
     ));
 }
+
+#[test]
+fn rejects_dt_in_derived_column() {
+    let mut table = Table::new("T", 1);
+    table
+        .stock("x", vec![1.0])
+        .derived("d", col("x") * param("dt"));
+    let mut model = Model::new("m");
+    model.add_table(table);
+
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::DtNotAllowed { .. })
+    ));
+}
+
+#[test]
+fn rejects_derived_reading_derived() {
+    let mut table = Table::new("T", 1);
+    table
+        .stock("x", vec![1.0])
+        .derived("a", col("x"))
+        .derived("b", col("a"));
+    let mut model = Model::new("m");
+    model.add_table(table);
+
+    match lower(&model) {
+        Err(LowerError::DerivedReadsDerived { referenced, .. }) => assert_eq!(referenced, "a"),
+        other => panic!("expected DerivedReadsDerived, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_self_referential_derived() {
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![1.0]).derived("a", col("a"));
+    let mut model = Model::new("m");
+    model.add_table(table);
+
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::DerivedReadsDerived { .. })
+    ));
+}
+
+#[test]
+fn rejects_two_rules_writing_one_stock() {
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![1.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(Rule::new("a").on("T").propose("x", col("x")));
+    model.add_rule(Rule::new("b").on("T").propose("x", col("x")));
+
+    match lower(&model) {
+        Err(LowerError::DuplicateWriter { first, second, .. }) => {
+            assert_eq!(first, "a");
+            assert_eq!(second, "b");
+        }
+        other => panic!("expected DuplicateWriter, got {other:?}"),
+    }
+}

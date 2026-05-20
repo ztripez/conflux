@@ -57,6 +57,27 @@ pub enum LowerError {
         table: String,
         column: String,
     },
+    #[error("{context}: `dt` is only available to rules, not derived columns")]
+    DtNotAllowed { context: String },
+    #[error(
+        "derived column `{table}.{column}` reads derived column `{referenced}`; MVP1 derived \
+         columns may only read stocks and signals"
+    )]
+    DerivedReadsDerived {
+        table: String,
+        column: String,
+        referenced: String,
+    },
+    #[error(
+        "stock `{table}.{column}` is written by multiple rules (`{first}` and `{second}`); MVP1 \
+         allows a single writer per stock"
+    )]
+    DuplicateWriter {
+        table: String,
+        column: String,
+        first: String,
+        second: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -111,6 +132,12 @@ fn lower_tables(model: &Model, param_names: &HashSet<String>) -> Result<Vec<Tabl
 
 fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, LowerError> {
     let column_names: HashSet<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
+    let derived_names: HashSet<&str> = table
+        .columns
+        .iter()
+        .filter(|c| c.kind == ValueKind::Derived)
+        .map(|c| c.name.as_str())
+        .collect();
 
     let mut seen_columns = HashSet::new();
     let mut columns = Vec::with_capacity(table.columns.len());
@@ -125,7 +152,28 @@ fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, 
         let derive = match (column.kind, &column.derive) {
             (ValueKind::Derived, Some(expr)) => {
                 let context = format!("derived column `{}.{}`", table.name, column.name);
-                check_expr(expr, &context, &table.name, &column_names, param_names)?;
+                // `dt` is rule-local; derived columns have no cadence.
+                check_expr(
+                    expr,
+                    &context,
+                    &table.name,
+                    &column_names,
+                    param_names,
+                    false,
+                )?;
+                // MVP1 derived columns may only read stocks and signals, which
+                // keeps recompute order trivial and rules out cycles.
+                let mut used_columns = Vec::new();
+                expr.referenced(&mut used_columns, &mut Vec::new());
+                for referenced in used_columns {
+                    if derived_names.contains(referenced.as_str()) {
+                        return Err(LowerError::DerivedReadsDerived {
+                            table: table.name.clone(),
+                            column: column.name.clone(),
+                            referenced,
+                        });
+                    }
+                }
                 Some(expr.clone())
             }
             _ => None,
@@ -162,8 +210,22 @@ fn lower_rules(
     param_names: &HashSet<String>,
 ) -> Result<Vec<RuleIr>, LowerError> {
     let mut rules = Vec::with_capacity(model.rules.len());
+    // A stock may have at most one writer until explicit reducer/conflict
+    // semantics exist, so commits never silently depend on rule order.
+    let mut writers: std::collections::HashMap<(usize, usize), String> =
+        std::collections::HashMap::new();
     for rule in &model.rules {
-        rules.push(lower_rule(rule, ir, param_names)?);
+        let lowered = lower_rule(rule, ir, param_names)?;
+        if let Some(first) = writers.insert((lowered.table, lowered.target), lowered.name.clone()) {
+            let table = &ir.tables[lowered.table];
+            return Err(LowerError::DuplicateWriter {
+                table: table.name.clone(),
+                column: table.columns[lowered.target].name.clone(),
+                first,
+                second: lowered.name.clone(),
+            });
+        }
+        rules.push(lowered);
     }
     Ok(rules)
 }
@@ -212,7 +274,14 @@ fn lower_rule(
     }
 
     let context = format!("rule `{}`", rule.name);
-    check_expr(expr, &context, &table.name, &column_names, param_names)?;
+    check_expr(
+        expr,
+        &context,
+        &table.name,
+        &column_names,
+        param_names,
+        true,
+    )?;
 
     Ok(RuleIr {
         name: rule.name.clone(),
@@ -225,13 +294,14 @@ fn lower_rule(
 }
 
 /// Checks that every column and parameter referenced by `expr` exists. The
-/// reserved `dt` parameter is always allowed.
+/// reserved `dt` parameter is allowed only when `allow_dt` is set (rules).
 fn check_expr(
     expr: &Expr,
     context: &str,
     table: &str,
     columns: &HashSet<&str>,
     params: &HashSet<String>,
+    allow_dt: bool,
 ) -> Result<(), LowerError> {
     let mut used_columns = Vec::new();
     let mut used_params = Vec::new();
@@ -247,7 +317,13 @@ fn check_expr(
         }
     }
     for p in used_params {
-        if p != RESERVED_DT && !params.contains(&p) {
+        if p == RESERVED_DT {
+            if !allow_dt {
+                return Err(LowerError::DtNotAllowed {
+                    context: context.to_string(),
+                });
+            }
+        } else if !params.contains(&p) {
             return Err(LowerError::UnknownParam {
                 context: context.to_string(),
                 param: p,

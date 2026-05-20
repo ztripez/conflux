@@ -88,10 +88,10 @@ impl Simulation {
         let data = &mut self.data;
         let params = param_map(ir);
 
-        recompute_derived(ir, plan, data, &params);
-
-        // Rules read a frozen start-of-tick snapshot so evaluation order does
-        // not affect what any rule observes.
+        // Derived columns are already consistent with the current stocks (from
+        // construction or the previous step's post-commit recompute), so rules
+        // read a frozen start-of-tick snapshot whose derived values match its
+        // stocks. Evaluation order then cannot change what any rule observes.
         let snapshot = data.clone();
 
         let mut rule_reports = Vec::new();
@@ -141,6 +141,10 @@ impl Simulation {
             });
         }
 
+        // Refresh derived columns so end-of-step public state is consistent
+        // with the committed stocks.
+        recompute_derived(ir, plan, data, &params);
+
         StepReport {
             tick,
             rules: rule_reports,
@@ -184,7 +188,9 @@ fn recompute_derived(
                 columns_by_name: &columns_by_name,
                 columns: &data[t],
                 params,
-                dt: 0.0,
+                // Derived columns have no cadence; `dt` is rejected in derived
+                // expressions during lowering, so it is never read here.
+                dt: f64::NAN,
                 row,
             };
             *slot = eval(derive, &ctx);
