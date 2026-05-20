@@ -38,6 +38,15 @@ pub struct GpuRun {
 /// hold the start-of-step values. Returns `Ok(None)` when no GPU adapter is
 /// reachable.
 pub fn run_on_gpu(module: &ShaderModule, columns: &[Vec<f32>]) -> Result<Option<GpuRun>, GpuError> {
+    // wgpu rejects zero-sized buffers and zero-byte copies; an empty kernel has
+    // nothing to compute, so report empty results without touching the GPU.
+    if module.element_count == 0 {
+        return Ok(Some(GpuRun {
+            output: Vec::new(),
+            diagnostics: Vec::new(),
+        }));
+    }
+
     let instance = wgpu::Instance::default();
     let Some(adapter) =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))

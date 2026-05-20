@@ -10,11 +10,14 @@
 //! proposed value is never altered, only measured.
 //!
 //! Diagnostics are computed in the kernel's working precision (f32) so a CPU
-//! kernel and a GPU backend evaluating the same checks agree. Non-finite output
-//! is the [`Assessment::Finite`] check's responsibility: the `Range` and
-//! `MaxRelativeDelta` magnitudes are arithmetic and report `0.0` for a `NaN`
-//! value (whose ordering comparisons are all false), so pair them with `Finite`
-//! when non-finite results are possible.
+//! kernel and a GPU backend evaluating the same checks agree. Equivalence is
+//! guaranteed for **finite** outputs: detecting and reporting a non-finite value
+//! is the [`Assessment::Finite`] check's job, so pair it with the others when
+//! non-finite results are possible. The `Range` and `MaxRelativeDelta` magnitudes
+//! are plain arithmetic and report `0.0` for a `NaN` value here (Rust's `f32::max`
+//! returns the non-NaN operand), but a GPU backend's `max` with `NaN` is
+//! implementation-defined, so their values may diverge across backends for a
+//! non-finite `value` — only `Finite` reliably flags it on both.
 
 use conflux_ir::Assessment;
 

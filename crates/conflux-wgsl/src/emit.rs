@@ -134,8 +134,11 @@ fn emit_body(kernel: &Kernel, var_for: &impl Fn(usize) -> String) -> String {
 }
 
 /// The WGSL expression for one assessment's per-row violation magnitude,
-/// computed against the local `out` (and `prev` for `MaxRelativeDelta`). Mirrors
-/// `conflux_kernel::diagnose_elementwise`.
+/// computed against the local `out` (and `prev` for `MaxRelativeDelta`). This
+/// must compute the same value as `conflux_kernel`'s CPU `violation`; the
+/// `wgsl_diagnostic_semantics_match_cpu` test pins that equivalence for finite
+/// values without needing a GPU. For a non-finite `out`, `Finite` is the only
+/// check that agrees across backends (WGSL `max`/`NaN` is implementation-defined).
 fn diagnostic_expr(assessment: Assessment) -> String {
     match assessment {
         // Finite -> 0.0, non-finite -> 1.0. WGSL has no isFinite; `out * 0.0`
@@ -316,4 +319,78 @@ fn var_name(name: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use conflux_core::{col, lower, Model, Rule, Table};
+    use conflux_kernel::{diagnose_elementwise, extract};
+
+    /// The Rust evaluation of exactly what [`diagnostic_expr`] emits. Kept beside
+    /// it (and edited together) so that `wgsl_diagnostic_semantics_match_cpu` can
+    /// cross-check the emitted WGSL's *meaning* against the CPU source of truth in
+    /// CI, where no GPU is available to run the shader itself.
+    fn wgsl_eval(assessment: Assessment, out: f32, prev: f32) -> f32 {
+        match assessment {
+            Assessment::Finite => {
+                if (out * 0.0) == 0.0 {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+            Assessment::Range { min, max } => {
+                (out - max as f32).max(0.0) + (min as f32 - out).max(0.0)
+            }
+            Assessment::MaxRelativeDelta { fraction } => {
+                ((out - prev).abs() - fraction as f32 * prev.abs()).max(0.0)
+            }
+        }
+    }
+
+    /// A one-row kernel carrying exactly `assessment`, so `diagnose_elementwise`
+    /// (the CPU source of truth) can be driven with chosen `out`/`prev` values.
+    fn single_assessment_kernel(assessment: Assessment) -> Kernel {
+        let mut table = Table::new("T", 1);
+        table.stock("v", vec![0.0]);
+        let mut model = Model::new("m");
+        model.add_table(table);
+        model.add_rule(
+            Rule::new("r")
+                .on("T")
+                .propose("v", col("v"))
+                .assess(assessment),
+        );
+        let ir = lower(&model).unwrap();
+        extract(&ir).accepted.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn wgsl_diagnostic_semantics_match_cpu() {
+        // The emitted WGSL and the CPU `violation` are two evaluators of the same
+        // assessment; assert they agree exactly over a sweep of finite values
+        // (boundaries, signs, zero). Non-finite `out` is excluded: only `Finite`
+        // is cross-backend reliable there (see `diagnostic_expr`).
+        let assessments = [
+            Assessment::Finite,
+            Assessment::range(-1.5, 2.5),
+            Assessment::max_relative_delta(0.3),
+        ];
+        let outs = [-3.0f32, -1.5, -0.5, 0.0, 0.5, 2.5, 4.0, 100.0];
+        let prevs = [0.0f32, 1.0, -2.0, 10.0];
+        for assessment in assessments {
+            let kernel = single_assessment_kernel(assessment);
+            for &out in &outs {
+                for &prev in &prevs {
+                    let cpu = diagnose_elementwise(&kernel, &[out], &[prev])[0];
+                    assert_eq!(
+                        wgsl_eval(assessment, out, prev),
+                        cpu,
+                        "assessment {assessment:?} out={out} prev={prev}"
+                    );
+                }
+            }
+        }
+    }
 }
