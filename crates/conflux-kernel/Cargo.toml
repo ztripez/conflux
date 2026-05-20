@@ -9,3 +9,6 @@ rust-version.workspace = true
 [dependencies]
 conflux-ir.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+conflux-core.workspace = true
