@@ -6,7 +6,7 @@
 //! explainable [`RejectionReason`] otherwise. It only reads the simulation IR;
 //! it never mutates it, so the CPU reference path keeps executing the original.
 
-use conflux_ir::{Expr, RuleIr, SimIr, TableIr};
+use conflux_ir::{Expr, RuleIr, SimIr, TableIr, ValueKind};
 
 use crate::ir::{Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType};
 use crate::report::{KernelReport, RejectedKernel, RejectionReason};
@@ -37,6 +37,7 @@ fn extract_rule(ir: &SimIr, rule: &RuleIr) -> Result<Kernel, RejectionReason> {
         table: rule.table,
         table_name: table.name.clone(),
         rows: table.rows,
+        cadence: rule.cadence,
         shape: KernelShape::Elementwise,
         // MVP1 numeric columns are f64; bounded kernels work in f32, and MVP3's
         // tolerance model reconciles the two against the reference path.
@@ -46,6 +47,7 @@ fn extract_rule(ir: &SimIr, rule: &RuleIr) -> Result<Kernel, RejectionReason> {
         output: KernelBinding {
             name: table.columns[rule.target].name.clone(),
             column: rule.target,
+            kind: table.columns[rule.target].kind,
         },
         // Diagnostics are simulation assessments, carried verbatim.
         diagnostics: rule.assessments.clone(),
@@ -64,7 +66,8 @@ fn lower_expr(
             let column = table
                 .column_index(name)
                 .expect("simulation IR references an existing column");
-            Ok(KernelExpr::Input(intern_input(inputs, name, column)))
+            let kind = table.columns[column].kind;
+            Ok(KernelExpr::Input(intern_input(inputs, name, column, kind)))
         }
         Expr::Param(name) => Err(RejectionReason::ReadsParameter { name: name.clone() }),
         Expr::Neg(inner) => Ok(KernelExpr::Neg(Box::new(lower_expr(inner, table, inputs)?))),
@@ -88,13 +91,19 @@ fn lower_expr(
 }
 
 /// Returns the binding index for a column, adding it on first use.
-fn intern_input(inputs: &mut Vec<KernelBinding>, name: &str, column: usize) -> usize {
+fn intern_input(
+    inputs: &mut Vec<KernelBinding>,
+    name: &str,
+    column: usize,
+    kind: ValueKind,
+) -> usize {
     if let Some(idx) = inputs.iter().position(|b| b.column == column) {
         return idx;
     }
     inputs.push(KernelBinding {
         name: name.to_string(),
         column,
+        kind,
     });
     inputs.len() - 1
 }

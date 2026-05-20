@@ -11,9 +11,13 @@
 //! needs kernel-specific data (such as an output buffer binding), at which point
 //! it earns its own type.
 
-use conflux_ir::Assessment;
+use conflux_ir::{Assessment, Cadence, ValueKind};
 
 /// A bounded scalar element type a kernel operates on.
+///
+/// The MVP ladder scopes kernels to `f32`/`u32`. MVP1 has only f64 numeric
+/// columns, so extraction currently only produces `F32`; `U32` is reserved for
+/// the integer columns that arrive with typed domains.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScalarType {
     F32,
@@ -30,11 +34,17 @@ pub enum KernelShape {
 }
 
 /// A named binding to one column of the source table, addressed by index.
+///
+/// The `kind` records whether the bound column is a stock, signal, or derived
+/// value. A kernel reads each as a materialized per-row buffer, but a backend
+/// (and the Residency boundary later) needs the kind to know mutation authority
+/// and how the buffer is produced.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KernelBinding {
     pub name: String,
     /// Index of the column within the source table.
     pub column: usize,
+    pub kind: ValueKind,
 }
 
 /// The bounded numeric expression subset a kernel may contain.
@@ -64,6 +74,9 @@ pub struct Kernel {
     pub table_name: String,
     /// Element count (table rows).
     pub rows: usize,
+    /// The rule's firing cadence, carried so a backend / equivalence harness
+    /// knows the kernel's semantic time step.
+    pub cadence: Cadence,
     pub shape: KernelShape,
     pub scalar_type: ScalarType,
     /// Distinct column reads, in first-seen order; `KernelExpr::Input` indexes

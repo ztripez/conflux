@@ -55,10 +55,11 @@ impl fmt::Display for KernelReport {
             let inputs: Vec<&str> = kernel.inputs.iter().map(|b| b.name.as_str()).collect();
             writeln!(
                 f,
-                "  ACCEPT `{}` [{:?} {:?}] {}.{} <- ({}), {} diagnostic(s)",
+                "  ACCEPT `{}` [{:?} {:?} every {}] {}.{} <- ({}), {} diagnostic(s)",
                 kernel.name,
                 kernel.shape,
                 kernel.scalar_type,
+                kernel.cadence.period,
                 kernel.table_name,
                 kernel.output.name,
                 inputs.join(", "),

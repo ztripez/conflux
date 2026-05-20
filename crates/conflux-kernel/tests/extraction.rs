@@ -1,4 +1,4 @@
-use conflux_core::{col, lit, lower, param, Assessment, Model, Rule, Table};
+use conflux_core::{col, lit, lower, param, Assessment, Model, Rule, Table, ValueKind};
 use conflux_kernel::{extract, KernelExpr, KernelShape, RejectionReason, ScalarType};
 
 fn input(n: usize) -> Box<KernelExpr> {
@@ -33,12 +33,16 @@ fn accepts_elementwise_column_arithmetic() {
     assert_eq!(kernel.rows, 2);
     assert_eq!(kernel.shape, KernelShape::Elementwise);
     assert_eq!(kernel.scalar_type, ScalarType::F32);
+    assert_eq!(kernel.cadence.period, 1);
 
-    // Inputs are interned in first-seen order: a (col 0), then s (col 1).
+    // Inputs are interned in first-seen order: a (col 0), then s (col 1), each
+    // tagged with its value kind.
     let input_names: Vec<&str> = kernel.inputs.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(input_names, ["a", "s"]);
     assert_eq!(kernel.inputs[0].column, 0);
+    assert_eq!(kernel.inputs[0].kind, ValueKind::Stock);
     assert_eq!(kernel.inputs[1].column, 1);
+    assert_eq!(kernel.inputs[1].kind, ValueKind::Signal);
 
     // (a + s) - 1.0
     let expected = KernelExpr::Sub(
@@ -49,6 +53,7 @@ fn accepts_elementwise_column_arithmetic() {
 
     assert_eq!(kernel.output.name, "a");
     assert_eq!(kernel.output.column, 0);
+    assert_eq!(kernel.output.kind, ValueKind::Stock);
     assert_eq!(
         kernel.diagnostics,
         vec![
@@ -59,6 +64,75 @@ fn accepts_elementwise_column_arithmetic() {
             }
         ]
     );
+}
+
+#[test]
+fn input_bindings_record_stock_signal_and_derived_kinds() {
+    let mut table = Table::new("T", 1);
+    table
+        .stock("a", vec![10.0])
+        .signal("s", vec![2.0])
+        .derived("d", col("a") + col("s"));
+    let mut model = Model::new("m");
+    model.add_table(table);
+    // Reads a stock, a derived, and a signal. A derived column is a materialized
+    // buffer, so it is a valid elementwise input; the binding records its kind.
+    model.add_rule(
+        Rule::new("blend")
+            .on("T")
+            .propose("a", col("a") + col("d") + col("s")),
+    );
+
+    let report = extract(&lower(&model).unwrap());
+    assert_eq!(report.accepted_count(), 1);
+    let kinds: Vec<ValueKind> = report.accepted[0].inputs.iter().map(|b| b.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![ValueKind::Stock, ValueKind::Derived, ValueKind::Signal]
+    );
+}
+
+#[test]
+fn lowers_neg_and_div() {
+    let mut table = Table::new("T", 1);
+    table.stock("a", vec![4.0]).stock("b", vec![2.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(
+        Rule::new("ratio")
+            .on("T")
+            .propose("a", -col("a") / col("b")),
+    );
+
+    let report = extract(&lower(&model).unwrap());
+    // (-a) / b
+    assert_eq!(
+        report.accepted[0].expr,
+        KernelExpr::Div(Box::new(KernelExpr::Neg(input(0))), input(1))
+    );
+}
+
+#[test]
+fn addresses_rule_on_non_zero_table_index() {
+    let mut first = Table::new("First", 1);
+    first.stock("x", vec![1.0]);
+    let mut second = Table::new("Second", 2);
+    second.stock("y", vec![1.0, 2.0]);
+
+    let mut model = Model::new("m");
+    model.add_table(first);
+    model.add_table(second);
+    model.add_rule(
+        Rule::new("bump")
+            .on("Second")
+            .propose("y", col("y") + lit(1.0)),
+    );
+
+    let kernel = &extract(&lower(&model).unwrap()).accepted[0];
+    assert_eq!(kernel.table, 1);
+    assert_eq!(kernel.table_name, "Second");
+    assert_eq!(kernel.rows, 2);
+    assert_eq!(kernel.output.column, 0);
 }
 
 #[test]
