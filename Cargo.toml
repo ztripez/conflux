@@ -6,6 +6,7 @@ members = [
     "crates/conflux-planner",
     "crates/conflux-residency",
     "crates/conflux-runtime",
+    "crates/conflux-trace",
     "crates/conflux-wgsl",
 ]
 resolver = "2"
@@ -23,6 +24,7 @@ conflux-kernel = { path = "crates/conflux-kernel" }
 conflux-planner = { path = "crates/conflux-planner" }
 conflux-residency = { path = "crates/conflux-residency" }
 conflux-runtime = { path = "crates/conflux-runtime" }
+conflux-trace = { path = "crates/conflux-trace" }
 conflux-wgsl = { path = "crates/conflux-wgsl" }
 
 # Residency owns buffer-backed data movement; only conflux-residency depends on
@@ -30,3 +32,5 @@ conflux-wgsl = { path = "crates/conflux-wgsl" }
 residency-core = { git = "https://github.com/ztripez/residency", rev = "6b34193d65f67f89fe8f68611ea12eb15311257f" }
 
 thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

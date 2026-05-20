@@ -65,6 +65,7 @@ crates/
   conflux-planner/   # advisory optimization & planning reports (reads backends)
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
+  conflux-trace/     # trace artifacts + profile-guided recommendations (research)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
 ```
 
@@ -125,6 +126,15 @@ plus static cost hints, fusion candidates, and transfer-cost notes from a
 Residency report. Everything is advisory — the planner reads the reports and
 never rewrites the IR, fuses kernels, or changes execution.
 
+Trace artifacts and profile-guided planning (MVP7) are optional research in
+`conflux-trace`. A trace records, per rule, measured timing, the backend that
+ran, an assessment summary, and a transfer summary imported from a Residency
+report; `recommend` turns it into profile-guided recommendations (hotspot,
+backend headroom, instability, keep-resident), and a trace can be written to /
+read from a JSON artifact. Normal execution never produces or requires a trace —
+the static planner above is the conservative default — and there is no release
+compiler or runtime adaptive optimizer.
+
 Run the worked examples:
 
 ```sh
@@ -134,4 +144,5 @@ cargo run -p conflux-runtime --example equivalence
 cargo run -p conflux-residency --example residency_bridge
 cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
 cargo run -p conflux-planner --example optimization_report
+cargo run -p conflux-trace --example profile_guided
 ```

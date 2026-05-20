@@ -21,14 +21,14 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: MVP6
+## Current stage: MVP7 (ladder complete)
 
-MVP0–MVP5 are complete (guardrails, CPU reference path, kernel IR extraction,
-kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL backend).
-MVP6 adds the first **advisory** optimization/planning reports (`conflux-planner`):
-backend-choice explanation, static cost hints, fusion candidates, and
-transfer-cost notes. The MVP ladder in `docs/MVP_LADDER.md` is the source of
-truth for ordering. Do not jump ahead of it.
+All MVP rungs MVP0–MVP7 are complete: guardrails, CPU reference path, kernel IR
+extraction, kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL
+backend, advisory optimization/planning reports (`conflux-planner`), and trace
+artifacts + profile-guided recommendation research (`conflux-trace`). The MVP
+ladder in `docs/MVP_LADDER.md` records the order; new work past the ladder should
+be scoped against the same boundaries below before starting.
 
 Hard boundary (still in force):
 
@@ -36,8 +36,10 @@ Hard boundary (still in force):
 No custom DSL parser.
 No GPU / shader backend outside the `conflux-wgsl` crate.
 No Residency dependency outside the `conflux-residency` bridge crate.
-Planning is advisory only: no applied/automatic optimizer, no profile artifact,
-no silent semantic changes.
+Planning is advisory only: no applied/automatic optimizer, no silent semantic
+changes.
+Profile-guided planning is optional research: normal execution must never require
+a trace, and there is no release compiler or runtime adaptive optimizer.
 ```
 
 Dependency boundaries, enforced by the crate graph:
@@ -51,6 +53,9 @@ Dependency boundaries, enforced by the crate graph:
 - `conflux-planner` depends on the backend crates only to **read** their reports;
   it contains no shader code, no `wgpu`, no direct `residency-core`, and no
   buffer-movement logic, and it never mutates the IR.
+- `conflux-trace` is a standalone schema + recommendation crate: it depends on no
+  other Conflux crate, imports transfer summaries as plain totals (never
+  Residency directly), and is off the execution path.
 
 The parser is not the product.
 
@@ -81,6 +86,7 @@ crates/
   conflux-planner/   # advisory optimization & planning reports (reads backends)
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
+  conflux-trace/     # trace artifacts + profile-guided recommendations (research)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
 ```
 

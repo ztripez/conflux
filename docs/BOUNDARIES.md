@@ -61,6 +61,10 @@ the **only** crate allowed to depend on `residency-core`.
   advisory optimization/planning reports. It only *reads* those reports — it
   emits no shader source, depends on no `wgpu` or `residency-core` directly,
   moves no buffers, and never mutates the IR or applies an optimization.
+- `conflux-trace` holds the optional trace-artifact schema and the profile-guided
+  recommendation pass. It is off the execution path (normal runs never produce or
+  require a trace), depends on no other Conflux crate, and imports transfer
+  summaries as plain totals rather than depending on Residency.
 
 This keeps the ownership split below enforceable by the dependency graph.
 
