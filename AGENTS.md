@@ -21,26 +21,32 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: MVP4
+## Current stage: MVP5
 
-MVP0–MVP3 are complete (guardrails, CPU reference path, kernel IR extraction,
-kernel CPU backend + equivalence harness). MVP4 adds the Residency bridge. The
-MVP ladder in `docs/MVP_LADDER.md` is the source of truth for ordering. Do not
-jump ahead of it.
+MVP0–MVP4 are complete (guardrails, CPU reference path, kernel IR extraction,
+kernel CPU backend + equivalence harness, Residency bridge). MVP5 adds the first
+GPU compute backend (WGSL emission). The MVP ladder in `docs/MVP_LADDER.md` is
+the source of truth for ordering. Do not jump ahead of it.
 
 Hard boundary (still in force):
 
 ```text
 No custom DSL parser.
-No GPU / shader backend in Conflux (no wgpu/WGSL anywhere in this repo yet).
+No GPU / shader backend outside the `conflux-wgsl` crate.
 No Residency dependency outside the `conflux-residency` bridge crate.
 No optimization passes.
 ```
 
-The Residency dependency (`residency-core`) is allowed **only** in
-`conflux-residency`. The core crates (`conflux-core`, `conflux-ir`,
-`conflux-kernel`, `conflux-runtime`) must never depend on Residency or contain
-buffer-movement logic. The parser is not the product.
+Dependency boundaries, enforced by the crate graph:
+
+- `residency-core` is allowed **only** in `conflux-residency`.
+- WGSL emission and the optional `wgpu` dependency live **only** in
+  `conflux-wgsl` (wgpu is behind its `gpu` feature, off by default).
+- The core crates (`conflux-core`, `conflux-ir`, `conflux-kernel`,
+  `conflux-runtime`) must never depend on Residency, wgpu, or contain
+  buffer-movement / shader logic.
+
+The parser is not the product.
 
 ## How to work
 
@@ -68,6 +74,7 @@ crates/
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
+  conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
 ```
 
 Each crate's `lib.rs` documents its own boundary. Keep code on the correct side

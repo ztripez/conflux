@@ -106,6 +106,13 @@ backend (the CPU-side `FakeBackend` for now), embedding Residency's transfer
 report in a Conflux report. Residency owns generation tracking, patches,
 readbacks, and transfer planning; only `conflux-residency` depends on it.
 
+The first GPU compute backend (MVP5) lives in `conflux-wgsl`: it lowers an
+elementwise kernel to a stable, inspectable WGSL compute shader plus the
+bind/resource requirements a backend needs, and rejects kernels outside the
+supported subset with a reason. Actual GPU execution is behind an optional `gpu`
+feature (wgpu); the equivalence example runs the shader on a real adapter and
+compares it to the CPU kernel path, skipping gracefully when no GPU is present.
+
 Run the worked examples:
 
 ```sh
@@ -113,4 +120,5 @@ cargo run -p conflux-runtime --example settlement
 cargo run -p conflux-runtime --example kernel_extraction
 cargo run -p conflux-runtime --example equivalence
 cargo run -p conflux-residency --example residency_bridge
+cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
 ```
