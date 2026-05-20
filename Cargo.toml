@@ -3,6 +3,7 @@ members = [
     "crates/conflux-core",
     "crates/conflux-ir",
     "crates/conflux-kernel",
+    "crates/conflux-planner",
     "crates/conflux-residency",
     "crates/conflux-runtime",
     "crates/conflux-wgsl",
@@ -19,6 +20,7 @@ rust-version = "1.78"
 conflux-core = { path = "crates/conflux-core" }
 conflux-ir = { path = "crates/conflux-ir" }
 conflux-kernel = { path = "crates/conflux-kernel" }
+conflux-planner = { path = "crates/conflux-planner" }
 conflux-residency = { path = "crates/conflux-residency" }
 conflux-runtime = { path = "crates/conflux-runtime" }
 conflux-wgsl = { path = "crates/conflux-wgsl" }

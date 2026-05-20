@@ -169,6 +169,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "conflux-planner"
+version = "0.1.0"
+dependencies = [
+ "conflux-core",
+ "conflux-ir",
+ "conflux-kernel",
+ "conflux-residency",
+ "conflux-wgsl",
+]
+
+[[package]]
 name = "conflux-residency"
 version = "0.1.0"
 dependencies = [
