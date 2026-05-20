@@ -1,0 +1,9 @@
+# Rust build artifacts
+/target
+
+# Backup files from older rustfmt
+**/*.rs.bk
+
+# Editor / OS noise
+*.swp
+.DS_Store
