@@ -1,0 +1,32 @@
+[package]
+name = "conflux-trace"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# JSON serialization of trace artifacts is optional (the `json` feature, on by
+# default). The schema and the recommendation pass need no dependencies, so a
+# consumer that only builds traces in memory can drop serde entirely.
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+default = ["json"]
+json = ["dep:serde", "dep:serde_json"]
+
+[dev-dependencies]
+# Examples/tests demonstrate importing a real Residency transfer report into a
+# trace and comparing profile-guided recommendations against the static planner.
+# These are dev-only, so the trace crate's own dependency surface stays minimal.
+conflux-core.workspace = true
+conflux-kernel.workspace = true
+conflux-planner.workspace = true
+conflux-residency.workspace = true
+
+[[example]]
+name = "profile_guided"
+# Writes a JSON trace artifact, so it needs the `json` feature.
+required-features = ["json"]
