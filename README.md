@@ -85,10 +85,17 @@ Tables carry stock, signal, and derived columns; rules propose stock writes at a
 declared cadence; proposals are assessed (finite / range / max relative delta)
 before commit, with no clamp; and the report preserves raw rejected proposals.
 
-Run the worked example:
+Bounded numeric kernel extraction (MVP2) is also in place: elementwise
+column-arithmetic rules lower from simulation IR into `conflux-kernel` IR, while
+ineligible rules (for example, those reading uniform parameters) are reported
+with explainable rejection reasons. Extraction is read-only, so the CPU
+reference path still runs the original simulation IR.
+
+Run the worked examples:
 
 ```sh
 cargo run -p conflux-runtime --example settlement
+cargo run -p conflux-runtime --example kernel_extraction
 ```
 
 Residency integration comes after the CPU reference path is real.

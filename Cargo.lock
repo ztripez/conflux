@@ -21,6 +21,7 @@ dependencies = [
 name = "conflux-kernel"
 version = "0.1.0"
 dependencies = [
+ "conflux-core",
  "conflux-ir",
  "thiserror",
 ]
