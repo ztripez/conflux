@@ -54,6 +54,9 @@ the **only** crate allowed to depend on `residency-core`.
 - `conflux-residency` maps Conflux numeric resources to Residency resource
   descriptors and view requests and embeds Residency transfer reports. It does
   not reimplement generation tracking, patches, readbacks, or transfer planning.
+- `conflux-wgsl` is the only crate that emits shader source or depends on
+  `wgpu` (behind its `gpu` feature). GPU/shader concerns never enter the core
+  crates.
 
 This keeps the ownership split below enforceable by the dependency graph.
 

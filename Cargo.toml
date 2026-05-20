@@ -5,6 +5,7 @@ members = [
     "crates/conflux-kernel",
     "crates/conflux-residency",
     "crates/conflux-runtime",
+    "crates/conflux-wgsl",
 ]
 resolver = "2"
 
@@ -20,6 +21,7 @@ conflux-ir = { path = "crates/conflux-ir" }
 conflux-kernel = { path = "crates/conflux-kernel" }
 conflux-residency = { path = "crates/conflux-residency" }
 conflux-runtime = { path = "crates/conflux-runtime" }
+conflux-wgsl = { path = "crates/conflux-wgsl" }
 
 # Residency owns buffer-backed data movement; only conflux-residency depends on
 # it. Pinned for reproducibility.
