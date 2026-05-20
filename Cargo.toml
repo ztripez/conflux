@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "crates/conflux-core",
+    "crates/conflux-ir",
+    "crates/conflux-kernel",
+    "crates/conflux-runtime",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ztripez/conflux"
+rust-version = "1.78"
+
+[workspace.dependencies]
+conflux-core = { path = "crates/conflux-core" }
+conflux-ir = { path = "crates/conflux-ir" }
+conflux-kernel = { path = "crates/conflux-kernel" }
+conflux-runtime = { path = "crates/conflux-runtime" }
+
+thiserror = "1"
