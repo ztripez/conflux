@@ -72,7 +72,9 @@ pub fn sync_kernel_output<B: ResidencyBackend>(
             .map_err(BridgeError::Backend)?
         {
             ReadbackStatus::Ready(result) => break result,
-            ReadbackStatus::Pending => continue,
+            // Cooperative spin; a real async backend (MVP5) should replace this
+            // with a budgeted wait rather than a hot loop.
+            ReadbackStatus::Pending => std::thread::yield_now(),
             ReadbackStatus::Failed(_) => return Err(BridgeError::ReadbackFailed),
         }
     };
