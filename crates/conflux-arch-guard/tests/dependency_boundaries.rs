@@ -64,10 +64,6 @@ fn kind_label(dep: &Value) -> &str {
     }
 }
 
-fn is_normal(dep: &Value) -> bool {
-    matches!(dep.get("kind"), None | Some(Value::Null))
-}
-
 #[test]
 fn crate_dependency_boundaries_hold() {
     let metadata = metadata();
@@ -121,8 +117,8 @@ fn crate_dependency_boundaries_hold() {
             }
 
             // conflux-trace may depend on other Conflux crates only as
-            // dev-dependencies.
-            if name == "conflux-trace" && is_normal(dep) && dep_name.starts_with("conflux-") {
+            // dev-dependencies (any non-dev kind — normal or build — is a drift).
+            if name == "conflux-trace" && kind != "dev" && dep_name.starts_with("conflux-") {
                 violations.push(format!(
                     "conflux-trace has a normal dependency on `{dep_name}`; Conflux crate deps are allowed only as dev-dependencies"
                 ));
@@ -146,7 +142,9 @@ fn crate_dependency_boundaries_hold() {
 }
 
 /// True when the package's `gpu` feature enables the optional `wgpu` dependency
-/// (`gpu = ["dep:wgpu", ...]`).
+/// (`gpu = ["dep:wgpu", ...]`). This matches the explicit `dep:` form the manifest
+/// uses; the implicit-feature form (an optional dep never referenced via `dep:`)
+/// is intentionally not accepted, since it would not gate `wgpu` behind `gpu`.
 fn gpu_feature_gates_wgpu(pkg: &Value) -> bool {
     pkg.get("features")
         .and_then(|f| f.get("gpu"))
