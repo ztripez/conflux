@@ -59,6 +59,8 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
     let materialized: Vec<Vec<Vec<f64>>> = (0..ir.tables.len())
         .map(|t| sim.table_data(t).to_vec())
         .collect();
+    // Region aggregates over the start-of-run materialized field state.
+    let aggregates = sim.aggregate_report();
     let report = sim.run(TICKS);
     let (mut proposals, mut violations) = (0usize, 0usize);
     for step in &report.steps {
@@ -76,6 +78,33 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         "  reference: {TICKS} tick, {proposals} proposal(s), {} rejected, {violations} assessment violation(s)",
         report.rejected_count()
     );
+
+    // Region aggregates + field-to-table bridges (absent for table-only scenarios).
+    if !ir.regions.is_empty() || !ir.aggregates.is_empty() {
+        println!(
+            "  regions: {} region(s), {} aggregate(s), {} bridge(s)",
+            ir.regions.len(),
+            ir.aggregates.len(),
+            ir.bridges.len()
+        );
+        for aggregate in &aggregates {
+            println!(
+                "    aggregate `{}` = {} [{:?} over {}.{}, {} cell(s)]",
+                aggregate.name,
+                aggregate.value,
+                aggregate.operation,
+                aggregate.region,
+                aggregate.channel.as_deref().unwrap_or("(count)"),
+                aggregate.cell_count
+            );
+        }
+        for bridge in report.steps.first().map_or(&[][..], |s| &s.bridges) {
+            println!(
+                "    bridge `{}` -> {}.{} = {}",
+                bridge.aggregate, bridge.table, bridge.signal, bridge.value
+            );
+        }
+    }
 
     // Kernel extraction + equivalence.
     let kernels = extract(&ir);
