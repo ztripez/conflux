@@ -1,7 +1,8 @@
 //! Field-to-table aggregate bridge execution.
 
 use conflux_core::{
-    cell, col, field_lit, lower, Aggregate, Bridge, Field, FieldRule, Grid2, Model, Region, Table,
+    cell, col, field_lit, lit, lower, Aggregate, Bridge, Field, FieldRule, Grid2, Model, Region,
+    Rule, Table,
 };
 use conflux_runtime::{check_equivalence, PathOutcome, Simulation, Tolerance};
 
@@ -146,6 +147,45 @@ fn a_rule_reading_a_bridged_signal_stays_kernel_equivalent() {
             .any(|r| r.rule == "grow" && matches!(r.outcome, PathOutcome::Kernel(_))),
         "grow takes the kernel path"
     );
+}
+
+#[test]
+fn a_derived_column_reading_a_bridged_signal_is_refreshed_before_rules() {
+    // basin is bridged; basin_plus = basin + 1 is derived from it; use_derived reads
+    // basin_plus. The derived column must reflect the same-tick bridged basin (3),
+    // not the stale initial (0), so out = 3 + 1 = 4.
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain.stock("height", vec![1.0, 2.0, 3.0, 4.0]);
+    let mut settlement = Table::new("Settlement", 1);
+    settlement
+        .stock("out", vec![0.0])
+        .signal("basin", vec![0.0])
+        .derived("basin_plus", col("basin") + lit(1.0));
+
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_region(
+        Region::new("north")
+            .on_field("Terrain")
+            .mask(vec![true, true, false, false]),
+    );
+    model.add_aggregate(Aggregate::sum("h_sum", "north", "height"));
+    model.add_table(settlement);
+    model.add_bridge(Bridge::new("h_sum").to_signal("Settlement", "basin"));
+    model.add_rule(
+        Rule::new("use_derived")
+            .on("Settlement")
+            .propose("out", col("basin_plus")),
+    );
+
+    let ir = lower(&model).unwrap();
+    let mut sim = Simulation::new(ir.clone());
+    sim.step();
+    assert_eq!(sim.column("Settlement", "out"), Some(&[4.0][..]));
+
+    // The kernel path agrees: the equivalence harness refreshes its snapshot the
+    // same way, so the kernel reads basin_plus = 4 too.
+    assert!(check_equivalence(&ir, Tolerance::default()).all_within_tolerance());
 }
 
 #[test]

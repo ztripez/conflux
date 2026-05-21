@@ -113,19 +113,20 @@ pub fn check_equivalence(ir: &SimIr, tolerance: Tolerance) -> EquivalenceReport 
         .max(1);
     let mut first_fire: HashMap<String, (Vec<Vec<f64>>, Vec<f64>)> = HashMap::new();
 
+    // To reproduce the exact start-of-tick snapshot the reference rules read, the
+    // harness applies the same bridge writes (and derived refresh) `step()` does.
+    let plan = crate::plan::ExecutionPlan::build(ir);
+    let params = crate::exec::param_map(ir);
+
     let mut sim = Simulation::new(ir.clone());
     for _ in 0..max_period {
         let mut snapshots: Vec<Vec<Vec<f64>>> = (0..ir.tables.len())
             .map(|t| sim.table_data(t).to_vec())
             .collect();
-        // A rule may read a bridged signal, which `step()` writes from the
-        // start-of-tick field state before rules run. Apply the same bridge writes
-        // to the snapshot so the kernel reads the same signals the reference rule
-        // did (bridges write signals only, so stocks/derived are unaffected here).
         let field_snapshot: Vec<Vec<Vec<f64>>> = (0..ir.fields.len())
             .map(|f| sim.field_data(f).to_vec())
             .collect();
-        crate::exec::write_bridges(ir, &field_snapshot, &mut snapshots);
+        crate::exec::prepare_rule_snapshot(ir, &plan, &params, &field_snapshot, &mut snapshots);
         let step = sim.step();
         for fire in &step.rules {
             if first_fire.contains_key(&fire.rule) {

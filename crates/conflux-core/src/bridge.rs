@@ -6,6 +6,11 @@
 //! duplicate the aggregate computation, and does not let tables write back to
 //! fields. Source-of-truth stays: field cells -> region mask -> aggregate -> table
 //! signal.
+//!
+//! Timing: bridges run at the start of a tick, from the start-of-tick field state,
+//! before table rules. A derived column that reads a bridged signal is refreshed
+//! after the bridge write, so rules in the same tick see the bridge's value
+//! reflected in both the signal and any derived column computed from it.
 
 /// A bridge from an aggregate into a table signal.
 #[derive(Clone, Debug)]
