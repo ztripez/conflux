@@ -1,7 +1,7 @@
 //! Selected CPU-kernel execution orchestration under an explicit mode.
 
-use conflux_core::{col, lower, param, Model, Rule, Table};
-use conflux_runtime::{ExecutionMode, ExecutionPath, FallbackReason, Simulation};
+use conflux_core::{col, lit, lower, param, Assessment, Model, Rule, Table};
+use conflux_runtime::{ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason, Simulation};
 
 /// A `Store` table with one kernel-eligible rule (`accumulate`, pure column
 /// arithmetic) and one ineligible rule (`leak`, reads a parameter).
@@ -131,6 +131,82 @@ fn require_succeeds_when_every_rule_is_eligible() {
         "every rule runs on the kernel under Require with no refusal"
     );
     assert_eq!(sim.column("Store", "reserve"), Some(&[11.0, 22.0][..]));
+}
+
+#[test]
+fn report_shape_records_eligibility_comparison_and_assessment_summary() {
+    let mut sim = Simulation::with_mode(
+        lower(&mixed_model()).unwrap(),
+        ExecutionMode::PreferCpuKernel,
+    );
+    let step = sim.step();
+
+    // Eligible rule ran on the kernel; its equivalence is the harness's job.
+    let accumulate = step.rules.iter().find(|r| r.rule == "accumulate").unwrap();
+    assert_eq!(accumulate.eligible_path, ExecutionPath::CpuKernel);
+    assert_eq!(
+        accumulate.comparison_status,
+        ComparisonStatus::DeferredToEquivalenceHarness
+    );
+    let summary = accumulate.assessment_summary();
+    assert_eq!(
+        (summary.proposed, summary.committed, summary.rejected),
+        (2, 2, 0)
+    );
+
+    // Ineligible rule: candidate path is reference, and it ran on the reference.
+    let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
+    assert_eq!(leak.eligible_path, ExecutionPath::Reference);
+    assert_eq!(leak.comparison_status, ComparisonStatus::IsReference);
+}
+
+#[test]
+fn refused_rule_report_shape_is_not_run() {
+    let mut sim = Simulation::with_mode(
+        lower(&mixed_model()).unwrap(),
+        ExecutionMode::RequireCpuKernel,
+    );
+    let step = sim.step();
+    let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
+    assert_eq!(leak.comparison_status, ComparisonStatus::NotRun);
+    let summary = leak.assessment_summary();
+    assert_eq!(
+        (summary.proposed, summary.committed, summary.rejected),
+        (0, 0, 0)
+    );
+}
+
+#[test]
+fn reference_only_report_shape_implies_no_optimization() {
+    let mut sim = Simulation::new(lower(&mixed_model()).unwrap());
+    let step = sim.step();
+    for rule in &step.rules {
+        // Eligibility is not evaluated in reference-only mode.
+        assert_eq!(rule.eligible_path, ExecutionPath::Reference);
+        assert_eq!(rule.comparison_status, ComparisonStatus::IsReference);
+    }
+}
+
+#[test]
+fn assessment_summary_counts_rejected_rows() {
+    let mut store = Table::new("Store", 1);
+    store.stock("v", vec![100.0]);
+    let mut model = Model::new("reject");
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("spike")
+            .on("Store")
+            // 100 * 10 = 1000 is outside [0, 500] -> rejected, raw value preserved.
+            .propose("v", col("v") * lit(10.0))
+            .assess(Assessment::range(0.0, 500.0)),
+    );
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    let summary = step.rules[0].assessment_summary();
+    assert_eq!(
+        (summary.proposed, summary.committed, summary.rejected),
+        (1, 0, 1)
+    );
 }
 
 #[test]

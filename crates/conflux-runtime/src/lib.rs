@@ -24,8 +24,8 @@ pub use field_equivalence::{
 };
 pub use plan::ExecutionPlan;
 pub use report::{
-    AggregateReport, AssessmentOutcome, BridgeReport, FieldCellOutcome, FieldRuleFireReport,
-    Report, RowOutcome, RuleFireReport, StepReport,
+    AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport, ComparisonStatus,
+    FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
