@@ -7,6 +7,7 @@
 mod equivalence;
 mod eval;
 mod exec;
+mod field_exec;
 mod plan;
 mod report;
 
@@ -15,6 +16,9 @@ pub use equivalence::{
 };
 pub use exec::Simulation;
 pub use plan::ExecutionPlan;
-pub use report::{AssessmentOutcome, Report, RowOutcome, RuleFireReport, StepReport};
+pub use report::{
+    AssessmentOutcome, FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome, RuleFireReport,
+    StepReport,
+};
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";

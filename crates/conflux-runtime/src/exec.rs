@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
 
 use crate::eval::{eval, EvalCtx};
+use crate::field_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{AssessmentOutcome, Report, RowOutcome, RuleFireReport, StepReport};
 
@@ -21,6 +22,8 @@ pub struct Simulation {
     tick: u64,
     /// Column data indexed `data[table][column][row]`.
     data: Vec<Vec<Vec<f64>>>,
+    /// Field channel data indexed `field_data[field][channel][cell]` (row-major).
+    field_data: Vec<Vec<Vec<f64>>>,
 }
 
 impl Simulation {
@@ -42,12 +45,14 @@ impl Simulation {
 
         let params = param_map(&ir);
         recompute_derived(&ir, &plan, &mut data, &params);
+        let field_data = field_exec::materialize_fields(&ir, &params);
 
         Simulation {
             ir,
             plan,
             tick: 0,
             data,
+            field_data,
         }
     }
 
@@ -76,6 +81,12 @@ impl Simulation {
     /// rather than reading raw `ColumnIr.initial`.
     pub fn table_data(&self, table: usize) -> &[Vec<f64>] {
         &self.data[table]
+    }
+
+    /// All materialized channel buffers for a field, addressed as
+    /// `[channel][cell]` (row-major). `field` indexes [`SimIr::fields`].
+    pub fn field_data(&self, field: usize) -> &[Vec<f64>] {
+        &self.field_data[field]
     }
 
     /// Advances the simulation `ticks` ticks, returning a report.
@@ -155,14 +166,19 @@ impl Simulation {
         // with the committed stocks.
         recompute_derived(ir, plan, data, &params);
 
+        // Field rules run after table rules; they touch only field state, so the
+        // two domains do not interact within a tick.
+        let field_rules = field_exec::step_field_rules(ir, tick, &mut self.field_data, &params);
+
         StepReport {
             tick,
             rules: rule_reports,
+            field_rules,
         }
     }
 }
 
-fn param_map(ir: &SimIr) -> HashMap<&str, f64> {
+pub(crate) fn param_map(ir: &SimIr) -> HashMap<&str, f64> {
     ir.params
         .iter()
         .map(|p| (p.name.as_str(), p.value))
@@ -209,7 +225,11 @@ fn recompute_derived(
     }
 }
 
-fn assess(assessments: &[Assessment], old: f64, proposed: f64) -> Vec<AssessmentOutcome> {
+pub(crate) fn assess(
+    assessments: &[Assessment],
+    old: f64,
+    proposed: f64,
+) -> Vec<AssessmentOutcome> {
     assessments
         .iter()
         .map(|assessment| {
