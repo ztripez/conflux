@@ -182,6 +182,16 @@ fn rejects_derived_reading_derived() {
         Err(LowerError::FieldDerivedReadsDerived { referenced, .. }) => assert_eq!(referenced, "a"),
         other => panic!("expected FieldDerivedReadsDerived, got {other:?}"),
     }
+
+    // A derived channel reading itself is the same violation.
+    let mut self_ref = Field::new("Terrain", Grid2::new(1, 1));
+    self_ref.derived("loop", col("loop"));
+    match lower(&field_model(self_ref)) {
+        Err(LowerError::FieldDerivedReadsDerived { referenced, .. }) => {
+            assert_eq!(referenced, "loop")
+        }
+        other => panic!("expected FieldDerivedReadsDerived for self-reference, got {other:?}"),
+    }
 }
 
 #[test]

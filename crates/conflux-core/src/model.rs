@@ -14,7 +14,7 @@ pub struct Model {
     pub(crate) name: String,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
-    // Read by field lowering (#37); declared here in the authoring-only slice.
+    // Lowered into field IR by `lower()`; field execution is a later slice.
     pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
 }
@@ -52,8 +52,9 @@ impl Model {
         self
     }
 
-    /// Adds a field domain (a 2D grid with scalar channels). Field execution and
-    /// lowering arrive in later slices; declaring one is inert until then.
+    /// Adds a field domain (a 2D grid with scalar channels). It is validated and
+    /// lowered into field IR by `lower()`; field execution arrives in a later
+    /// slice.
     pub fn add_field(&mut self, field: Field) -> &mut Self {
         self.fields.push(field);
         self
