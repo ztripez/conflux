@@ -6,11 +6,13 @@
 //! and the runtime both build on.
 
 mod expr;
+mod field_expr;
 mod sim;
 mod types;
 
 pub use expr::{col, lit, param, Expr};
-pub use sim::{ColumnIr, FieldChannelIr, FieldIr, ParamIr, RuleIr, SimIr, TableIr};
+pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
+pub use sim::{ColumnIr, FieldChannelIr, FieldIr, FieldRuleIr, ParamIr, RuleIr, SimIr, TableIr};
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
 pub const CRATE_BOUNDARY: &str = "lowered simulation ir";

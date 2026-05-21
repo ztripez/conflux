@@ -1,7 +1,8 @@
 //! Field authoring API and lowering.
 
 use conflux_core::{
-    col, lit, lower, param, Field, Grid2, LowerError, Model, Rule, Table, ValueKind,
+    cell, col, field_lit, lit, lower, neighbor, param, Assessment, EdgePolicy, Field, FieldExpr,
+    FieldRule, Grid2, LowerError, Model, Rule, Table, ValueKind,
 };
 
 /// A model wrapping one field, for lowering tests.
@@ -84,7 +85,196 @@ fn table_only_model_lowers_with_no_fields() {
 
     let ir = lower(&model).unwrap();
     assert!(ir.fields.is_empty());
+    assert!(ir.field_rules.is_empty());
     assert_eq!(ir.tables.len(), 1);
+}
+
+/// A `Terrain` field (2x2, stock `height`, signal `rain`, derived `slope`) with
+/// `rule` added, for field-rule lowering tests.
+fn terrain_with_rule(rule: FieldRule) -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain
+        .stock("height", vec![0.0; 4])
+        .signal("rain", vec![1.0; 4])
+        .derived("slope", col("height") * lit(2.0));
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field_rule(rule);
+    model
+}
+
+#[test]
+fn lowers_field_rule_with_cell_and_neighbor_reads() {
+    let rule = FieldRule::new("erode").on_field("Terrain").propose(
+        "height",
+        cell("height") + cell("rain")
+            - neighbor("height", 1, 0, EdgePolicy::Wrap) * field_lit(0.25),
+    );
+    let ir = lower(&terrain_with_rule(rule)).unwrap();
+
+    assert_eq!(ir.field_rules.len(), 1);
+    let fr = &ir.field_rules[0];
+    assert_eq!(fr.name, "erode");
+    assert_eq!(fr.field, 0);
+    assert_eq!(fr.target, ir.fields[0].channel_index("height").unwrap());
+
+    let mut channels = Vec::new();
+    fr.expr.referenced_channels(&mut channels);
+    assert!(channels.contains(&"height") && channels.contains(&"rain"));
+
+    // The neighbor read's explicit edge policy survives lowering.
+    assert!(contains_neighbor_edge(&fr.expr, EdgePolicy::Wrap));
+}
+
+/// True if any neighbor read in the expression uses `edge`.
+fn contains_neighbor_edge(expr: &FieldExpr, edge: EdgePolicy) -> bool {
+    match expr {
+        FieldExpr::Neighbor { edge: e, .. } => *e == edge,
+        FieldExpr::Neg(inner) => contains_neighbor_edge(inner, edge),
+        FieldExpr::Add(a, b)
+        | FieldExpr::Sub(a, b)
+        | FieldExpr::Mul(a, b)
+        | FieldExpr::Div(a, b) => {
+            contains_neighbor_edge(a, edge) || contains_neighbor_edge(b, edge)
+        }
+        FieldExpr::Literal(_) | FieldExpr::Cell(_) => false,
+    }
+}
+
+#[test]
+fn rejects_field_rule_targeting_non_stock() {
+    // `rain` is a signal, not a stock.
+    let rule = FieldRule::new("bad")
+        .on_field("Terrain")
+        .propose("rain", cell("height"));
+    match lower(&terrain_with_rule(rule)) {
+        Err(LowerError::FieldRuleTargetNotStock { channel, .. }) => assert_eq!(channel, "rain"),
+        other => panic!("expected FieldRuleTargetNotStock, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_field_rule_on_unknown_field() {
+    let rule = FieldRule::new("r")
+        .on_field("Nope")
+        .propose("height", cell("height"));
+    match lower(&terrain_with_rule(rule)) {
+        Err(LowerError::FieldRuleUnknownField { field, .. }) => assert_eq!(field, "Nope"),
+        other => panic!("expected FieldRuleUnknownField, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_field_rule_reading_unknown_channel() {
+    let rule = FieldRule::new("r").on_field("Terrain").propose(
+        "height",
+        cell("height") + neighbor("missing", 0, 1, EdgePolicy::Reject),
+    );
+    match lower(&terrain_with_rule(rule)) {
+        Err(LowerError::FieldRuleUnknownChannel { channel, .. }) => assert_eq!(channel, "missing"),
+        other => panic!("expected FieldRuleUnknownChannel, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_field_rule_missing_field_or_proposal() {
+    let no_field = FieldRule::new("r").propose("height", cell("height"));
+    assert!(matches!(
+        lower(&terrain_with_rule(no_field)),
+        Err(LowerError::FieldRuleMissingField(_))
+    ));
+
+    let no_proposal = FieldRule::new("r").on_field("Terrain");
+    assert!(matches!(
+        lower(&terrain_with_rule(no_proposal)),
+        Err(LowerError::FieldRuleMissingProposal(_))
+    ));
+}
+
+#[test]
+fn rejects_two_field_rules_writing_one_channel() {
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("height", vec![0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field_rule(
+        FieldRule::new("a")
+            .on_field("Terrain")
+            .propose("height", cell("height")),
+    );
+    model.add_field_rule(
+        FieldRule::new("b")
+            .on_field("Terrain")
+            .propose("height", cell("height")),
+    );
+    match lower(&model) {
+        Err(LowerError::FieldDuplicateWriter { first, second, .. }) => {
+            assert_eq!(first, "a");
+            assert_eq!(second, "b");
+        }
+        other => panic!("expected FieldDuplicateWriter, got {other:?}"),
+    }
+}
+
+#[test]
+fn field_rule_assessment_shape_is_validated() {
+    let rule = FieldRule::new("r")
+        .on_field("Terrain")
+        .propose("height", cell("height"))
+        .assess(Assessment::range(10.0, 0.0)); // inverted
+    assert!(matches!(
+        lower(&terrain_with_rule(rule)),
+        Err(LowerError::RangeMinExceedsMax { .. })
+    ));
+}
+
+#[test]
+fn reject_edge_policy_survives_lowering() {
+    let rule = FieldRule::new("r")
+        .on_field("Terrain")
+        .propose("height", neighbor("height", -1, 0, EdgePolicy::Reject));
+    let ir = lower(&terrain_with_rule(rule)).unwrap();
+    assert!(contains_neighbor_edge(
+        &ir.field_rules[0].expr,
+        EdgePolicy::Reject
+    ));
+}
+
+#[test]
+fn rejects_field_rule_with_zero_cadence() {
+    let rule = FieldRule::new("r")
+        .on_field("Terrain")
+        .every(0)
+        .propose("height", cell("height"));
+    assert!(matches!(
+        lower(&terrain_with_rule(rule)),
+        Err(LowerError::BadCadence { .. })
+    ));
+}
+
+#[test]
+fn rejects_field_rule_reading_another_field() {
+    // A rule on `Terrain` may not read a channel that only exists on another
+    // field — there are no cross-field reads.
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("height", vec![0.0]);
+    let mut weather = Field::new("Weather", Grid2::new(1, 1));
+    weather.stock("wind", vec![0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field(weather);
+    model.add_field_rule(
+        FieldRule::new("r")
+            .on_field("Terrain")
+            .propose("height", cell("height") + cell("wind")),
+    );
+    match lower(&model) {
+        Err(LowerError::FieldRuleUnknownChannel { channel, field, .. }) => {
+            assert_eq!(channel, "wind");
+            assert_eq!(field, "Terrain");
+        }
+        other => panic!("expected FieldRuleUnknownChannel for cross-field read, got {other:?}"),
+    }
 }
 
 #[test]

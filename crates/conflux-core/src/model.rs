@@ -4,7 +4,7 @@
 //! parameters, and rules are built with these types and the `col` / `lit` /
 //! `param` expression constructors re-exported from the crate root.
 
-use conflux_ir::{Assessment, Cadence, Expr, ValueKind};
+use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 
 use crate::field::Field;
 
@@ -17,6 +17,7 @@ pub struct Model {
     // Lowered into field IR by `lower()`; field execution is a later slice.
     pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
+    pub(crate) field_rules: Vec<FieldRule>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,6 +35,7 @@ impl Model {
             tables: Vec::new(),
             fields: Vec::new(),
             rules: Vec::new(),
+            field_rules: Vec::new(),
         }
     }
 
@@ -63,6 +65,14 @@ impl Model {
     /// Adds a rule.
     pub fn add_rule(&mut self, rule: Rule) -> &mut Self {
         self.rules.push(rule);
+        self
+    }
+
+    /// Adds a field rule (a per-cell proposal to a field stock channel). It is
+    /// validated and lowered by `lower()`; field execution arrives in a later
+    /// slice.
+    pub fn add_field_rule(&mut self, rule: FieldRule) -> &mut Self {
+        self.field_rules.push(rule);
         self
     }
 }
@@ -165,6 +175,60 @@ impl Rule {
 
     /// Declares the proposed stock column and the expression producing it.
     pub fn propose(mut self, target: impl Into<String>, expr: Expr) -> Self {
+        self.target = Some(target.into());
+        self.expr = Some(expr);
+        self
+    }
+
+    /// Adds an assessment applied to the proposed value before commit.
+    pub fn assess(mut self, assessment: Assessment) -> Self {
+        self.assessments.push(assessment);
+        self
+    }
+}
+
+/// A rule that proposes a new value for one field stock channel at a cadence,
+/// evaluated per cell. The mirror of [`Rule`] for the field domain; it uses
+/// [`FieldExpr`] (current-cell and explicit-neighbor reads), not the table
+/// [`Expr`].
+#[derive(Clone, Debug)]
+pub struct FieldRule {
+    pub(crate) name: String,
+    pub(crate) field: Option<String>,
+    pub(crate) target: Option<String>,
+    pub(crate) cadence: Cadence,
+    pub(crate) expr: Option<FieldExpr>,
+    pub(crate) assessments: Vec<Assessment>,
+}
+
+impl FieldRule {
+    /// Starts a field rule. It fires every tick until [`FieldRule::every`] sets a
+    /// cadence.
+    pub fn new(name: impl Into<String>) -> Self {
+        FieldRule {
+            name: name.into(),
+            field: None,
+            target: None,
+            cadence: Cadence::every(1),
+            expr: None,
+            assessments: Vec::new(),
+        }
+    }
+
+    /// Binds the rule to a field.
+    pub fn on_field(mut self, field: impl Into<String>) -> Self {
+        self.field = Some(field.into());
+        self
+    }
+
+    /// Sets the cadence period in ticks.
+    pub fn every(mut self, period: u64) -> Self {
+        self.cadence = Cadence::every(period);
+        self
+    }
+
+    /// Declares the proposed stock channel and the field expression producing it.
+    pub fn propose(mut self, target: impl Into<String>, expr: FieldExpr) -> Self {
         self.target = Some(target.into());
         self.expr = Some(expr);
         self
