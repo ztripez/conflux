@@ -86,12 +86,29 @@ fn rejects_stencil_wider_than_the_bounded_radius() {
 
     let report = extract_fields(&ir);
     assert_eq!(report.accepted_count(), 0);
+    assert_eq!(report.rejected[0].rule, "far");
     match &report.rejected[0].reason {
         FieldRejectionReason::StencilTooWide { dx, max_radius, .. } => {
             assert_eq!(*dx, 2);
             assert_eq!(*max_radius, 1);
         }
     }
+}
+
+#[test]
+fn interns_distinct_channels_in_one_stencil() {
+    let ir = lower(&terrain_model(
+        FieldRule::new("mix").on_field("Terrain").propose(
+            "height",
+            cell("height") + neighbor("rain", 1, 0, EdgePolicy::Wrap),
+        ),
+    ))
+    .unwrap();
+
+    let kernel = &extract_fields(&ir).accepted[0];
+    let channels: Vec<&str> = kernel.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(channels, vec!["height", "rain"]);
+    assert_eq!(kernel.stencil_radius, 1);
 }
 
 #[test]

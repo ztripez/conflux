@@ -53,7 +53,7 @@ impl fmt::Display for FieldKernelReport {
             let channels: Vec<&str> = kernel.channels.iter().map(|c| c.name.as_str()).collect();
             writeln!(
                 f,
-                "  ACCEPT `{}` [{:?} {:?} radius {} every {}] {}.{} <- ({})",
+                "  ACCEPT `{}` [{:?} {:?} radius {} every {}] {}.{} <- ({}), {} diagnostic(s)",
                 kernel.name,
                 kernel.shape,
                 kernel.scalar_type,
@@ -62,6 +62,7 @@ impl fmt::Display for FieldKernelReport {
                 kernel.field_name,
                 kernel.output.name,
                 channels.join(", "),
+                kernel.diagnostics.len(),
             )?;
         }
         for rejected in &self.rejected {
