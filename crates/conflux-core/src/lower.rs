@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use conflux_ir::{ColumnIr, Expr, ParamIr, RuleIr, SimIr, TableIr, ValueKind};
+use conflux_ir::{Assessment, ColumnIr, Expr, ParamIr, RuleIr, SimIr, TableIr, ValueKind};
 
 use crate::model::{Model, Rule, Table};
 
@@ -80,6 +80,14 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error("rule `{rule}`: range assessment bound is NaN")]
+    RangeBoundNaN { rule: String },
+    #[error("rule `{rule}`: range assessment min ({min}) exceeds max ({max})")]
+    RangeMinExceedsMax { rule: String, min: f64, max: f64 },
+    #[error(
+        "rule `{rule}`: max-relative-delta fraction ({fraction}) must be finite and non-negative"
+    )]
+    InvalidMaxDelta { rule: String, fraction: f64 },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -290,6 +298,7 @@ fn lower_rule(
         param_names,
         true,
     )?;
+    check_assessments(rule)?;
 
     Ok(RuleIr {
         name: rule.name.clone(),
@@ -299,6 +308,43 @@ fn lower_rule(
         expr: expr.clone(),
         assessments: rule.assessments.clone(),
     })
+}
+
+/// Validates assessment *shape* (configuration), the policy boundary for which
+/// is the lowering gate. Note this checks the assessment's parameters, not the
+/// data it is applied to: non-finite proposed *values* are reported at runtime by
+/// the `Finite` assessment, never rejected here (see `docs/ERROR_POLICY.md`).
+/// Infinite range bounds are allowed — a one-sided range such as `[0, +inf]` is a
+/// valid "at least" check.
+fn check_assessments(rule: &Rule) -> Result<(), LowerError> {
+    for assessment in &rule.assessments {
+        match *assessment {
+            Assessment::Finite => {}
+            Assessment::Range { min, max } => {
+                if min.is_nan() || max.is_nan() {
+                    return Err(LowerError::RangeBoundNaN {
+                        rule: rule.name.clone(),
+                    });
+                }
+                if min > max {
+                    return Err(LowerError::RangeMinExceedsMax {
+                        rule: rule.name.clone(),
+                        min,
+                        max,
+                    });
+                }
+            }
+            Assessment::MaxRelativeDelta { fraction } => {
+                if !fraction.is_finite() || fraction < 0.0 {
+                    return Err(LowerError::InvalidMaxDelta {
+                        rule: rule.name.clone(),
+                        fraction,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Checks that every column and parameter referenced by `expr` exists. The

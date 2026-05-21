@@ -208,3 +208,65 @@ fn rejects_duplicate_rule_names() {
         other => panic!("expected DuplicateRule, got {other:?}"),
     }
 }
+
+/// A single-stock model whose `step` rule carries `assessment`.
+fn assessed(assessment: Assessment) -> Model {
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![1.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_rule(
+        Rule::new("step")
+            .on("T")
+            .propose("x", col("x"))
+            .assess(assessment),
+    );
+    model
+}
+
+#[test]
+fn rejects_inverted_range_assessment() {
+    match lower(&assessed(Assessment::range(10.0, 0.0))) {
+        Err(LowerError::RangeMinExceedsMax { rule, min, max }) => {
+            assert_eq!(rule, "step");
+            assert_eq!((min, max), (10.0, 0.0));
+        }
+        other => panic!("expected RangeMinExceedsMax, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_nan_range_bound() {
+    match lower(&assessed(Assessment::range(f64::NAN, 1.0))) {
+        Err(LowerError::RangeBoundNaN { rule }) => assert_eq!(rule, "step"),
+        other => panic!("expected RangeBoundNaN, got {other:?}"),
+    }
+}
+
+#[test]
+fn allows_one_sided_infinite_range() {
+    // `[0, +inf]` is a valid "at least 0" check; infinite bounds are not rejected
+    // at lowering (only the WGSL backend, which cannot emit an inf literal, does).
+    assert!(lower(&assessed(Assessment::range(0.0, f64::INFINITY))).is_ok());
+}
+
+#[test]
+fn rejects_negative_or_nonfinite_max_delta() {
+    for bad in [-0.1, f64::NAN, f64::INFINITY] {
+        match lower(&assessed(Assessment::max_relative_delta(bad))) {
+            Err(LowerError::InvalidMaxDelta { rule, fraction }) => {
+                assert_eq!(rule, "step");
+                assert!(fraction.is_nan() || fraction == bad);
+            }
+            other => panic!("expected InvalidMaxDelta for {bad}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn accepts_well_formed_assessments() {
+    assert!(lower(&assessed(Assessment::Finite)).is_ok());
+    assert!(lower(&assessed(Assessment::range(0.0, 100.0))).is_ok());
+    assert!(lower(&assessed(Assessment::max_relative_delta(0.5))).is_ok());
+    assert!(lower(&assessed(Assessment::max_relative_delta(0.0))).is_ok());
+}
