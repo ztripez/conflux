@@ -79,6 +79,10 @@ The parser is not the product.
   CI is red.
 - Prefer small, explainable changes. Every optimization should be explainable
   in a report (see `docs/PROJECT_BRIEF.md` core laws).
+- Model validity is enforced in exactly one gate, `conflux_core::lower()`. Before
+  adding validation elsewhere or a new public error, read `docs/ERROR_POLICY.md`
+  (single gate; assessment shape validated at lowering; data finiteness reported
+  by the `Finite` assessment, never rejected; match error variants, not strings).
 
 ## Crate layout
 
