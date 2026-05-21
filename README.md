@@ -79,7 +79,12 @@ crates/
 ## Status
 
 The MVP ladder (MVP0–MVP7) is complete; the sections below describe each rung as
-it stands today.
+it stands today. Two domains have since landed past the ladder: 2D **fields**
+(regular grids with local-kernel rules and field-kernel equivalence) and
+**regions** (named selections over a field, with named aggregates and an explicit
+field-to-table bridge). For a concise snapshot of what is true now and the
+invariants you can rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md);
+the current checkpoint is tagged `mvp-cpu-snapshot-v0`.
 
 The CPU-only vertical slice (MVP1) is in place:
 
