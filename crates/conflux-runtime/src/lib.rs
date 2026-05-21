@@ -12,6 +12,7 @@ mod field_equivalence;
 mod field_exec;
 mod plan;
 mod report;
+mod selection;
 
 pub use equivalence::{
     check_equivalence, EquivalenceReport, KernelComparison, PathOutcome, RulePath, Tolerance,
@@ -26,6 +27,7 @@ pub use report::{
     AggregateReport, AssessmentOutcome, BridgeReport, FieldCellOutcome, FieldRuleFireReport,
     Report, RowOutcome, RuleFireReport, StepReport,
 };
+pub use selection::{ExecutionMode, ExecutionPath};
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
 pub use conflux_ir::AggregateOp;
