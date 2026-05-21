@@ -143,6 +143,23 @@ fn rejects_region_name_colliding_with_field() {
 }
 
 #[test]
+fn rejects_region_name_colliding_with_table() {
+    // A region may not share a name with a table either (one domain namespace).
+    let mut table = Table::new("Shared", 1);
+    table.stock("v", vec![0.0]);
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("h", vec![0.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_field(terrain);
+    model.add_region(Region::new("Shared").on_field("Terrain").mask(vec![true]));
+    match lower(&model) {
+        Err(LowerError::DuplicateRegion(name)) => assert_eq!(name, "Shared"),
+        other => panic!("expected DuplicateRegion (region vs table), got {other:?}"),
+    }
+}
+
+#[test]
 fn rejects_empty_boolean_region() {
     let region = Region::new("empty")
         .on_field("Terrain")

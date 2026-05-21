@@ -19,7 +19,7 @@ pub struct Model {
     pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) field_rules: Vec<FieldRule>,
-    // Lowered into region IR by `lower()` in a later slice (#64).
+    // Lowered into region IR by `lower()`.
     pub(crate) regions: Vec<Region>,
 }
 
@@ -80,8 +80,9 @@ impl Model {
         self
     }
 
-    /// Adds a region (a named selection over a field's cells). Validation and
-    /// lowering arrive in a later slice (#64); declaring one is inert until then.
+    /// Adds a region (a named selection over a field's cells). It is validated and
+    /// lowered into region IR by `lower()`; aggregates over it arrive in a later
+    /// slice.
     pub fn add_region(&mut self, region: Region) -> &mut Self {
         self.regions.push(region);
         self

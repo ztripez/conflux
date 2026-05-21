@@ -9,8 +9,8 @@
 //!
 //! Membership uses the same row-major cell convention as [`Grid2`](conflux_ir::Grid2):
 //! entry `y * width + x`, `width * height` long. Construction is permissive; the
-//! field reference, length, and weight validity are checked once at `lower()`
-//! (a follow-up slice), per `docs/ERROR_POLICY.md`.
+//! field reference, length, and weight validity are checked at `lower()`, per
+//! `docs/ERROR_POLICY.md`.
 
 /// A named selection over a field's cells.
 #[derive(Clone, Debug)]
