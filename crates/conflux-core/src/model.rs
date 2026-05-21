@@ -15,7 +15,6 @@ pub struct Model {
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Read by field lowering (#37); declared here in the authoring-only slice.
-    #[allow(dead_code)]
     pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
 }
