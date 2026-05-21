@@ -5,9 +5,11 @@
 //! assessments. Models declared here lower into [`conflux_ir::SimIr`]. It does
 //! not own GPU residency or transfer; that boundary belongs to Residency.
 
+mod field;
 mod lower;
 mod model;
 
+pub use field::{Field, Grid2};
 pub use lower::{lower, LowerError};
 pub use model::{Model, Rule, Table};
 
