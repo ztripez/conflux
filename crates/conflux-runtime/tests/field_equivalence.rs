@@ -1,7 +1,7 @@
 //! Field reference path vs field kernel CPU path equivalence.
 
 use conflux_core::{
-    field_lit, lower, neighbor, EdgePolicy, Field, FieldExpr, FieldRule, Grid2, Model,
+    cell, field_lit, lower, neighbor, EdgePolicy, Field, FieldExpr, FieldRule, Grid2, Model,
 };
 use conflux_runtime::{check_field_equivalence, FieldPathOutcome, Tolerance};
 
@@ -40,6 +40,52 @@ fn field_kernel_matches_reference_within_tolerance() {
         }
         other => panic!("expected Kernel, got {other:?}"),
     }
+}
+
+#[test]
+fn divergence_is_caught_under_zero_tolerance() {
+    // The same f32/f64 division difference the harness exists to police: under zero
+    // tolerance it must be flagged, under default tolerance it passes — proving the
+    // gate actually gates rather than always returning MATCH.
+    let mut plate = Field::new("Plate", Grid2::new(4, 4));
+    plate.stock("heat", (0..16).map(|i| i as f64).collect());
+    let mut model = Model::new("m");
+    model.add_field(plate);
+    model.add_field_rule(
+        FieldRule::new("diffuse")
+            .on_field("Plate")
+            .propose("heat", wrapped_neighbor_sum("heat") / field_lit(3.0)),
+    );
+    let ir = lower(&model).unwrap();
+
+    let strict = check_field_equivalence(&ir, Tolerance::new(0.0, 0.0));
+    assert!(
+        !strict.all_within_tolerance(),
+        "an f32/f64 difference must be caught at zero tolerance"
+    );
+    assert!(check_field_equivalence(&ir, Tolerance::default()).all_within_tolerance());
+}
+
+#[test]
+fn field_kernel_compared_at_first_firing_under_cadence() {
+    let mut plate = Field::new("Plate", Grid2::new(2, 2));
+    plate.stock("heat", vec![1.0, 2.0, 3.0, 4.0]);
+    let mut model = Model::new("m");
+    model.add_field(plate);
+    // Fires every 2 ticks; the harness must compare it at its first firing (tick 2).
+    model.add_field_rule(
+        FieldRule::new("slow")
+            .on_field("Plate")
+            .every(2)
+            .propose("heat", cell("heat") + field_lit(1.0)),
+    );
+
+    let report = check_field_equivalence(&lower(&model).unwrap(), Tolerance::default());
+    assert!(report.all_within_tolerance());
+    assert!(matches!(
+        report.rules[0].outcome,
+        FieldPathOutcome::Kernel(_)
+    ));
 }
 
 #[test]
