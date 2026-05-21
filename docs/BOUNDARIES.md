@@ -68,6 +68,27 @@ the **only** crate allowed to depend on `residency-core`.
 
 This keeps the ownership split below enforceable by the dependency graph.
 
+### Mechanical enforcement
+
+These dependency boundaries are checked deterministically, not just by review: the
+`conflux-arch-guard` crate's `tests/dependency_boundaries.rs` reads the workspace
+manifests via `cargo metadata --no-deps` and fails (under the normal `cargo test`,
+so in CI) if any rule is broken, naming the offending crate and dependency. The
+enforced rules:
+
+- `residency-core` may appear only in `conflux-residency`.
+- `wgpu` may appear only in `conflux-wgsl`, and only as an optional dependency
+  behind the `gpu` feature.
+- core crates (`conflux-core`, `conflux-ir`, `conflux-kernel`, `conflux-runtime`)
+  may not depend on `conflux-residency`, `conflux-wgsl`, `conflux-planner`,
+  `conflux-trace`, `wgpu`, or `residency-core`.
+- `conflux-trace` may depend on other Conflux crates only as dev-dependencies.
+- `conflux-planner` may read the backend report crates but not depend directly on
+  `wgpu` or `residency-core`.
+
+Add a rule to that test when a new boundary needs enforcing; do not rely on
+convention alone.
+
 ## Forbidden in Conflux core
 
 Conflux core should not implement its own:

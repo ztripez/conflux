@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/conflux-arch-guard",
     "crates/conflux-core",
     "crates/conflux-ir",
     "crates/conflux-kernel",
