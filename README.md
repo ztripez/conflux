@@ -151,4 +151,11 @@ cargo run -p conflux-residency --example residency_bridge
 cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
 cargo run -p conflux-planner --example optimization_report
 cargo run -p conflux-trace --example profile_guided
+cargo run -p conflux-fixtures --example baseline_report
 ```
+
+`baseline_report` is a visibility-only smoke command: it runs every canonical
+scenario fixture and prints the current report shape (structure, reference
+execution, kernel/equivalence, planner choices, fallbacks, diagnostic violation
+counts, transfer advisories) in one place, to eyeball regressions. It reports no
+timings and changes no behavior.
