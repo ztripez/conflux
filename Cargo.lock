@@ -160,6 +160,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "conflux-fixtures"
+version = "0.1.0"
+dependencies = [
+ "conflux-core",
+ "conflux-kernel",
+ "conflux-planner",
+ "conflux-residency",
+ "conflux-runtime",
+ "conflux-trace",
+ "conflux-wgsl",
+]
+
+[[package]]
 name = "conflux-ir"
 version = "0.1.0"
 dependencies = [

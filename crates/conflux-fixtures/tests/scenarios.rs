@@ -1,0 +1,199 @@
+//! Contract suite over the canonical scenarios: assert *report contents and
+//! failure modes* across the stack, so future backends / planner changes /
+//! agent-written code have stable, named scenarios to check against.
+
+use conflux_core::lower;
+use conflux_fixtures::*;
+use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
+use conflux_planner::{plan, transfer_advisory, BackendChoice};
+use conflux_residency::residency_core::{FakeBackend, SyncGraph};
+use conflux_residency::sync_kernel_output;
+use conflux_runtime::{check_equivalence, Simulation, Tolerance};
+use conflux_trace::{
+    recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
+};
+
+#[test]
+fn all_scenarios_have_stable_names_and_lower() {
+    for (name, build) in ALL_SCENARIOS {
+        let ir = lower(&build()).unwrap_or_else(|e| panic!("{name} should lower: {e}"));
+        assert_eq!(&ir.name, name, "scenario model name is its stable name");
+    }
+}
+
+#[test]
+fn settlement_growth_runs_reference_and_grows_population() {
+    let ir = lower(&settlement_growth()).unwrap();
+    let mut sim = Simulation::new(ir);
+    let report = sim.run(1);
+
+    assert_eq!(report.rejected_count(), 0, "growth should be within range");
+    let growth = report.steps[0]
+        .rules
+        .iter()
+        .find(|r| r.rule == "growth")
+        .expect("growth rule fired");
+    assert!(
+        growth
+            .rows
+            .iter()
+            .all(|row| row.committed && row.proposed_value > row.old_value),
+        "every population committed and grew"
+    );
+}
+
+#[test]
+fn unstable_population_rejects_and_preserves_raw_value() {
+    let ir = lower(&unstable_population()).unwrap();
+
+    // The rule is also kernel-eligible; its diagnostic buffer flags the overshoot
+    // (1000 is 500 outside [0, 500]) as data rather than dropping it.
+    let kernels = extract(&ir);
+    let spike = kernels.accepted.iter().find(|k| k.name == "spike").unwrap();
+    let out = execute_elementwise(spike, &[vec![100.0]]);
+    let diag = diagnose_elementwise(spike, &out, &[100.0]);
+    assert_eq!(diag, vec![500.0], "range diagnostic measures the overshoot");
+
+    let mut sim = Simulation::new(ir);
+    let report = sim.run(1);
+
+    assert_eq!(report.rejected_count(), 1);
+    let row = &report.steps[0].rules[0].rows[0];
+    assert!(!row.committed, "out-of-range proposal is rejected");
+    assert_eq!(
+        row.proposed_value, 1000.0,
+        "raw proposed value is preserved"
+    );
+    assert_eq!(row.old_value, 100.0, "committed state is unchanged");
+}
+
+#[test]
+fn resource_reserve_is_kernel_eligible_and_matches_reference() {
+    let ir = lower(&resource_reserve()).unwrap();
+
+    let kernels = extract(&ir);
+    assert_eq!(kernels.rejected_count(), 0);
+    assert!(kernels.accepted.iter().any(|k| k.name == "accumulate"));
+
+    // The kernel path matches the reference within tolerance.
+    let equivalence = check_equivalence(&ir, Tolerance::default());
+    assert!(equivalence.all_within_tolerance());
+
+    // Diagnostics: every accumulated reserve stays in range, so no violations.
+    let kernel = kernels
+        .accepted
+        .iter()
+        .find(|k| k.name == "accumulate")
+        .unwrap();
+    let columns = vec![vec![10.0, 20.0, 30.0], vec![1.0, 2.0, 3.0]];
+    let out = execute_elementwise(kernel, &columns);
+    let diag = diagnose_elementwise(kernel, &out, &[10.0, 20.0, 30.0]);
+    assert!(diag.iter().all(|&d| d == 0.0), "all in range: {diag:?}");
+}
+
+#[test]
+fn param_rule_fallback_is_rejected_with_reason_and_planned_to_reference() {
+    let ir = lower(&param_rule_fallback()).unwrap();
+
+    let kernels = extract(&ir);
+    let leak = kernels
+        .rejected
+        .iter()
+        .find(|r| r.rule == "leak")
+        .expect("leak is rejected from kernel extraction");
+    match &leak.reason {
+        RejectionReason::ReadsParameter { name } => assert_eq!(name, "rate"),
+    }
+
+    let report = plan(&ir);
+    let leak_plan = report.rules.iter().find(|r| r.rule == "leak").unwrap();
+    match &leak_plan.backend {
+        // `BackendChoice::Reference` carries only a rendered reason string, so this
+        // intentionally substring-matches the Display form; the typed variant is
+        // asserted at the kernel layer above.
+        BackendChoice::Reference { reason } => assert!(reason.contains("parameter"), "{reason}"),
+        other => panic!("expected Reference, got {other:?}"),
+    }
+}
+
+#[test]
+fn gpu_eligible_numeric_reaches_the_gpu_backend() {
+    let ir = lower(&gpu_eligible_numeric()).unwrap();
+
+    let report = plan(&ir);
+    let combine = report.rules.iter().find(|r| r.rule == "combine").unwrap();
+    assert_eq!(combine.backend, BackendChoice::Gpu);
+
+    // And it lowers cleanly to WGSL.
+    let kernels = extract(&ir);
+    let wgsl = conflux_wgsl::lower_kernels(&kernels.accepted);
+    assert_eq!(wgsl.rejected_count(), 0);
+    assert!(wgsl.accepted.iter().any(|m| m.kernel == "combine"));
+}
+
+#[test]
+fn transfer_dominated_rule_flags_a_transfer_advisory() {
+    let ir = lower(&transfer_dominated_rule()).unwrap();
+    let kernels = extract(&ir);
+    let kernel = kernels.accepted.iter().find(|k| k.name == "tick").unwrap();
+
+    // The "value" column is the only column; execute then sync it through Residency.
+    let columns = vec![vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]];
+    let outputs = execute_elementwise(kernel, &columns);
+    let mut graph = SyncGraph::new();
+    let mut backend = FakeBackend::new();
+    let sync = sync_kernel_output(kernel, &outputs, &mut graph, &mut backend).unwrap();
+
+    let cost = plan(&ir)
+        .rules
+        .iter()
+        .find(|r| r.rule == "tick")
+        .unwrap()
+        .cost;
+    let advisory = transfer_advisory("tick", cost, &sync.transfer);
+    assert!(
+        advisory.transfer_dominates,
+        "a 1-op kernel's buffer round-trip should dominate: {advisory:?}"
+    );
+}
+
+#[test]
+fn trace_hotspot_case_recommends_hotspot_and_backend_headroom() {
+    // The model has a cheap `light` and an expensive `heavy`. The trace records
+    // the observed run: both ran on the CPU kernel backend, with `heavy`
+    // dominating time.
+    let _ir = lower(&trace_hotspot_case()).unwrap();
+    let hw = HardwareProfile {
+        label: "cpu-only".to_string(),
+        gpu_available: true,
+        cpu_threads: 8,
+    };
+    let trace = Trace::new("trace_hotspot_case", hw)
+        .with_rule(rule_trace("light", 200))
+        .with_rule(rule_trace("heavy", 9000));
+
+    let report = recommend(&trace);
+    assert!(has(&report, RecommendationKind::Hotspot, "heavy"));
+    // Headroom is derived from the recorded backend: `heavy` ran on the CPU kernel
+    // backend (`RanOn::CpuKernel`), which is not the most optimized path.
+    assert!(has(&report, RecommendationKind::BackendHeadroom, "heavy"));
+    assert!(!has(&report, RecommendationKind::Hotspot, "light"));
+}
+
+fn rule_trace(name: &str, elapsed_nanos: u64) -> RuleTrace {
+    RuleTrace {
+        rule: name.to_string(),
+        backend: RanOn::CpuKernel,
+        rows: 128,
+        elapsed_nanos,
+        assessments: AssessmentSummary::default(),
+        transfer: None,
+    }
+}
+
+fn has(report: &conflux_trace::RecommendationReport, kind: RecommendationKind, rule: &str) -> bool {
+    report
+        .items
+        .iter()
+        .any(|i| i.kind == kind && i.rule == rule)
+}
