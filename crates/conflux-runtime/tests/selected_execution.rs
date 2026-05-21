@@ -96,6 +96,44 @@ fn require_refuses_an_ineligible_rule_visibly_and_does_not_commit() {
 }
 
 #[test]
+fn selection_holds_across_multiple_ticks() {
+    let mut sim = Simulation::with_mode(
+        lower(&mixed_model()).unwrap(),
+        ExecutionMode::PreferCpuKernel,
+    );
+    sim.run(2);
+    // accumulate runs on the kernel both ticks: 10+1+1, 20+2+2.
+    assert_eq!(sim.column("Store", "reserve"), Some(&[12.0, 24.0][..]));
+    // leak falls back to the reference both ticks: 5 - 0.5 - 0.5.
+    assert_eq!(sim.column("Store", "level"), Some(&[4.0, 4.0][..]));
+}
+
+#[test]
+fn require_succeeds_when_every_rule_is_eligible() {
+    let mut store = Table::new("Store", 2);
+    store
+        .stock("reserve", vec![10.0, 20.0])
+        .stock("inflow", vec![1.0, 2.0]);
+    let mut model = Model::new("all_eligible");
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("accumulate")
+            .on("Store")
+            .propose("reserve", col("reserve") + col("inflow")),
+    );
+
+    let mut sim = Simulation::with_mode(lower(&model).unwrap(), ExecutionMode::RequireCpuKernel);
+    let step = sim.step();
+    assert!(
+        step.rules
+            .iter()
+            .all(|r| r.used_path == Some(ExecutionPath::CpuKernel) && r.fallback_reason.is_none()),
+        "every rule runs on the kernel under Require with no refusal"
+    );
+    assert_eq!(sim.column("Store", "reserve"), Some(&[11.0, 22.0][..]));
+}
+
+#[test]
 fn selected_kernel_commit_matches_the_reference_within_tolerance() {
     // Fractional arithmetic so the kernel's f32 path differs from the f64 reference
     // by rounding; the committed state must still agree within tolerance.

@@ -17,7 +17,7 @@ use crate::plan::ExecutionPlan;
 use crate::report::{
     AssessmentOutcome, BridgeReport, Report, RowOutcome, RuleFireReport, StepReport,
 };
-use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
+use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
 
 /// A simulation instance holding lowered IR, the execution plan, and live state.
 pub struct Simulation {
@@ -179,37 +179,15 @@ impl Simulation {
             let dt = rule.cadence.period as f64;
 
             // Resolve the execution path from the requested mode and the rule's
-            // kernel eligibility. The kernel is consulted only when the mode asks
-            // for it, so reference-only runs are unchanged.
+            // kernel eligibility (the policy decision lives in `selection`). The
+            // kernel is consulted only when the mode asks for it, so reference-only
+            // runs are unchanged.
             let kernel = if mode.requests_kernel() {
                 kernels.get(&rule.name)
             } else {
                 None
             };
-            let (selected_path, used_path, fallback_reason) = match (kernel, mode) {
-                (Some(_), _) => (
-                    ExecutionPath::CpuKernel,
-                    Some(ExecutionPath::CpuKernel),
-                    None,
-                ),
-                // Required but unavailable: refuse, never silently fall back.
-                (None, ExecutionMode::RequireCpuKernel) => (
-                    ExecutionPath::CpuKernel,
-                    None,
-                    Some(FallbackReason::RequiredKernelUnavailable),
-                ),
-                // Preferred but unavailable: reported fall back to the reference.
-                (None, ExecutionMode::PreferCpuKernel) => (
-                    ExecutionPath::Reference,
-                    Some(ExecutionPath::Reference),
-                    Some(FallbackReason::NotKernelEligible),
-                ),
-                (None, ExecutionMode::ReferenceOnly) => (
-                    ExecutionPath::Reference,
-                    Some(ExecutionPath::Reference),
-                    None,
-                ),
-            };
+            let (selected_path, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
 
             // Compute per-row proposals on the used path (a refused rule runs
             // nothing), then assess and commit identically regardless of path.
