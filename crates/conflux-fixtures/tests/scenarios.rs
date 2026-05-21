@@ -108,6 +108,9 @@ fn param_rule_fallback_is_rejected_with_reason_and_planned_to_reference() {
     let report = plan(&ir);
     let leak_plan = report.rules.iter().find(|r| r.rule == "leak").unwrap();
     match &leak_plan.backend {
+        // `BackendChoice::Reference` carries only a rendered reason string, so this
+        // intentionally substring-matches the Display form; the typed variant is
+        // asserted at the kernel layer above.
         BackendChoice::Reference { reason } => assert!(reason.contains("parameter"), "{reason}"),
         other => panic!("expected Reference, got {other:?}"),
     }
@@ -156,9 +159,9 @@ fn transfer_dominated_rule_flags_a_transfer_advisory() {
 
 #[test]
 fn trace_hotspot_case_recommends_hotspot_and_backend_headroom() {
-    // The model has a cheap `light` and an expensive `heavy`. A trace records the
-    // observed run: both ran on the CPU kernel backend (e.g. no GPU adapter), with
-    // `heavy` dominating time.
+    // The model has a cheap `light` and an expensive `heavy`. The trace records
+    // the observed run: both ran on the CPU kernel backend, with `heavy`
+    // dominating time.
     let _ir = lower(&trace_hotspot_case()).unwrap();
     let hw = HardwareProfile {
         label: "cpu-only".to_string(),
@@ -171,7 +174,8 @@ fn trace_hotspot_case_recommends_hotspot_and_backend_headroom() {
 
     let report = recommend(&trace);
     assert!(has(&report, RecommendationKind::Hotspot, "heavy"));
-    // `heavy` ran on the CPU kernel backend, so the GPU is a more optimized path.
+    // Headroom is derived from the recorded backend: `heavy` ran on the CPU kernel
+    // backend (`RanOn::CpuKernel`), which is not the most optimized path.
     assert!(has(&report, RecommendationKind::BackendHeadroom, "heavy"));
     assert!(!has(&report, RecommendationKind::Hotspot, "light"));
 }
