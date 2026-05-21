@@ -15,6 +15,7 @@ pub struct SimIr {
     pub fields: Vec<FieldIr>,
     pub rules: Vec<RuleIr>,
     pub field_rules: Vec<FieldRuleIr>,
+    pub regions: Vec<RegionIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -77,6 +78,25 @@ pub struct RuleIr {
     pub assessments: Vec<Assessment>,
 }
 
+/// A lowered region: a named selection over a field's cells.
+#[derive(Clone, Debug)]
+pub struct RegionIr {
+    pub name: String,
+    /// Index into [`SimIr::fields`].
+    pub field: usize,
+    pub mask: RegionMask,
+}
+
+/// A region's per-cell membership, row-major over the field's grid. Validated at
+/// lowering (correct length, no empty selection, finite non-negative weights).
+#[derive(Clone, Debug, PartialEq)]
+pub enum RegionMask {
+    /// One in/out flag per cell.
+    Boolean(Vec<bool>),
+    /// One weight per cell.
+    Weighted(Vec<f64>),
+}
+
 /// A rule that proposes a new value for one field stock channel at a cadence,
 /// evaluated per cell.
 #[derive(Clone, Debug)]
@@ -100,6 +120,11 @@ impl SimIr {
     /// Finds a field index by name.
     pub fn field_index(&self, name: &str) -> Option<usize> {
         self.fields.iter().position(|f| f.name == name)
+    }
+
+    /// Finds a region index by name.
+    pub fn region_index(&self, name: &str) -> Option<usize> {
+        self.regions.iter().position(|r| r.name == name)
     }
 }
 

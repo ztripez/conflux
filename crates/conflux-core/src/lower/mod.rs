@@ -14,6 +14,8 @@ use crate::model::{Model, Rule, Table};
 // audit trigger in docs/MODULE_AUDIT.md calls for extracting `lower/` concerns
 // rather than growing this gate. `lower()` here stays the single entry point.
 mod fields;
+// Region-domain lowering, likewise its own concern.
+mod regions;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -157,6 +159,29 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error(
+        "duplicate domain name `{0}`: a region may not share a name with a region, field, or table"
+    )]
+    DuplicateRegion(String),
+    #[error("region `{0}` does not declare a field (use `.on_field(..)`)")]
+    RegionMissingField(String),
+    #[error("region `{0}` does not declare membership (use `.mask(..)` or `.weights(..)`)")]
+    RegionMissingMembership(String),
+    #[error("region `{region}` targets unknown field `{field}`")]
+    RegionUnknownField { region: String, field: String },
+    #[error(
+        "region `{region}` membership has {got} entries but field `{field}` has {cells} cells"
+    )]
+    RegionMaskLengthMismatch {
+        region: String,
+        field: String,
+        cells: usize,
+        got: usize,
+    },
+    #[error("region `{region}` selects no cells; an empty region is not allowed")]
+    EmptyRegion { region: String },
+    #[error("region `{region}` has an invalid weight ({weight}); weights must be finite and non-negative")]
+    InvalidRegionWeight { region: String, weight: f64 },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -167,14 +192,19 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     check_unique_rule_names(model)?;
     let tables = lower_tables(model, &param_names)?;
     let fields = fields::lower_fields(model, &param_names)?;
-    let ir = SimIr {
+    let mut ir = SimIr {
         name: model.name.clone(),
         params,
         tables,
         fields,
         rules: Vec::new(),
         field_rules: Vec::new(),
+        regions: Vec::new(),
     };
+    // Regions resolve against the lowered fields; rules/field rules are lowered
+    // afterward (they may reference regions in later slices).
+    let regions = regions::lower_regions(model, &ir)?;
+    ir.regions = regions;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
