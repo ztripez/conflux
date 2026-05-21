@@ -7,6 +7,7 @@
 mod equivalence;
 mod eval;
 mod exec;
+mod field_equivalence;
 mod field_exec;
 mod plan;
 mod report;
@@ -15,6 +16,10 @@ pub use equivalence::{
     check_equivalence, EquivalenceReport, KernelComparison, PathOutcome, RulePath, Tolerance,
 };
 pub use exec::Simulation;
+pub use field_equivalence::{
+    check_field_equivalence, FieldEquivalenceReport, FieldKernelComparison, FieldPathOutcome,
+    FieldRulePath,
+};
 pub use plan::ExecutionPlan;
 pub use report::{
     AssessmentOutcome, FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome, RuleFireReport,

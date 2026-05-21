@@ -8,6 +8,7 @@
 mod diagnose;
 mod execute;
 mod extract;
+mod field_execute;
 mod field_extract;
 mod field_ir;
 mod field_report;
@@ -17,6 +18,7 @@ mod report;
 pub use diagnose::diagnose_elementwise;
 pub use execute::execute_elementwise;
 pub use extract::extract;
+pub use field_execute::execute_field;
 pub use field_extract::extract_fields;
 pub use field_ir::{
     FieldKernel, FieldKernelBinding, FieldKernelExpr, FieldKernelShape, MAX_STENCIL_RADIUS,
