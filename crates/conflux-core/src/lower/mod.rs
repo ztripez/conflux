@@ -16,6 +16,8 @@ use crate::model::{Model, Rule, Table};
 mod fields;
 // Region-domain lowering, likewise its own concern.
 mod regions;
+// Aggregate lowering (reductions over regions), its own concern.
+mod aggregates;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -182,6 +184,16 @@ pub enum LowerError {
     EmptyRegion { region: String },
     #[error("region `{region}` has an invalid weight ({weight}); weights must be finite and non-negative")]
     InvalidRegionWeight { region: String, weight: f64 },
+    #[error("duplicate aggregate `{0}`")]
+    DuplicateAggregate(String),
+    #[error("aggregate `{aggregate}` targets unknown region `{region}`")]
+    AggregateUnknownRegion { aggregate: String, region: String },
+    #[error("aggregate `{aggregate}`: unknown channel `{channel}` in field `{field}`")]
+    AggregateUnknownChannel {
+        aggregate: String,
+        field: String,
+        channel: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -200,11 +212,14 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         rules: Vec::new(),
         field_rules: Vec::new(),
         regions: Vec::new(),
+        aggregates: Vec::new(),
     };
-    // Regions resolve against the lowered fields; rules/field rules are lowered
-    // afterward (they may reference regions in later slices).
+    // Regions resolve against the lowered fields; aggregates against the lowered
+    // regions; rules/field rules are lowered afterward.
     let regions = regions::lower_regions(model, &ir)?;
     ir.regions = regions;
+    let aggregates = aggregates::lower_aggregates(model, &ir)?;
+    ir.aggregates = aggregates;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

@@ -16,6 +16,7 @@ pub struct SimIr {
     pub rules: Vec<RuleIr>,
     pub field_rules: Vec<FieldRuleIr>,
     pub regions: Vec<RegionIr>,
+    pub aggregates: Vec<AggregateIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -97,6 +98,30 @@ pub enum RegionMask {
     Weighted(Vec<f64>),
 }
 
+/// A named reduction of a field channel over a region's selected cells.
+#[derive(Clone, Debug)]
+pub struct AggregateIr {
+    pub name: String,
+    pub op: AggregateOp,
+    /// Index into [`SimIr::regions`].
+    pub region: usize,
+    /// Index into [`SimIr::fields`] (the region's field), denormalized for the
+    /// evaluator.
+    pub field: usize,
+    /// Channel index within the field; `None` for [`AggregateOp::Count`].
+    pub channel: Option<usize>,
+}
+
+/// The reduction an aggregate applies over a region's selected cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AggregateOp {
+    Sum,
+    Mean,
+    Min,
+    Max,
+    Count,
+}
+
 /// A rule that proposes a new value for one field stock channel at a cadence,
 /// evaluated per cell.
 #[derive(Clone, Debug)]
@@ -125,6 +150,11 @@ impl SimIr {
     /// Finds a region index by name.
     pub fn region_index(&self, name: &str) -> Option<usize> {
         self.regions.iter().position(|r| r.name == name)
+    }
+
+    /// Finds an aggregate index by name.
+    pub fn aggregate_index(&self, name: &str) -> Option<usize> {
+        self.aggregates.iter().position(|a| a.name == name)
     }
 }
 

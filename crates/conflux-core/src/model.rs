@@ -6,6 +6,7 @@
 
 use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 
+use crate::aggregate::Aggregate;
 use crate::field::Field;
 use crate::region::Region;
 
@@ -21,6 +22,8 @@ pub struct Model {
     pub(crate) field_rules: Vec<FieldRule>,
     // Lowered into region IR by `lower()`.
     pub(crate) regions: Vec<Region>,
+    // Lowered into aggregate IR by `lower()`.
+    pub(crate) aggregates: Vec<Aggregate>,
 }
 
 #[derive(Clone, Debug)]
@@ -40,6 +43,7 @@ impl Model {
             rules: Vec::new(),
             field_rules: Vec::new(),
             regions: Vec::new(),
+            aggregates: Vec::new(),
         }
     }
 
@@ -85,6 +89,13 @@ impl Model {
     /// slice.
     pub fn add_region(&mut self, region: Region) -> &mut Self {
         self.regions.push(region);
+        self
+    }
+
+    /// Adds a named aggregate (a reduction of a field channel over a region). It is
+    /// validated and lowered by `lower()`; evaluation arrives in a later slice.
+    pub fn add_aggregate(&mut self, aggregate: Aggregate) -> &mut Self {
+        self.aggregates.push(aggregate);
         self
     }
 }
