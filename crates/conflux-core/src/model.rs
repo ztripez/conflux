@@ -6,12 +6,17 @@
 
 use conflux_ir::{Assessment, Cadence, Expr, ValueKind};
 
+use crate::field::Field;
+
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
 pub struct Model {
     pub(crate) name: String,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
+    // Read by field lowering (#37); declared here in the authoring-only slice.
+    #[allow(dead_code)]
+    pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
 }
 
@@ -28,6 +33,7 @@ impl Model {
             name: name.into(),
             params: Vec::new(),
             tables: Vec::new(),
+            fields: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -44,6 +50,13 @@ impl Model {
     /// Adds a table domain.
     pub fn add_table(&mut self, table: Table) -> &mut Self {
         self.tables.push(table);
+        self
+    }
+
+    /// Adds a field domain (a 2D grid with scalar channels). Field execution and
+    /// lowering arrive in later slices; declaring one is inert until then.
+    pub fn add_field(&mut self, field: Field) -> &mut Self {
+        self.fields.push(field);
         self
     }
 
