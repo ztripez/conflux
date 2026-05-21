@@ -3,7 +3,7 @@
 use conflux_core::{
     cell, col, field_lit, lower, Aggregate, Bridge, Field, FieldRule, Grid2, Model, Region, Table,
 };
-use conflux_runtime::Simulation;
+use conflux_runtime::{check_equivalence, PathOutcome, Simulation, Tolerance};
 
 /// Terrain field (height = [1,2,3,4]) with a `north` region (cells 0,1 -> sum 3),
 /// a `h_sum` aggregate, and a `Settlement` table whose `grow` rule adds the
@@ -129,6 +129,23 @@ fn multiple_bridges_each_land_in_declaration_order() {
     assert_eq!(step.bridges[1].aggregate, "n");
     assert_eq!(sim.column("Settlement", "total"), Some(&[3.0][..]));
     assert_eq!(sim.column("Settlement", "cells"), Some(&[2.0][..]));
+}
+
+#[test]
+fn a_rule_reading_a_bridged_signal_stays_kernel_equivalent() {
+    // `grow` (pop + basin) is kernel-eligible and reads the bridged `basin` signal.
+    // The equivalence harness must feed the kernel the post-bridge signal, so it
+    // matches the reference rather than reporting a false mismatch.
+    let ir = lower(&bridged_model()).unwrap();
+    let report = check_equivalence(&ir, Tolerance::default());
+    assert!(report.all_within_tolerance());
+    assert!(
+        report
+            .rules
+            .iter()
+            .any(|r| r.rule == "grow" && matches!(r.outcome, PathOutcome::Kernel(_))),
+        "grow takes the kernel path"
+    );
 }
 
 #[test]

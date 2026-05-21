@@ -197,26 +197,40 @@ impl Simulation {
     /// report per bridge. Signals only — never stocks — and the aggregate
     /// computation is not duplicated (it reuses the aggregate evaluator).
     fn apply_bridges(&mut self) -> Vec<BridgeReport> {
-        if self.ir.bridges.is_empty() {
-            return Vec::new();
-        }
-        let aggregates = crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data);
-        let mut reports = Vec::with_capacity(self.ir.bridges.len());
-        for bridge in &self.ir.bridges {
-            let value = aggregates[bridge.aggregate].value;
-            for row in 0..self.ir.tables[bridge.table].rows {
-                self.data[bridge.table][bridge.signal][row] = value;
-            }
-            let table = &self.ir.tables[bridge.table];
-            reports.push(BridgeReport {
-                aggregate: self.ir.aggregates[bridge.aggregate].name.clone(),
-                table: table.name.clone(),
-                signal: table.columns[bridge.signal].name.clone(),
-                value,
-            });
-        }
-        reports
+        write_bridges(&self.ir, &self.field_data, &mut self.data)
     }
+}
+
+/// Writes each bridge's aggregate value (computed from `field_data`) into every row
+/// of its target table signal in `table_data`, returning a report per bridge.
+/// Signals only — never stocks — and the aggregate computation is not duplicated
+/// (it reuses the aggregate evaluator). Shared by `step()` and the equivalence
+/// harness so both feed kernels the same post-bridge signal state.
+pub(crate) fn write_bridges(
+    ir: &SimIr,
+    field_data: &[Vec<Vec<f64>>],
+    table_data: &mut [Vec<Vec<f64>>],
+) -> Vec<BridgeReport> {
+    if ir.bridges.is_empty() {
+        return Vec::new();
+    }
+    let aggregates = crate::aggregate_eval::evaluate_aggregates(ir, field_data);
+    let mut reports = Vec::with_capacity(ir.bridges.len());
+    for bridge in &ir.bridges {
+        let value = aggregates[bridge.aggregate].value;
+        // Every row of the target signal gets the aggregate value.
+        for slot in table_data[bridge.table][bridge.signal].iter_mut() {
+            *slot = value;
+        }
+        let table = &ir.tables[bridge.table];
+        reports.push(BridgeReport {
+            aggregate: ir.aggregates[bridge.aggregate].name.clone(),
+            table: table.name.clone(),
+            signal: table.columns[bridge.signal].name.clone(),
+            value,
+        });
+    }
+    reports
 }
 
 pub(crate) fn param_map(ir: &SimIr) -> HashMap<&str, f64> {

@@ -115,9 +115,17 @@ pub fn check_equivalence(ir: &SimIr, tolerance: Tolerance) -> EquivalenceReport 
 
     let mut sim = Simulation::new(ir.clone());
     for _ in 0..max_period {
-        let snapshots: Vec<Vec<Vec<f64>>> = (0..ir.tables.len())
+        let mut snapshots: Vec<Vec<Vec<f64>>> = (0..ir.tables.len())
             .map(|t| sim.table_data(t).to_vec())
             .collect();
+        // A rule may read a bridged signal, which `step()` writes from the
+        // start-of-tick field state before rules run. Apply the same bridge writes
+        // to the snapshot so the kernel reads the same signals the reference rule
+        // did (bridges write signals only, so stocks/derived are unaffected here).
+        let field_snapshot: Vec<Vec<Vec<f64>>> = (0..ir.fields.len())
+            .map(|f| sim.field_data(f).to_vec())
+            .collect();
+        crate::exec::write_bridges(ir, &field_snapshot, &mut snapshots);
         let step = sim.step();
         for fire in &step.rules {
             if first_fire.contains_key(&fire.rule) {

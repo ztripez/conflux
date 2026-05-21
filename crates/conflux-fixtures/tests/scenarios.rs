@@ -8,7 +8,7 @@ use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, Rejecti
 use conflux_planner::{plan, transfer_advisory, BackendChoice};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
-use conflux_runtime::{check_equivalence, Simulation, Tolerance};
+use conflux_runtime::{check_equivalence, AggregateOp, Simulation, Tolerance};
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
 };
@@ -223,4 +223,67 @@ fn has(report: &conflux_trace::RecommendationReport, kind: RecommendationKind, r
         .items
         .iter()
         .any(|i| i.kind == kind && i.rule == rule)
+}
+
+#[test]
+fn watershed_yield_aggregates_per_basin_and_bridges_to_settlement() {
+    let ir = lower(&watershed_yield()).unwrap();
+
+    // Region masks lowered as two basins over the Terrain field.
+    assert_eq!(ir.regions.len(), 2);
+    assert!(ir.region_index("north_basin").is_some());
+    assert!(ir.region_index("south_basin").is_some());
+    let terrain = ir.field_index("Terrain").unwrap();
+    assert!(
+        ir.regions.iter().all(|r| r.field == terrain),
+        "both basins select the Terrain field"
+    );
+
+    let mut sim = Simulation::new(ir);
+
+    // Aggregates over the materialized derived crop_yield = [10,20,30,40].
+    let aggregates = sim.aggregate_report();
+    let north = aggregates
+        .iter()
+        .find(|a| a.name == "north_yield")
+        .expect("north_yield reported");
+    assert_eq!(north.value, 30.0); // cells 0,1 -> 10 + 20
+    assert_eq!(north.region, "north_basin");
+    assert_eq!(north.field, "Terrain");
+    assert_eq!(north.channel.as_deref(), Some("crop_yield"));
+    assert_eq!(north.operation, AggregateOp::Sum);
+    assert_eq!(north.cell_count, 2);
+
+    assert_eq!(
+        aggregates
+            .iter()
+            .find(|a| a.name == "south_yield")
+            .unwrap()
+            .value,
+        70.0 // cells 2,3 -> 30 + 40
+    );
+    assert_eq!(
+        aggregates
+            .iter()
+            .find(|a| a.name == "north_mean")
+            .unwrap()
+            .value,
+        15.0 // (10 + 20) / 2
+    );
+
+    // The bridge writes north_yield into Settlement.basin_yield; harvest reads it.
+    let step = sim.step();
+    let bridge = step
+        .bridges
+        .iter()
+        .find(|b| b.aggregate == "north_yield")
+        .expect("north_yield bridged");
+    assert_eq!(bridge.table, "Settlement");
+    assert_eq!(bridge.signal, "basin_yield");
+    assert_eq!(bridge.value, 30.0);
+    assert_eq!(
+        sim.column("Settlement", "basin_yield"),
+        Some(&[30.0, 30.0][..])
+    );
+    assert_eq!(sim.column("Settlement", "stores"), Some(&[30.0, 30.0][..])); // 0 + 30
 }

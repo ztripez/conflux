@@ -2,7 +2,9 @@
 //! scenario's stable identifier, so callers can rely on both the function name and
 //! the model name.
 
-use conflux_core::{col, lit, param, Assessment, Model, Rule, Table};
+use conflux_core::{
+    col, lit, param, Aggregate, Assessment, Bridge, Field, Grid2, Model, Region, Rule, Table,
+};
 
 /// A scenario's stable name paired with its builder.
 pub type Scenario = (&'static str, fn() -> Model);
@@ -17,6 +19,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("transfer_dominated_rule", transfer_dominated_rule),
     ("trace_hotspot_case", trace_hotspot_case),
     ("derived_kernel_case", derived_kernel_case),
+    ("watershed_yield", watershed_yield),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -165,6 +168,53 @@ pub fn derived_kernel_case() -> Model {
         Rule::new("use_derived")
             .on("Cell")
             .propose("out", col("doubled") + col("base")),
+    );
+    model
+}
+
+/// The canonical region/aggregation scenario: a `Terrain` field whose per-cell
+/// crop yield is summarized per basin and bridged into a `Settlement` table.
+///
+/// It exercises the whole region track end to end through the public API: a field
+/// with a derived channel, boolean region masks, named aggregates (sum/mean), and
+/// the field-to-table aggregate bridge feeding a table rule. The contract suite
+/// asserts the aggregate values, their provenance, and the bridge behavior.
+pub fn watershed_yield() -> Model {
+    // 2x2 terrain; crop_yield is a derived channel (rainfall * 10) = [10,20,30,40].
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain
+        .stock("rainfall", vec![1.0, 2.0, 3.0, 4.0])
+        .derived("crop_yield", col("rainfall") * lit(10.0));
+
+    // A settlement reads its basin's bridged yield and accumulates stores.
+    let mut settlement = Table::new("Settlement", 2);
+    settlement
+        .stock("stores", vec![0.0, 0.0])
+        .signal("basin_yield", vec![0.0, 0.0]);
+
+    let mut model = Model::new("watershed_yield");
+    model.add_field(terrain);
+    // North basin = cells 0,1; south basin = cells 2,3.
+    model.add_region(
+        Region::new("north_basin")
+            .on_field("Terrain")
+            .mask(vec![true, true, false, false]),
+    );
+    model.add_region(
+        Region::new("south_basin")
+            .on_field("Terrain")
+            .mask(vec![false, false, true, true]),
+    );
+    model.add_aggregate(Aggregate::sum("north_yield", "north_basin", "crop_yield"));
+    model.add_aggregate(Aggregate::sum("south_yield", "south_basin", "crop_yield"));
+    model.add_aggregate(Aggregate::mean("north_mean", "north_basin", "crop_yield"));
+    model.add_table(settlement);
+    model.add_bridge(Bridge::new("north_yield").to_signal("Settlement", "basin_yield"));
+    model.add_rule(
+        Rule::new("harvest")
+            .on("Settlement")
+            .propose("stores", col("stores") + col("basin_yield"))
+            .assess(Assessment::Finite),
     );
     model
 }
