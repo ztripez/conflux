@@ -118,7 +118,9 @@ Check for:
 - **Boundary drift:** simulation meaning moving toward Residency, buffer movement
   moving into Conflux, or code landing in the wrong crate for the current MVP.
 - **Modular pressure:** the file most likely to become the next god module and
-  whether it needs a split now or a follow-up issue.
+  whether it needs a split now or a follow-up issue. `docs/MODULE_AUDIT.md`
+  tracks the watched modules and their split triggers (`exec.rs` is the current
+  highest risk); check a change against the relevant trigger.
 
 Review verdict rules:
 
