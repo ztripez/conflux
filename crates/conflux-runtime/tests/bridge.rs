@@ -76,6 +76,62 @@ fn bridge_tracks_evolving_field_state() {
 }
 
 #[test]
+fn bridges_a_weighted_aggregate() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain.stock("height", vec![1.0, 2.0, 3.0, 4.0]);
+    let mut settlement = Table::new("Settlement", 1);
+    settlement.signal("w", vec![0.0]);
+
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_region(
+        Region::new("delta")
+            .on_field("Terrain")
+            .weights(vec![0.5, 0.0, 1.0, 2.0]),
+    );
+    model.add_aggregate(Aggregate::sum("w_sum", "delta", "height"));
+    model.add_table(settlement);
+    model.add_bridge(Bridge::new("w_sum").to_signal("Settlement", "w"));
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    // weighted sum = 0.5*1 + 1*3 + 2*4 = 11.5 flows through the bridge unchanged.
+    assert_eq!(step.bridges[0].value, 11.5);
+    assert_eq!(sim.column("Settlement", "w"), Some(&[11.5][..]));
+}
+
+#[test]
+fn multiple_bridges_each_land_in_declaration_order() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain.stock("height", vec![1.0, 2.0, 3.0, 4.0]);
+    let mut settlement = Table::new("Settlement", 1);
+    settlement
+        .signal("total", vec![0.0])
+        .signal("cells", vec![0.0]);
+
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_region(
+        Region::new("north")
+            .on_field("Terrain")
+            .mask(vec![true, true, false, false]),
+    );
+    model.add_aggregate(Aggregate::sum("h_sum", "north", "height"));
+    model.add_aggregate(Aggregate::count("n", "north"));
+    model.add_table(settlement);
+    model.add_bridge(Bridge::new("h_sum").to_signal("Settlement", "total"));
+    model.add_bridge(Bridge::new("n").to_signal("Settlement", "cells"));
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    assert_eq!(step.bridges.len(), 2);
+    assert_eq!(step.bridges[0].aggregate, "h_sum");
+    assert_eq!(step.bridges[1].aggregate, "n");
+    assert_eq!(sim.column("Settlement", "total"), Some(&[3.0][..]));
+    assert_eq!(sim.column("Settlement", "cells"), Some(&[2.0][..]));
+}
+
+#[test]
 fn no_bridges_means_no_bridge_reports() {
     let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
     terrain.stock("h", vec![1.0]);
