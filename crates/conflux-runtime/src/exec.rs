@@ -15,7 +15,8 @@ use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
-    AssessmentOutcome, BridgeReport, Report, RowOutcome, RuleFireReport, StepReport,
+    AssessmentOutcome, BridgeReport, ComparisonStatus, Report, RowOutcome, RuleFireReport,
+    StepReport,
 };
 use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
 
@@ -188,6 +189,17 @@ impl Simulation {
                 None
             };
             let (selected_path, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
+            // The candidate optimized path: the kernel iff the rule is eligible.
+            let eligible_path = if kernel.is_some() {
+                ExecutionPath::CpuKernel
+            } else {
+                ExecutionPath::Reference
+            };
+            let comparison_status = match used_path {
+                None => ComparisonStatus::NotRun,
+                Some(ExecutionPath::Reference) => ComparisonStatus::IsReference,
+                Some(ExecutionPath::CpuKernel) => ComparisonStatus::DeferredToEquivalenceHarness,
+            };
 
             // Compute per-row proposals on the used path (a refused rule runs
             // nothing), then assess and commit identically regardless of path.
@@ -240,9 +252,11 @@ impl Simulation {
                 dt,
                 rows,
                 requested_mode: mode,
+                eligible_path,
                 selected_path,
                 used_path,
                 fallback_reason,
+                comparison_status,
             });
         }
 

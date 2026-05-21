@@ -48,6 +48,10 @@ pub struct RuleFireReport {
     pub rows: Vec<RowOutcome>,
     /// The execution mode the caller requested for this run.
     pub requested_mode: ExecutionMode,
+    /// The candidate optimized path the rule qualifies for: `CpuKernel` when it is
+    /// kernel-eligible, otherwise `Reference`. Under `ReferenceOnly` eligibility is
+    /// not evaluated, so this is `Reference`.
+    pub eligible_path: ExecutionPath,
     /// The path resolution chose given the requested mode and the rule's
     /// eligibility.
     pub selected_path: ExecutionPath,
@@ -56,6 +60,47 @@ pub struct RuleFireReport {
     pub used_path: Option<ExecutionPath>,
     /// Why the rule did not run on the requested CPU-kernel path, if applicable.
     pub fallback_reason: Option<FallbackReason>,
+    /// How the used path relates to the reference (the source of truth).
+    pub comparison_status: ComparisonStatus,
+}
+
+/// How a rule's execution relates to the reference path. The reference is the
+/// semantic source of truth; a kernel run's equivalence is established by the
+/// equivalence harness within a declared tolerance, not recomputed per tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComparisonStatus {
+    /// Ran on the reference; the result is the reference by definition.
+    IsReference,
+    /// Ran on the CPU kernel; equivalence to the reference is established by
+    /// `check_equivalence` within tolerance, not recomputed inline each tick.
+    DeferredToEquivalenceHarness,
+    /// The rule was refused, so nothing ran to compare.
+    NotRun,
+}
+
+/// A rollup of one rule firing's per-row outcomes, linked to the raw proposals
+/// preserved in [`RuleFireReport::rows`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AssessmentSummary {
+    /// Rows that proposed a value (zero for a refused rule).
+    pub proposed: usize,
+    /// Rows whose proposal passed every assessment and was committed.
+    pub committed: usize,
+    /// Rows whose proposal was rejected (an assessment failed); the raw value is
+    /// still preserved per row.
+    pub rejected: usize,
+}
+
+impl RuleFireReport {
+    /// Summarizes the per-row assessment outcomes for this firing.
+    pub fn assessment_summary(&self) -> AssessmentSummary {
+        let committed = self.rows.iter().filter(|r| r.committed).count();
+        AssessmentSummary {
+            proposed: self.rows.len(),
+            committed,
+            rejected: self.rows.len() - committed,
+        }
+    }
 }
 
 impl RuleFireReport {
