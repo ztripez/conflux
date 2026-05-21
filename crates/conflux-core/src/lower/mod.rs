@@ -18,6 +18,8 @@ mod fields;
 mod regions;
 // Aggregate lowering (reductions over regions), its own concern.
 mod aggregates;
+// Field-to-table bridge lowering, its own concern.
+mod bridges;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -194,6 +196,37 @@ pub enum LowerError {
         field: String,
         channel: String,
     },
+    #[error("bridge does not declare a target (use `.to_signal(..)`) for aggregate `{0}`")]
+    BridgeMissingTarget(String),
+    #[error("bridge targets unknown aggregate `{0}`")]
+    BridgeUnknownAggregate(String),
+    #[error("bridge for aggregate `{aggregate}` targets unknown table `{table}`")]
+    BridgeUnknownTable { aggregate: String, table: String },
+    #[error(
+        "bridge for aggregate `{aggregate}` targets unknown column `{signal}` in table `{table}`"
+    )]
+    BridgeUnknownColumn {
+        aggregate: String,
+        table: String,
+        signal: String,
+    },
+    #[error(
+        "bridge for aggregate `{aggregate}` targets `{table}.{signal}`, which is not a signal"
+    )]
+    BridgeTargetNotSignal {
+        aggregate: String,
+        table: String,
+        signal: String,
+    },
+    #[error(
+        "table signal `{table}.{signal}` is written by multiple bridges (`{first}` and `{second}`)"
+    )]
+    BridgeDuplicateTarget {
+        table: String,
+        signal: String,
+        first: String,
+        second: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -213,13 +246,17 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         field_rules: Vec::new(),
         regions: Vec::new(),
         aggregates: Vec::new(),
+        bridges: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
-    // regions; rules/field rules are lowered afterward.
+    // regions; bridges against the lowered aggregates and tables; rules/field rules
+    // are lowered afterward.
     let regions = regions::lower_regions(model, &ir)?;
     ir.regions = regions;
     let aggregates = aggregates::lower_aggregates(model, &ir)?;
     ir.aggregates = aggregates;
+    let bridges = bridges::lower_bridges(model, &ir)?;
+    ir.bridges = bridges;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

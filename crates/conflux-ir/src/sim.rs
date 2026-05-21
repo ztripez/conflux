@@ -17,6 +17,7 @@ pub struct SimIr {
     pub field_rules: Vec<FieldRuleIr>,
     pub regions: Vec<RegionIr>,
     pub aggregates: Vec<AggregateIr>,
+    pub bridges: Vec<BridgeIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -120,6 +121,20 @@ pub enum AggregateOp {
     Min,
     Max,
     Count,
+}
+
+/// The explicit bridge from a region aggregate into a table signal: the aggregate
+/// value is written to every row of the target signal each tick. This is the only
+/// path from field/region state into table state; it writes signals only, never
+/// stocks, and does not duplicate the aggregate computation.
+#[derive(Clone, Debug)]
+pub struct BridgeIr {
+    /// Index into [`SimIr::aggregates`].
+    pub aggregate: usize,
+    /// Index into [`SimIr::tables`].
+    pub table: usize,
+    /// Index of the target signal column within the table.
+    pub signal: usize,
 }
 
 /// A rule that proposes a new value for one field stock channel at a cadence,
