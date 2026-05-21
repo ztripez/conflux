@@ -131,6 +131,14 @@ fn crate_dependency_boundaries_hold() {
                     "conflux-planner depends directly on `{dep_name}` ({kind}); it may read backend report crates but not wgpu/residency-core directly"
                 ));
             }
+
+            // conflux-fixtures is test support: it may be a dev-dependency only,
+            // so it can never become a hidden production API.
+            if dep_name == "conflux-fixtures" && kind != "dev" {
+                violations.push(format!(
+                    "`{name}` has a {kind} dependency on `conflux-fixtures`; fixtures are test support and may be a dev-dependency only"
+                ));
+            }
         }
     }
 

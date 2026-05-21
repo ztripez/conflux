@@ -2,6 +2,7 @@
 members = [
     "crates/conflux-arch-guard",
     "crates/conflux-core",
+    "crates/conflux-fixtures",
     "crates/conflux-ir",
     "crates/conflux-kernel",
     "crates/conflux-planner",
@@ -20,6 +21,7 @@ rust-version = "1.78"
 
 [workspace.dependencies]
 conflux-core = { path = "crates/conflux-core" }
+conflux-fixtures = { path = "crates/conflux-fixtures" }
 conflux-ir = { path = "crates/conflux-ir" }
 conflux-kernel = { path = "crates/conflux-kernel" }
 conflux-planner = { path = "crates/conflux-planner" }

@@ -1,0 +1,24 @@
+[package]
+name = "conflux-fixtures"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Test-support only. The library builds canonical scenario *models* from the
+# public authoring API and therefore depends solely on conflux-core — it adds no
+# new model layer. It is meant to be used as a dev-dependency by tests and
+# examples; the dependency-boundary guard forbids any normal dependency on it.
+[dependencies]
+conflux-core.workspace = true
+
+# The contract test suite asserts report contents across the whole stack, so it
+# pulls every report-producing crate as a dev-dependency.
+[dev-dependencies]
+conflux-kernel.workspace = true
+conflux-planner.workspace = true
+conflux-residency.workspace = true
+conflux-runtime.workspace = true
+conflux-trace.workspace = true
+conflux-wgsl.workspace = true
