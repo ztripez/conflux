@@ -4,7 +4,7 @@
 //! references are resolved to indices and all invariants (existing columns,
 //! stock targets, matching row counts) are guaranteed by lowering.
 
-use crate::{Assessment, Cadence, Expr, Grid2, ValueKind};
+use crate::{Assessment, Cadence, Expr, FieldExpr, Grid2, ValueKind};
 
 /// A fully lowered simulation.
 #[derive(Clone, Debug)]
@@ -14,6 +14,7 @@ pub struct SimIr {
     pub tables: Vec<TableIr>,
     pub fields: Vec<FieldIr>,
     pub rules: Vec<RuleIr>,
+    pub field_rules: Vec<FieldRuleIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -73,6 +74,20 @@ pub struct RuleIr {
     pub target: usize,
     pub cadence: Cadence,
     pub expr: Expr,
+    pub assessments: Vec<Assessment>,
+}
+
+/// A rule that proposes a new value for one field stock channel at a cadence,
+/// evaluated per cell.
+#[derive(Clone, Debug)]
+pub struct FieldRuleIr {
+    pub name: String,
+    /// Index into [`SimIr::fields`].
+    pub field: usize,
+    /// Index into the target field's channels; always a `Stock`.
+    pub target: usize,
+    pub cadence: Cadence,
+    pub expr: FieldExpr,
     pub assessments: Vec<Assessment>,
 }
 

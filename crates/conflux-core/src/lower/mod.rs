@@ -129,6 +129,34 @@ pub enum LowerError {
         channel: String,
         referenced: String,
     },
+    #[error("field rule `{0}` does not declare a field (use `.on_field(..)`)")]
+    FieldRuleMissingField(String),
+    #[error("field rule `{0}` does not declare a proposal (use `.propose(..)`)")]
+    FieldRuleMissingProposal(String),
+    #[error("field rule `{rule}` targets unknown field `{field}`")]
+    FieldRuleUnknownField { rule: String, field: String },
+    #[error("field rule `{rule}`: unknown channel `{channel}` in field `{field}`")]
+    FieldRuleUnknownChannel {
+        rule: String,
+        field: String,
+        channel: String,
+    },
+    #[error("field rule `{rule}` targets `{field}.{channel}`, which is not a stock")]
+    FieldRuleTargetNotStock {
+        rule: String,
+        field: String,
+        channel: String,
+    },
+    #[error(
+        "field stock `{field}.{channel}` is written by multiple field rules (`{first}` and \
+         `{second}`); a single writer per stock is allowed"
+    )]
+    FieldDuplicateWriter {
+        field: String,
+        channel: String,
+        first: String,
+        second: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -144,10 +172,16 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         tables,
         fields,
         rules: Vec::new(),
+        field_rules: Vec::new(),
     };
     let rules = lower_rules(model, &ir, &param_names)?;
+    let field_rules = fields::lower_field_rules(model, &ir)?;
 
-    Ok(SimIr { rules, ..ir })
+    Ok(SimIr {
+        rules,
+        field_rules,
+        ..ir
+    })
 }
 
 fn lower_params(model: &Model) -> Result<Vec<ParamIr>, LowerError> {
@@ -341,7 +375,7 @@ fn lower_rule(
         param_names,
         true,
     )?;
-    check_assessments(rule)?;
+    validate_assessments(&rule.assessments, &rule.name)?;
 
     Ok(RuleIr {
         name: rule.name.clone(),
@@ -359,19 +393,24 @@ fn lower_rule(
 /// the `Finite` assessment, never rejected here (see `docs/ERROR_POLICY.md`).
 /// Infinite range bounds are allowed — a one-sided range such as `[0, +inf]` is a
 /// valid "at least" check.
-fn check_assessments(rule: &Rule) -> Result<(), LowerError> {
-    for assessment in &rule.assessments {
+/// Validates assessment *shape* for any rule (table or field), keyed by rule
+/// name. Domain-neutral, so both `lower_rule` and field-rule lowering share it.
+pub(super) fn validate_assessments(
+    assessments: &[Assessment],
+    rule: &str,
+) -> Result<(), LowerError> {
+    for assessment in assessments {
         match *assessment {
             Assessment::Finite => {}
             Assessment::Range { min, max } => {
                 if min.is_nan() || max.is_nan() {
                     return Err(LowerError::RangeBoundNaN {
-                        rule: rule.name.clone(),
+                        rule: rule.to_string(),
                     });
                 }
                 if min > max {
                     return Err(LowerError::RangeMinExceedsMax {
-                        rule: rule.name.clone(),
+                        rule: rule.to_string(),
                         min,
                         max,
                     });
@@ -380,7 +419,7 @@ fn check_assessments(rule: &Rule) -> Result<(), LowerError> {
             Assessment::MaxRelativeDelta { fraction } => {
                 if !fraction.is_finite() || fraction < 0.0 {
                     return Err(LowerError::InvalidMaxDelta {
-                        rule: rule.name.clone(),
+                        rule: rule.to_string(),
                         fraction,
                     });
                 }

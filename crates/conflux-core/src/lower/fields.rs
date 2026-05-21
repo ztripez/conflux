@@ -6,13 +6,13 @@
 //! references, and no derived-to-derived dependency — and produces typed
 //! [`LowerError`] variants.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use conflux_ir::{Expr, FieldChannelIr, FieldIr, ValueKind};
+use conflux_ir::{Expr, FieldChannelIr, FieldIr, FieldRuleIr, SimIr, ValueKind};
 
-use super::{LowerError, RESERVED_DT};
+use super::{validate_assessments, LowerError, RESERVED_DT};
 use crate::field::Field;
-use crate::model::Model;
+use crate::model::{FieldRule, Model};
 
 /// Lowers every field in the model, validating shape, names, lengths, and derived
 /// references. Field names must be unique among fields *and* distinct from table
@@ -143,4 +143,94 @@ fn check_derived(
     }
 
     Ok(())
+}
+
+/// Lowers every field rule, resolving and validating against the already-lowered
+/// fields in `ir`. Each rule proposes one field stock channel, reads only that
+/// field's channels, and is the sole writer of its target.
+pub(super) fn lower_field_rules(model: &Model, ir: &SimIr) -> Result<Vec<FieldRuleIr>, LowerError> {
+    let mut writers: HashMap<(usize, usize), String> = HashMap::new();
+    let mut rules = Vec::with_capacity(model.field_rules.len());
+    for rule in &model.field_rules {
+        rules.push(lower_field_rule(rule, ir, &mut writers)?);
+    }
+    Ok(rules)
+}
+
+fn lower_field_rule(
+    rule: &FieldRule,
+    ir: &SimIr,
+    writers: &mut HashMap<(usize, usize), String>,
+) -> Result<FieldRuleIr, LowerError> {
+    let field_name = rule
+        .field
+        .as_ref()
+        .ok_or_else(|| LowerError::FieldRuleMissingField(rule.name.clone()))?;
+    let (target_name, expr) = match (&rule.target, &rule.expr) {
+        (Some(target), Some(expr)) => (target, expr),
+        _ => return Err(LowerError::FieldRuleMissingProposal(rule.name.clone())),
+    };
+    if rule.cadence.period == 0 {
+        return Err(LowerError::BadCadence {
+            rule: rule.name.clone(),
+        });
+    }
+
+    let field_idx =
+        ir.field_index(field_name)
+            .ok_or_else(|| LowerError::FieldRuleUnknownField {
+                rule: rule.name.clone(),
+                field: field_name.clone(),
+            })?;
+    let field = &ir.fields[field_idx];
+
+    let target_idx =
+        field
+            .channel_index(target_name)
+            .ok_or_else(|| LowerError::FieldRuleUnknownChannel {
+                rule: rule.name.clone(),
+                field: field.name.clone(),
+                channel: target_name.clone(),
+            })?;
+    if field.channels[target_idx].kind != ValueKind::Stock {
+        return Err(LowerError::FieldRuleTargetNotStock {
+            rule: rule.name.clone(),
+            field: field.name.clone(),
+            channel: target_name.clone(),
+        });
+    }
+
+    // Every channel the expression reads (current-cell or neighbor) must exist on
+    // this field — no cross-field reads.
+    let mut referenced = Vec::new();
+    expr.referenced_channels(&mut referenced);
+    for channel in referenced {
+        if field.channel_index(channel).is_none() {
+            return Err(LowerError::FieldRuleUnknownChannel {
+                rule: rule.name.clone(),
+                field: field.name.clone(),
+                channel: channel.to_string(),
+            });
+        }
+    }
+
+    if let Some(first) = writers.insert((field_idx, target_idx), rule.name.clone()) {
+        return Err(LowerError::FieldDuplicateWriter {
+            field: field.name.clone(),
+            channel: target_name.clone(),
+            first,
+            second: rule.name.clone(),
+        });
+    }
+
+    validate_assessments(&rule.assessments, &rule.name)?;
+
+    Ok(FieldRuleIr {
+        name: rule.name.clone(),
+        field: field_idx,
+        target: target_idx,
+        cadence: rule.cadence,
+        expr: expr.clone(),
+        assessments: rule.assessments.clone(),
+    })
 }
