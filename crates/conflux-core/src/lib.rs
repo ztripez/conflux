@@ -9,11 +9,11 @@ mod field;
 mod lower;
 mod model;
 
-pub use field::{Field, Grid2};
+pub use field::Field;
 pub use lower::{lower, LowerError};
 pub use model::{Model, Rule, Table};
 
 // Re-export the shared primitives so callers can build models from one crate.
-pub use conflux_ir::{col, lit, param, Assessment, Cadence, Expr, ValueKind};
+pub use conflux_ir::{col, lit, param, Assessment, Cadence, Expr, Grid2, ValueKind};
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";

@@ -8,20 +8,21 @@ Verdict summary: **no split is needed now.** All four watched modules are
 cohesive; `exec.rs` carries the most responsibilities and is the one to watch.
 Sizes below are whole-file line counts (including in-file tests) as of this audit.
 
-## `crates/conflux-core/src/lower.rs` — 388 lines
+## `crates/conflux-core/src/lower/` — module (`mod.rs` + `fields.rs`)
 
 Responsibilities: the single model-validity gate (see `docs/ERROR_POLICY.md`).
-Already internally decomposed by concern: `lower_params`, `lower_tables` /
-`lower_table`, `lower_rules` / `lower_rule`, `check_assessments`, `check_expr`.
+The split trigger fired when the field domain (#37) landed: `lower.rs` became a
+`lower/` module. `lower/mod.rs` keeps the `lower()` gate, the `LowerError` enum,
+and the table/rule/param/expr validators; `lower/fields.rs` owns field-domain
+validation. `lower()` remains the single entry point.
 
-Verdict: **no action.** The predicted "split by params/tables/rules/expr" already
-exists as functions; keeping them in one file reinforces the single-gate story.
+Verdict: **no further action.** The new domain was extracted as its own concern
+rather than growing the gate.
 
-Split trigger: when a new domain adds substantial validation (new column kinds,
-new expression forms, graph/event shapes) **or** the file passes ~600 lines,
-extract a `lower/` submodule per concern (`params.rs`, `tables.rs`, `rules.rs`,
-`expr.rs`) re-exported behind the same `lower()` entry point — the gate stays one
-function, the validators move out.
+Split trigger: extract the remaining table/rule/expr concerns into their own
+`lower/` submodules when the *next* one grows substantially (a new column kind,
+new expression forms) or `mod.rs` passes ~600 lines. Each new domain gets its own
+`lower/<domain>.rs`, never an ad-hoc addition to `mod.rs`.
 
 ## `crates/conflux-runtime/src/exec.rs` — 243 lines  ⚠ highest risk
 

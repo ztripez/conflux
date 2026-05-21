@@ -10,45 +10,13 @@
 //! Like the rest of the authoring API, construction is permissive: channel
 //! lengths, duplicate names, and shape validity are checked once at `lower()`
 //! (see `docs/ERROR_POLICY.md`), not in these builders.
+//!
+//! [`Grid2`] is the shared shape primitive, defined in `conflux-ir` and re-exported
+//! from this crate's root.
 
-use conflux_ir::{Expr, ValueKind};
-
-/// A regular 2D grid shape.
-///
-/// Cells are addressed **row-major**: the cell at column `x` (`0..width`) and row
-/// `y` (`0..height`) has index `y * width + x`, and a channel's values are a flat
-/// buffer of length `width * height` in that order. This is the stable indexing
-/// convention every field channel and (later) field rule shares.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Grid2 {
-    pub width: usize,
-    pub height: usize,
-}
-
-impl Grid2 {
-    /// A grid `width` cells across and `height` cells down.
-    pub fn new(width: usize, height: usize) -> Self {
-        Grid2 { width, height }
-    }
-
-    /// Total cell count (`width * height`).
-    pub fn cells(&self) -> usize {
-        self.width * self.height
-    }
-
-    /// The row-major index of cell `(x, y)`. This defines the indexing
-    /// convention; it does not bounds-check, so callers must keep `x < width`
-    /// and `y < height`.
-    pub fn index(&self, x: usize, y: usize) -> usize {
-        y * self.width + x
-    }
-}
+use conflux_ir::{Expr, Grid2, ValueKind};
 
 /// A field domain: a named 2D grid with scalar channels.
-//
-// `name`/`channels` are authoring data consumed by field lowering (#37); this
-// slice is authoring-only, so they are not read in non-test code yet.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Field {
     pub(crate) name: String,
@@ -63,9 +31,6 @@ pub struct Field {
 /// diverge from table expressions when neighborhood reads land. `Stock`/`Signal`
 /// channels carry a flat `width * height` initial buffer; `Derived` channels carry
 /// a same-cell recompute expression instead.
-//
-// Fields are consumed by field lowering (#37); inert in this authoring-only slice.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct FieldChannel {
     pub(crate) name: String,

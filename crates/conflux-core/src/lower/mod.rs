@@ -10,6 +10,11 @@ use conflux_ir::{Assessment, ColumnIr, Expr, ParamIr, RuleIr, SimIr, TableIr, Va
 
 use crate::model::{Model, Rule, Table};
 
+// Field-domain lowering lives in its own module: fields are a new domain, and the
+// audit trigger in docs/MODULE_AUDIT.md calls for extracting `lower/` concerns
+// rather than growing this gate. `lower()` here stays the single entry point.
+mod fields;
+
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
 
@@ -88,6 +93,42 @@ pub enum LowerError {
         "rule `{rule}`: max-relative-delta fraction ({fraction}) must be finite and non-negative"
     )]
     InvalidMaxDelta { rule: String, fraction: f64 },
+    #[error(
+        "duplicate domain name `{0}`: a field may not share a name with another field or a table"
+    )]
+    DuplicateField(String),
+    #[error("field `{field}` has a zero-sized grid ({width} x {height}); width and height must be at least 1")]
+    EmptyGrid {
+        field: String,
+        width: usize,
+        height: usize,
+    },
+    #[error("duplicate channel `{channel}` in field `{field}`")]
+    DuplicateChannel { field: String, channel: String },
+    #[error(
+        "channel `{channel}` in field `{field}` has {got} initial values but the grid has {cells} cells"
+    )]
+    FieldChannelLengthMismatch {
+        field: String,
+        channel: String,
+        cells: usize,
+        got: usize,
+    },
+    #[error("field `{field}` channel `{channel}`: unknown channel `{referenced}`")]
+    FieldUnknownChannel {
+        field: String,
+        channel: String,
+        referenced: String,
+    },
+    #[error(
+        "derived channel `{field}.{channel}` reads derived channel `{referenced}`; field derived \
+         channels may only read stocks and signals"
+    )]
+    FieldDerivedReadsDerived {
+        field: String,
+        channel: String,
+        referenced: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -96,10 +137,12 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
     let tables = lower_tables(model, &param_names)?;
+    let fields = fields::lower_fields(model, &param_names)?;
     let ir = SimIr {
         name: model.name.clone(),
         params,
         tables,
+        fields,
         rules: Vec::new(),
     };
     let rules = lower_rules(model, &ir, &param_names)?;

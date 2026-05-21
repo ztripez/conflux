@@ -54,3 +54,34 @@ impl Cadence {
         Cadence { period }
     }
 }
+
+/// A regular 2D grid shape for field domains.
+///
+/// Cells are addressed **row-major**: the cell at column `x` (`0..width`) and row
+/// `y` (`0..height`) has index `y * width + x`, and a channel's values are a flat
+/// buffer of length `width * height` in that order. This shared shape primitive
+/// is used by the authoring API and the lowered field IR alike.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grid2 {
+    pub width: usize,
+    pub height: usize,
+}
+
+impl Grid2 {
+    /// A grid `width` cells across and `height` cells down.
+    pub fn new(width: usize, height: usize) -> Self {
+        Grid2 { width, height }
+    }
+
+    /// Total cell count (`width * height`).
+    pub fn cells(&self) -> usize {
+        self.width * self.height
+    }
+
+    /// The row-major index of cell `(x, y)`. This defines the indexing
+    /// convention; it does not bounds-check, so callers must keep `x < width`
+    /// and `y < height`.
+    pub fn index(&self, x: usize, y: usize) -> usize {
+        y * self.width + x
+    }
+}
