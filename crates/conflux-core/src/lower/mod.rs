@@ -164,6 +164,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let params = lower_params(model)?;
     let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
+    check_unique_rule_names(model)?;
     let tables = lower_tables(model, &param_names)?;
     let fields = fields::lower_fields(model, &param_names)?;
     let ir = SimIr {
@@ -291,6 +292,25 @@ fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, 
     })
 }
 
+/// Rule names are a single global namespace across table *and* field rules: every
+/// report, the planner, the table/field equivalence harnesses, and WGSL module
+/// names key on the rule name as an identity, so a duplicate anywhere —
+/// table/table, field/field, or table/field — is rejected here at the single gate.
+fn check_unique_rule_names(model: &Model) -> Result<(), LowerError> {
+    let mut names: HashSet<&str> = HashSet::new();
+    let all = model
+        .rules
+        .iter()
+        .map(|r| r.name.as_str())
+        .chain(model.field_rules.iter().map(|r| r.name.as_str()));
+    for name in all {
+        if !names.insert(name) {
+            return Err(LowerError::DuplicateRule(name.to_string()));
+        }
+    }
+    Ok(())
+}
+
 fn lower_rules(
     model: &Model,
     ir: &SimIr,
@@ -298,17 +318,12 @@ fn lower_rules(
 ) -> Result<Vec<RuleIr>, LowerError> {
     let mut rules = Vec::with_capacity(model.rules.len());
     // A stock may have at most one writer until explicit reducer/conflict
-    // semantics exist, so commits never silently depend on rule order.
+    // semantics exist, so commits never silently depend on rule order. Rule-name
+    // uniqueness is checked globally up front (see `check_unique_rule_names`).
     let mut writers: std::collections::HashMap<(usize, usize), String> =
         std::collections::HashMap::new();
-    // Rule names are identities used as keys downstream (reports, the equivalence
-    // harness, the planner, WGSL module names), so they must be unique.
-    let mut names: HashSet<&str> = HashSet::new();
     for rule in &model.rules {
         let lowered = lower_rule(rule, ir, param_names)?;
-        if !names.insert(rule.name.as_str()) {
-            return Err(LowerError::DuplicateRule(lowered.name.clone()));
-        }
         if let Some(first) = writers.insert((lowered.table, lowered.target), lowered.name.clone()) {
             let table = &ir.tables[lowered.table];
             return Err(LowerError::DuplicateWriter {

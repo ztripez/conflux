@@ -404,3 +404,70 @@ fn rejects_dt_and_unknown_param_in_derived() {
         other => panic!("expected UnknownParam, got {other:?}"),
     }
 }
+
+#[test]
+fn rejects_duplicate_field_rule_names() {
+    // Two field rules with the same name write different channels (so they are not
+    // duplicate writers), but rule names are a global identity namespace.
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("a", vec![0.0]).stock("b", vec![0.0]);
+    let mut model = Model::new("m");
+    model.add_field(terrain);
+    model.add_field_rule(
+        FieldRule::new("dup")
+            .on_field("Terrain")
+            .propose("a", cell("a")),
+    );
+    model.add_field_rule(
+        FieldRule::new("dup")
+            .on_field("Terrain")
+            .propose("b", cell("b")),
+    );
+    match lower(&model) {
+        Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "dup"),
+        other => panic!("expected DuplicateRule, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_table_and_field_rule_sharing_a_name() {
+    // Rule names are one global namespace: a table rule and a field rule may not
+    // share a name, since reports/planner/equivalence key on the name.
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![0.0]);
+    let mut field = Field::new("F", Grid2::new(1, 1));
+    field.stock("y", vec![0.0]);
+    let mut model = Model::new("m");
+    model.add_table(table);
+    model.add_field(field);
+    model.add_rule(Rule::new("shared").on("T").propose("x", col("x")));
+    model.add_field_rule(
+        FieldRule::new("shared")
+            .on_field("F")
+            .propose("y", cell("y")),
+    );
+    match lower(&model) {
+        Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "shared"),
+        other => panic!("expected DuplicateRule (table vs field), got {other:?}"),
+    }
+
+    // Detection is symmetric: the collision is caught with the field rule declared
+    // first too.
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![0.0]);
+    let mut field = Field::new("F", Grid2::new(1, 1));
+    field.stock("y", vec![0.0]);
+    let mut reversed = Model::new("m");
+    reversed.add_table(table);
+    reversed.add_field(field);
+    reversed.add_field_rule(
+        FieldRule::new("shared")
+            .on_field("F")
+            .propose("y", cell("y")),
+    );
+    reversed.add_rule(Rule::new("shared").on("T").propose("x", col("x")));
+    assert!(matches!(
+        lower(&reversed),
+        Err(LowerError::DuplicateRule(_))
+    ));
+}
