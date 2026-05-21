@@ -229,6 +229,55 @@ fn field_rule_assessment_shape_is_validated() {
 }
 
 #[test]
+fn reject_edge_policy_survives_lowering() {
+    let rule = FieldRule::new("r")
+        .on_field("Terrain")
+        .propose("height", neighbor("height", -1, 0, EdgePolicy::Reject));
+    let ir = lower(&terrain_with_rule(rule)).unwrap();
+    assert!(contains_neighbor_edge(
+        &ir.field_rules[0].expr,
+        EdgePolicy::Reject
+    ));
+}
+
+#[test]
+fn rejects_field_rule_with_zero_cadence() {
+    let rule = FieldRule::new("r")
+        .on_field("Terrain")
+        .every(0)
+        .propose("height", cell("height"));
+    assert!(matches!(
+        lower(&terrain_with_rule(rule)),
+        Err(LowerError::BadCadence { .. })
+    ));
+}
+
+#[test]
+fn rejects_field_rule_reading_another_field() {
+    // A rule on `Terrain` may not read a channel that only exists on another
+    // field — there are no cross-field reads.
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("height", vec![0.0]);
+    let mut weather = Field::new("Weather", Grid2::new(1, 1));
+    weather.stock("wind", vec![0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field(weather);
+    model.add_field_rule(
+        FieldRule::new("r")
+            .on_field("Terrain")
+            .propose("height", cell("height") + cell("wind")),
+    );
+    match lower(&model) {
+        Err(LowerError::FieldRuleUnknownChannel { channel, field, .. }) => {
+            assert_eq!(channel, "wind");
+            assert_eq!(field, "Terrain");
+        }
+        other => panic!("expected FieldRuleUnknownChannel for cross-field read, got {other:?}"),
+    }
+}
+
+#[test]
 fn rejects_zero_sized_grid() {
     let mut field = Field::new("Bad", Grid2::new(0, 3));
     field.stock("x", vec![]);

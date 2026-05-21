@@ -387,14 +387,13 @@ fn lower_rule(
     })
 }
 
-/// Validates assessment *shape* (configuration), the policy boundary for which
-/// is the lowering gate. Note this checks the assessment's parameters, not the
-/// data it is applied to: non-finite proposed *values* are reported at runtime by
-/// the `Finite` assessment, never rejected here (see `docs/ERROR_POLICY.md`).
-/// Infinite range bounds are allowed — a one-sided range such as `[0, +inf]` is a
-/// valid "at least" check.
-/// Validates assessment *shape* for any rule (table or field), keyed by rule
-/// name. Domain-neutral, so both `lower_rule` and field-rule lowering share it.
+/// Validates assessment *shape* (configuration) for any rule, table or field,
+/// keyed by rule name — domain-neutral, so `lower_rule` and field-rule lowering
+/// share it. The policy boundary is the lowering gate: this checks the
+/// assessment's parameters, not the data it is applied to. Non-finite proposed
+/// *values* are reported at runtime by the `Finite` assessment, never rejected
+/// here (see `docs/ERROR_POLICY.md`); infinite range bounds are allowed — a
+/// one-sided range such as `[0, +inf]` is a valid "at least" check.
 pub(super) fn validate_assessments(
     assessments: &[Assessment],
     rule: &str,
