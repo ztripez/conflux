@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
+use conflux_kernel::{execute_elementwise, extract, Kernel};
 
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
@@ -16,6 +17,7 @@ use crate::plan::ExecutionPlan;
 use crate::report::{
     AssessmentOutcome, BridgeReport, Report, RowOutcome, RuleFireReport, StepReport,
 };
+use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
 
 /// A simulation instance holding lowered IR, the execution plan, and live state.
 pub struct Simulation {
@@ -26,12 +28,25 @@ pub struct Simulation {
     data: Vec<Vec<Vec<f64>>>,
     /// Field channel data indexed `field_data[field][channel][cell]` (row-major).
     field_data: Vec<Vec<Vec<f64>>>,
+    /// The caller-declared execution mode (default [`ExecutionMode::ReferenceOnly`]).
+    mode: ExecutionMode,
+    /// Accepted CPU kernels by rule name, used to run the selected kernel path.
+    /// Empty unless `mode` requests the kernel path, so reference-only runs are
+    /// unaffected.
+    kernels: HashMap<String, Kernel>,
 }
 
 impl Simulation {
-    /// Builds a simulation from lowered IR, initialising state and derived
-    /// columns.
+    /// Builds a simulation from lowered IR in the default reference-only execution
+    /// mode, initialising state and derived columns.
     pub fn new(ir: SimIr) -> Self {
+        Self::with_mode(ir, ExecutionMode::ReferenceOnly)
+    }
+
+    /// Builds a simulation with an explicit execution `mode`. Under a mode that
+    /// requests the CPU-kernel path, accepted kernels are extracted up front so the
+    /// runtime can run the selected path; reference-only runs extract nothing.
+    pub fn with_mode(ir: SimIr, mode: ExecutionMode) -> Self {
         let plan = ExecutionPlan::build(&ir);
         let mut data = Vec::with_capacity(ir.tables.len());
         for table in &ir.tables {
@@ -49,12 +64,24 @@ impl Simulation {
         recompute_derived(&ir, &plan, &mut data, &params);
         let field_data = field_exec::materialize_fields(&ir, &params);
 
+        let kernels = if mode.requests_kernel() {
+            extract(&ir)
+                .accepted
+                .into_iter()
+                .map(|k| (k.name.clone(), k))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
         Simulation {
             ir,
             plan,
             tick: 0,
             data,
             field_data,
+            mode,
+            kernels,
         }
     }
 
@@ -131,6 +158,8 @@ impl Simulation {
         // Disjoint field borrows: read IR/plan, mutate state.
         let ir = &self.ir;
         let plan = &self.plan;
+        let mode = self.mode;
+        let kernels = &self.kernels;
         let data = &mut self.data;
 
         // Rules read a frozen, internally consistent start-of-tick snapshot, so
@@ -148,31 +177,60 @@ impl Simulation {
             let table = &ir.tables[t];
             let target = rule.target;
             let dt = rule.cadence.period as f64;
-            let columns_by_name = column_map(table);
 
+            // Resolve the execution path from the requested mode and the rule's
+            // kernel eligibility (the policy decision lives in `selection`). The
+            // kernel is consulted only when the mode asks for it, so reference-only
+            // runs are unchanged.
+            let kernel = if mode.requests_kernel() {
+                kernels.get(&rule.name)
+            } else {
+                None
+            };
+            let (selected_path, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
+
+            // Compute per-row proposals on the used path (a refused rule runs
+            // nothing), then assess and commit identically regardless of path.
             let mut rows = Vec::with_capacity(table.rows);
-            for row in 0..table.rows {
-                let ctx = EvalCtx {
-                    columns_by_name: &columns_by_name,
-                    columns: &snapshot[t],
-                    params: &params,
-                    dt,
-                    row,
-                };
-                let proposed = eval(&rule.expr, &ctx);
-                let old = snapshot[t][target][row];
-                let assessments = assess(&rule.assessments, old, proposed);
-                let committed = assessments.iter().all(|a| a.passed);
-                if committed {
-                    data[t][target][row] = proposed;
+            match used_path {
+                None => {}
+                Some(ExecutionPath::CpuKernel) => {
+                    let kernel = kernel.expect("kernel path selected only when a kernel exists");
+                    let proposals = execute_elementwise(kernel, &snapshot[t]);
+                    for (row, &proposed) in proposals.iter().enumerate() {
+                        rows.push(commit_row(
+                            data,
+                            &snapshot,
+                            t,
+                            target,
+                            row,
+                            proposed as f64,
+                            &rule.assessments,
+                        ));
+                    }
                 }
-                rows.push(RowOutcome {
-                    row,
-                    old_value: old,
-                    proposed_value: proposed,
-                    committed,
-                    assessments,
-                });
+                Some(ExecutionPath::Reference) => {
+                    let columns_by_name = column_map(table);
+                    for row in 0..table.rows {
+                        let ctx = EvalCtx {
+                            columns_by_name: &columns_by_name,
+                            columns: &snapshot[t],
+                            params: &params,
+                            dt,
+                            row,
+                        };
+                        let proposed = eval(&rule.expr, &ctx);
+                        rows.push(commit_row(
+                            data,
+                            &snapshot,
+                            t,
+                            target,
+                            row,
+                            proposed,
+                            &rule.assessments,
+                        ));
+                    }
+                }
             }
 
             rule_reports.push(RuleFireReport {
@@ -181,6 +239,10 @@ impl Simulation {
                 target_column: table.columns[target].name.clone(),
                 dt,
                 rows,
+                requested_mode: mode,
+                selected_path,
+                used_path,
+                fallback_reason,
             });
         }
 
@@ -268,6 +330,34 @@ fn column_map(table: &TableIr) -> HashMap<&str, usize> {
         .enumerate()
         .map(|(i, c)| (c.name.as_str(), i))
         .collect()
+}
+
+/// Assesses `proposed` for one row against the start-of-tick `snapshot`, commits it
+/// to `data` only if every assessment passes, and returns the per-row outcome
+/// (which preserves the raw proposal even when rejected). Shared by the reference
+/// and CPU-kernel paths so commit/assessment semantics are identical.
+fn commit_row(
+    data: &mut [Vec<Vec<f64>>],
+    snapshot: &[Vec<Vec<f64>>],
+    table: usize,
+    target: usize,
+    row: usize,
+    proposed: f64,
+    assessments_spec: &[Assessment],
+) -> RowOutcome {
+    let old = snapshot[table][target][row];
+    let assessments = assess(assessments_spec, old, proposed);
+    let committed = assessments.iter().all(|a| a.passed);
+    if committed {
+        data[table][target][row] = proposed;
+    }
+    RowOutcome {
+        row,
+        old_value: old,
+        proposed_value: proposed,
+        committed,
+        assessments,
+    }
 }
 
 fn recompute_derived(

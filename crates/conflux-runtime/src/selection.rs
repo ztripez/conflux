@@ -62,6 +62,57 @@ pub enum ExecutionPath {
     CpuKernel,
 }
 
+/// Why a rule did not run on the requested CPU-kernel path. Typed so fallback and
+/// refusal are structural report data, never a stringly error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FallbackReason {
+    /// The rule is not kernel-eligible (extraction rejected it); under
+    /// [`ExecutionMode::PreferCpuKernel`] it ran on the reference instead.
+    NotKernelEligible,
+    /// [`ExecutionMode::RequireCpuKernel`] was requested but the rule has no
+    /// eligible kernel, so it was *refused* rather than silently run on the
+    /// reference.
+    RequiredKernelUnavailable,
+}
+
+/// Resolves the execution path for one rule from the requested `mode` and whether
+/// an eligible CPU kernel is available, returning `(selected, used, fallback)`.
+/// `used == None` means the rule is refused (a required kernel was unavailable).
+///
+/// This is the pure policy decision — no execution, no kernel evaluation — kept out
+/// of the executor so the runtime's `step()` does not absorb selection logic.
+pub(crate) fn resolve_path(
+    kernel_available: bool,
+    mode: ExecutionMode,
+) -> (ExecutionPath, Option<ExecutionPath>, Option<FallbackReason>) {
+    match (kernel_available, mode) {
+        // Reference-only never consults the kernel.
+        (_, ExecutionMode::ReferenceOnly) => (
+            ExecutionPath::Reference,
+            Some(ExecutionPath::Reference),
+            None,
+        ),
+        // Eligible and requested: run the kernel.
+        (true, _) => (
+            ExecutionPath::CpuKernel,
+            Some(ExecutionPath::CpuKernel),
+            None,
+        ),
+        // Required but unavailable: refuse, never silently fall back.
+        (false, ExecutionMode::RequireCpuKernel) => (
+            ExecutionPath::CpuKernel,
+            None,
+            Some(FallbackReason::RequiredKernelUnavailable),
+        ),
+        // Preferred but unavailable: reported fall back to the reference.
+        (false, ExecutionMode::PreferCpuKernel) => (
+            ExecutionPath::Reference,
+            Some(ExecutionPath::Reference),
+            Some(FallbackReason::NotKernelEligible),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +134,49 @@ mod tests {
         assert!(ExecutionMode::ReferenceOnly.allows_reference_fallback());
         assert!(ExecutionMode::PreferCpuKernel.allows_reference_fallback());
         assert!(!ExecutionMode::RequireCpuKernel.allows_reference_fallback());
+    }
+
+    #[test]
+    fn resolve_path_covers_every_mode_and_eligibility() {
+        use ExecutionMode::*;
+        use ExecutionPath::*;
+
+        // Reference-only ignores kernel availability.
+        assert_eq!(
+            resolve_path(true, ReferenceOnly),
+            (Reference, Some(Reference), None)
+        );
+        assert_eq!(
+            resolve_path(false, ReferenceOnly),
+            (Reference, Some(Reference), None)
+        );
+
+        // Prefer: eligible runs the kernel; ineligible falls back, reported.
+        assert_eq!(
+            resolve_path(true, PreferCpuKernel),
+            (CpuKernel, Some(CpuKernel), None)
+        );
+        assert_eq!(
+            resolve_path(false, PreferCpuKernel),
+            (
+                Reference,
+                Some(Reference),
+                Some(FallbackReason::NotKernelEligible)
+            )
+        );
+
+        // Require: eligible runs the kernel; ineligible is refused (used = None).
+        assert_eq!(
+            resolve_path(true, RequireCpuKernel),
+            (CpuKernel, Some(CpuKernel), None)
+        );
+        assert_eq!(
+            resolve_path(false, RequireCpuKernel),
+            (
+                CpuKernel,
+                None,
+                Some(FallbackReason::RequiredKernelUnavailable)
+            )
+        );
     }
 }
