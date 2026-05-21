@@ -86,6 +86,19 @@ fn evaluates_weighted_aggregates() {
 }
 
 #[test]
+fn min_max_ignore_weights_on_a_weighted_region() {
+    let mut model = terrain_model();
+    model.add_aggregate(Aggregate::min("w_min", "delta", "height"));
+    model.add_aggregate(Aggregate::max("w_max", "delta", "height"));
+
+    let sim = Simulation::new(lower(&model).unwrap());
+    let reports = sim.aggregate_report();
+    // delta selects cells 0,2,3 (height 1,3,4); min/max ignore the weights.
+    assert_eq!(report_named(&reports, "w_min").value, 1.0);
+    assert_eq!(report_named(&reports, "w_max").value, 4.0);
+}
+
+#[test]
 fn aggregates_a_derived_channel() {
     let mut model = terrain_model();
     model.add_aggregate(Aggregate::sum("d_sum", "north", "doubled"));
