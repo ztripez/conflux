@@ -8,12 +8,20 @@
 mod diagnose;
 mod execute;
 mod extract;
+mod field_extract;
+mod field_ir;
+mod field_report;
 mod ir;
 mod report;
 
 pub use diagnose::diagnose_elementwise;
 pub use execute::execute_elementwise;
 pub use extract::extract;
+pub use field_extract::extract_fields;
+pub use field_ir::{
+    FieldKernel, FieldKernelBinding, FieldKernelExpr, FieldKernelShape, MAX_STENCIL_RADIUS,
+};
+pub use field_report::{FieldKernelReport, FieldRejectionReason, RejectedFieldKernel};
 pub use ir::{Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType};
 pub use report::{KernelReport, RejectedKernel, RejectionReason};
 
