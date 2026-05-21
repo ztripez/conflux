@@ -113,20 +113,28 @@ impl Simulation {
         self.tick += 1;
         let tick = self.tick;
 
+        let params = param_map(&self.ir);
+
         // Project region aggregates (from start-of-tick field state) into their
-        // target table signals before table rules read them.
-        let bridges = self.apply_bridges();
+        // target signals, and refresh any derived columns that read those signals,
+        // before table rules run. This keeps the start-of-tick snapshot internally
+        // consistent: derived values match their inputs — including just-bridged
+        // signals — so rules never observe a stale derived column.
+        let bridges = prepare_rule_snapshot(
+            &self.ir,
+            &self.plan,
+            &params,
+            &self.field_data,
+            &mut self.data,
+        );
 
         // Disjoint field borrows: read IR/plan, mutate state.
         let ir = &self.ir;
         let plan = &self.plan;
         let data = &mut self.data;
-        let params = param_map(ir);
 
-        // Derived columns are already consistent with the current stocks (from
-        // construction or the previous step's post-commit recompute), so rules
-        // read a frozen start-of-tick snapshot whose derived values match its
-        // stocks. Evaluation order then cannot change what any rule observes.
+        // Rules read a frozen, internally consistent start-of-tick snapshot, so
+        // evaluation order cannot change what any rule observes.
         let snapshot = data.clone();
 
         let mut rule_reports = Vec::new();
@@ -191,21 +199,34 @@ impl Simulation {
             bridges,
         }
     }
+}
 
-    /// Writes each declared bridge's aggregate value into every row of its target
-    /// table signal, from the start-of-tick materialized field state. Returns a
-    /// report per bridge. Signals only — never stocks — and the aggregate
-    /// computation is not duplicated (it reuses the aggregate evaluator).
-    fn apply_bridges(&mut self) -> Vec<BridgeReport> {
-        write_bridges(&self.ir, &self.field_data, &mut self.data)
+/// Prepares the start-of-tick rule-input state in `table_data`: applies bridges
+/// (writing signal columns from `field_data`), then — only if a bridge wrote —
+/// refreshes derived columns so any derived reading a bridged signal reflects the
+/// same-tick value rather than the previous tick's. Returns a report per bridge.
+///
+/// Shared by `step()` and the equivalence harness so both feed rules and kernels
+/// the identical, internally consistent snapshot.
+pub(crate) fn prepare_rule_snapshot(
+    ir: &SimIr,
+    plan: &ExecutionPlan,
+    params: &HashMap<&str, f64>,
+    field_data: &[Vec<Vec<f64>>],
+    table_data: &mut [Vec<Vec<f64>>],
+) -> Vec<BridgeReport> {
+    let bridges = write_bridges(ir, field_data, table_data);
+    if !bridges.is_empty() {
+        // Bridges changed signals; derived columns reading them are now stale.
+        recompute_derived(ir, plan, table_data, params);
     }
+    bridges
 }
 
 /// Writes each bridge's aggregate value (computed from `field_data`) into every row
 /// of its target table signal in `table_data`, returning a report per bridge.
 /// Signals only — never stocks — and the aggregate computation is not duplicated
-/// (it reuses the aggregate evaluator). Shared by `step()` and the equivalence
-/// harness so both feed kernels the same post-bridge signal state.
+/// (it reuses the aggregate evaluator).
 pub(crate) fn write_bridges(
     ir: &SimIr,
     field_data: &[Vec<Vec<f64>>],
