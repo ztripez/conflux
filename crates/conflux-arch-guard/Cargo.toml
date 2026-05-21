@@ -1,0 +1,13 @@
+[package]
+name = "conflux-arch-guard"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# This crate exists only to host the dependency-boundary guard test
+# (tests/dependency_boundaries.rs). It has no runtime code and nothing depends on
+# it; serde_json is used only to parse `cargo metadata` output in the test.
+[dev-dependencies]
+serde_json.workspace = true

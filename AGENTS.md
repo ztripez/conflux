@@ -57,6 +57,10 @@ Dependency boundaries, enforced by the crate graph:
   other Conflux crate, imports transfer summaries as plain totals (never
   Residency directly), and is off the execution path.
 
+These dependency rules are enforced mechanically (not just by review) by
+`conflux-arch-guard`'s `tests/dependency_boundaries.rs`, which fails CI on drift
+and names the offending crate and dependency. See `docs/BOUNDARIES.md`.
+
 The parser is not the product.
 
 ## How to work
