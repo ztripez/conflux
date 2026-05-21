@@ -7,6 +7,7 @@
 use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 
 use crate::aggregate::Aggregate;
+use crate::bridge::Bridge;
 use crate::field::Field;
 use crate::region::Region;
 
@@ -24,6 +25,8 @@ pub struct Model {
     pub(crate) regions: Vec<Region>,
     // Lowered into aggregate IR by `lower()`.
     pub(crate) aggregates: Vec<Aggregate>,
+    // Lowered into bridge IR by `lower()`.
+    pub(crate) bridges: Vec<Bridge>,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +47,7 @@ impl Model {
             field_rules: Vec::new(),
             regions: Vec::new(),
             aggregates: Vec::new(),
+            bridges: Vec::new(),
         }
     }
 
@@ -96,6 +100,13 @@ impl Model {
     /// validated and lowered by `lower()`; evaluation arrives in a later slice.
     pub fn add_aggregate(&mut self, aggregate: Aggregate) -> &mut Self {
         self.aggregates.push(aggregate);
+        self
+    }
+
+    /// Adds a field-to-table bridge (writes an aggregate value into a table
+    /// signal). It is validated and lowered by `lower()`.
+    pub fn add_bridge(&mut self, bridge: Bridge) -> &mut Self {
+        self.bridges.push(bridge);
         self
     }
 }

@@ -20,6 +20,19 @@ pub struct StepReport {
     pub rules: Vec<RuleFireReport>,
     /// Field rule firings this tick (empty for table-only models).
     pub field_rules: Vec<FieldRuleFireReport>,
+    /// Aggregate-to-table-signal bridges applied this tick, in declaration order
+    /// (empty when no bridges are declared).
+    pub bridges: Vec<BridgeReport>,
+}
+
+/// One field-to-table bridge applied on one tick: the aggregate value written into
+/// every row of the target table signal.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BridgeReport {
+    pub aggregate: String,
+    pub table: String,
+    pub signal: String,
+    pub value: f64,
 }
 
 /// One firing of one rule on one tick.
@@ -123,6 +136,13 @@ impl fmt::Display for Report {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for step in &self.steps {
             writeln!(f, "tick {}", step.tick)?;
+            for bridge in &step.bridges {
+                writeln!(
+                    f,
+                    "  bridge `{}` -> {}.{} = {}",
+                    bridge.aggregate, bridge.table, bridge.signal, bridge.value
+                )?;
+            }
             for rule in &step.rules {
                 writeln!(
                     f,

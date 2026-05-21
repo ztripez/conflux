@@ -6,12 +6,14 @@
 //! not own GPU residency or transfer; that boundary belongs to Residency.
 
 mod aggregate;
+mod bridge;
 mod field;
 mod lower;
 mod model;
 mod region;
 
 pub use aggregate::Aggregate;
+pub use bridge::Bridge;
 pub use field::Field;
 pub use lower::{lower, LowerError};
 pub use model::{FieldRule, Model, Rule, Table};

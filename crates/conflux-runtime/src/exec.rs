@@ -13,7 +13,9 @@ use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::plan::ExecutionPlan;
-use crate::report::{AssessmentOutcome, Report, RowOutcome, RuleFireReport, StepReport};
+use crate::report::{
+    AssessmentOutcome, BridgeReport, Report, RowOutcome, RuleFireReport, StepReport,
+};
 
 /// A simulation instance holding lowered IR, the execution plan, and live state.
 pub struct Simulation {
@@ -111,6 +113,10 @@ impl Simulation {
         self.tick += 1;
         let tick = self.tick;
 
+        // Project region aggregates (from start-of-tick field state) into their
+        // target table signals before table rules read them.
+        let bridges = self.apply_bridges();
+
         // Disjoint field borrows: read IR/plan, mutate state.
         let ir = &self.ir;
         let plan = &self.plan;
@@ -182,7 +188,34 @@ impl Simulation {
             tick,
             rules: rule_reports,
             field_rules,
+            bridges,
         }
+    }
+
+    /// Writes each declared bridge's aggregate value into every row of its target
+    /// table signal, from the start-of-tick materialized field state. Returns a
+    /// report per bridge. Signals only — never stocks — and the aggregate
+    /// computation is not duplicated (it reuses the aggregate evaluator).
+    fn apply_bridges(&mut self) -> Vec<BridgeReport> {
+        if self.ir.bridges.is_empty() {
+            return Vec::new();
+        }
+        let aggregates = crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data);
+        let mut reports = Vec::with_capacity(self.ir.bridges.len());
+        for bridge in &self.ir.bridges {
+            let value = aggregates[bridge.aggregate].value;
+            for row in 0..self.ir.tables[bridge.table].rows {
+                self.data[bridge.table][bridge.signal][row] = value;
+            }
+            let table = &self.ir.tables[bridge.table];
+            reports.push(BridgeReport {
+                aggregate: self.ir.aggregates[bridge.aggregate].name.clone(),
+                table: table.name.clone(),
+                signal: table.columns[bridge.signal].name.clone(),
+                value,
+            });
+        }
+        reports
     }
 }
 

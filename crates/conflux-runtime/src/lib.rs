@@ -23,8 +23,8 @@ pub use field_equivalence::{
 };
 pub use plan::ExecutionPlan;
 pub use report::{
-    AggregateReport, AssessmentOutcome, FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome,
-    RuleFireReport, StepReport,
+    AggregateReport, AssessmentOutcome, BridgeReport, FieldCellOutcome, FieldRuleFireReport,
+    Report, RowOutcome, RuleFireReport, StepReport,
 };
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
