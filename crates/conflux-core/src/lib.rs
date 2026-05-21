@@ -8,10 +8,12 @@
 mod field;
 mod lower;
 mod model;
+mod region;
 
 pub use field::Field;
 pub use lower::{lower, LowerError};
 pub use model::{FieldRule, Model, Rule, Table};
+pub use region::Region;
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{

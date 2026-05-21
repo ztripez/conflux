@@ -7,6 +7,7 @@
 use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 
 use crate::field::Field;
+use crate::region::Region;
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
@@ -18,6 +19,8 @@ pub struct Model {
     pub(crate) fields: Vec<Field>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) field_rules: Vec<FieldRule>,
+    // Lowered into region IR by `lower()` in a later slice (#64).
+    pub(crate) regions: Vec<Region>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,6 +39,7 @@ impl Model {
             fields: Vec::new(),
             rules: Vec::new(),
             field_rules: Vec::new(),
+            regions: Vec::new(),
         }
     }
 
@@ -73,6 +77,13 @@ impl Model {
     /// slice.
     pub fn add_field_rule(&mut self, rule: FieldRule) -> &mut Self {
         self.field_rules.push(rule);
+        self
+    }
+
+    /// Adds a region (a named selection over a field's cells). Validation and
+    /// lowering arrive in a later slice (#64); declaring one is inert until then.
+    pub fn add_region(&mut self, region: Region) -> &mut Self {
+        self.regions.push(region);
         self
     }
 }
