@@ -16,6 +16,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("gpu_eligible_numeric", gpu_eligible_numeric),
     ("transfer_dominated_rule", transfer_dominated_rule),
     ("trace_hotspot_case", trace_hotspot_case),
+    ("derived_kernel_case", derived_kernel_case),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -145,5 +146,25 @@ pub fn trace_hotspot_case() -> Model {
         heavy = heavy + col("a");
     }
     model.add_rule(Rule::new("heavy").on("Cell").propose("heavy_out", heavy));
+    model
+}
+
+/// A kernel-eligible rule that reads a *derived* column. The derived column has
+/// no `ColumnIr.initial` (the runtime materializes it), so this scenario exercises
+/// the materialization path a backend must read from rather than raw initial
+/// values.
+pub fn derived_kernel_case() -> Model {
+    let mut cell = Table::new("Cell", 4);
+    cell.stock("base", vec![1.0, 2.0, 3.0, 4.0])
+        .stock("out", vec![0.0; 4])
+        .derived("doubled", col("base") * lit(2.0));
+    let mut model = Model::new("derived_kernel_case");
+    model.add_table(cell);
+    // out = doubled + base reads the derived `doubled` and the stock `base`.
+    model.add_rule(
+        Rule::new("use_derived")
+            .on("Cell")
+            .propose("out", col("doubled") + col("base")),
+    );
     model
 }

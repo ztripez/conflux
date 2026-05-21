@@ -15,8 +15,9 @@
 mod scenarios;
 
 pub use scenarios::{
-    gpu_eligible_numeric, param_rule_fallback, resource_reserve, settlement_growth,
-    trace_hotspot_case, transfer_dominated_rule, unstable_population, Scenario, ALL_SCENARIOS,
+    derived_kernel_case, gpu_eligible_numeric, param_rule_fallback, resource_reserve,
+    settlement_growth, trace_hotspot_case, transfer_dominated_rule, unstable_population, Scenario,
+    ALL_SCENARIOS,
 };
 
 pub const CRATE_BOUNDARY: &str = "canonical scenario fixtures (test support only)";

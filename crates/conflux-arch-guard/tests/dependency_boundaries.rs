@@ -139,6 +139,15 @@ fn crate_dependency_boundaries_hold() {
                     "`{name}` has a {kind} dependency on `conflux-fixtures`; fixtures are test support and may be a dev-dependency only"
                 ));
             }
+
+            // conflux-fixtures itself keeps only conflux-core as a normal
+            // dependency; everything else (the report crates) is dev-only, so the
+            // fixtures' own surface stays minimal.
+            if name == "conflux-fixtures" && kind == "normal" && dep_name != "conflux-core" {
+                violations.push(format!(
+                    "conflux-fixtures has a normal dependency on `{dep_name}`; it must keep only conflux-core as a normal dependency (other Conflux crates are dev-only)"
+                ));
+            }
         }
     }
 

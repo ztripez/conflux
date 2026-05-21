@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# Test-support crate — never published.
+publish = false
 
 # Test-support only. The library builds canonical scenario *models* from the
 # public authoring API and therefore depends solely on conflux-core — it adds no

@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# Internal guard crate — never published.
+publish = false
 
 # This crate exists only to host the dependency-boundary guard test
 # (tests/dependency_boundaries.rs). It has no runtime code and nothing depends on
