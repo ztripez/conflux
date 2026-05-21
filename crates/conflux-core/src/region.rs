@@ -13,10 +13,6 @@
 //! (a follow-up slice), per `docs/ERROR_POLICY.md`.
 
 /// A named selection over a field's cells.
-//
-// `field`/`membership` are authoring data consumed by region lowering (#64); this
-// slice is authoring-only, so they are not read in non-test code yet.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Region {
     pub(crate) name: String,
@@ -26,10 +22,6 @@ pub struct Region {
 
 /// Per-cell region membership. Boolean and weighted are explicit, never coerced
 /// into one another.
-//
-// The membership buffers are read by region lowering (#64); inert in this
-// authoring-only slice.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) enum Membership {
     /// One in/out flag per cell.
