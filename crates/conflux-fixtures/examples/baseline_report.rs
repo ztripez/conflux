@@ -53,6 +53,12 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
 
     // Reference execution.
     let mut sim = Simulation::new(ir.clone());
+    // Materialized start-of-run table state (derived columns recomputed), captured
+    // before stepping. Kernels read this — not raw `ColumnIr.initial`, whose
+    // derived buffers are empty — matching the equivalence harness's snapshot.
+    let materialized: Vec<Vec<Vec<f64>>> = (0..ir.tables.len())
+        .map(|t| sim.table_data(t).to_vec())
+        .collect();
     let report = sim.run(TICKS);
     let (mut proposals, mut violations) = (0usize, 0usize);
     for step in &report.steps {
@@ -108,12 +114,8 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
 
     // Transfer advisory per accepted kernel (a real Residency sync).
     for kernel in &kernels.accepted {
-        let columns: Vec<Vec<f64>> = ir.tables[kernel.table]
-            .columns
-            .iter()
-            .map(|c| c.initial.clone())
-            .collect();
-        let outputs = execute_elementwise(kernel, &columns);
+        let columns = &materialized[kernel.table];
+        let outputs = execute_elementwise(kernel, columns);
         let mut graph = SyncGraph::new();
         let mut backend = FakeBackend::new();
         let sync =

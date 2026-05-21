@@ -68,9 +68,13 @@ impl Simulation {
         Some(&self.data[t][c])
     }
 
-    /// All column buffers for a table, addressed as `[column][row]`. Used by the
-    /// equivalence harness to feed the kernel executor.
-    pub(crate) fn table_data(&self, table: usize) -> &[Vec<f64>] {
+    /// All *materialized* column buffers for a table, addressed as `[column][row]`
+    /// — including derived columns (which `ColumnIr.initial` leaves empty until the
+    /// runtime recomputes them). `table` indexes [`SimIr::tables`], matching a
+    /// kernel's `table` field. The equivalence harness uses this to feed the kernel
+    /// executor; it is also the materialization path other crates should reuse
+    /// rather than reading raw `ColumnIr.initial`.
+    pub fn table_data(&self, table: usize) -> &[Vec<f64>] {
         &self.data[table]
     }
 

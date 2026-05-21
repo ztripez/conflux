@@ -180,6 +180,33 @@ fn trace_hotspot_case_recommends_hotspot_and_backend_headroom() {
     assert!(!has(&report, RecommendationKind::Hotspot, "light"));
 }
 
+#[test]
+fn derived_kernel_case_reads_materialized_derived_column() {
+    let ir = lower(&derived_kernel_case()).unwrap();
+    let kernels = extract(&ir);
+    let kernel = kernels
+        .accepted
+        .iter()
+        .find(|k| k.name == "use_derived")
+        .expect("a rule reading a derived column is still kernel-eligible");
+
+    // The derived column `doubled` has an empty `ColumnIr.initial`; the runtime
+    // materializes it. Building kernel inputs from materialized table state (the
+    // exposed snapshot path) gives the recomputed values, not empty buffers.
+    let sim = Simulation::new(ir.clone());
+    let columns = sim.table_data(kernel.table);
+    let doubled = ir.tables[kernel.table].column_index("doubled").unwrap();
+    assert_eq!(
+        columns[doubled],
+        vec![2.0, 4.0, 6.0, 8.0],
+        "derived column is materialized, not empty"
+    );
+
+    // out = doubled + base = base*2 + base = base*3.
+    let out = execute_elementwise(kernel, columns);
+    assert_eq!(out, vec![3.0, 6.0, 9.0, 12.0]);
+}
+
 fn rule_trace(name: &str, elapsed_nanos: u64) -> RuleTrace {
     RuleTrace {
         rule: name.to_string(),
