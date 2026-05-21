@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use conflux_ir::Assessment;
+use conflux_ir::{AggregateOp, Assessment};
 
 /// The full record of a run.
 #[derive(Clone, Debug, Default)]
@@ -68,6 +68,23 @@ pub struct RowOutcome {
     pub proposed_value: f64,
     pub committed: bool,
     pub assessments: Vec<AssessmentOutcome>,
+}
+
+/// One region aggregate's value with the provenance that produced it: field cells
+/// -> region mask -> aggregate operation -> value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AggregateReport {
+    pub name: String,
+    pub region: String,
+    pub field: String,
+    /// The reduced channel; `None` for a count.
+    pub channel: Option<String>,
+    pub operation: AggregateOp,
+    pub value: f64,
+    /// Number of selected cells.
+    pub cell_count: usize,
+    /// Total membership weight (equals `cell_count` for a boolean region).
+    pub weight_total: f64,
 }
 
 /// The result of one assessment against a proposed value.

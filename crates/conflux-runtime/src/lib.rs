@@ -4,6 +4,7 @@
 //! execution/stability report. It is the reference path: optimized backends
 //! (later MVPs) must prove equivalence against it within declared tolerances.
 
+mod aggregate_eval;
 mod equivalence;
 mod eval;
 mod exec;
@@ -22,8 +23,11 @@ pub use field_equivalence::{
 };
 pub use plan::ExecutionPlan;
 pub use report::{
-    AssessmentOutcome, FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome, RuleFireReport,
-    StepReport,
+    AggregateReport, AssessmentOutcome, FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome,
+    RuleFireReport, StepReport,
 };
+
+// Re-export the aggregate operation so consumers can match on `AggregateReport`.
+pub use conflux_ir::AggregateOp;
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";

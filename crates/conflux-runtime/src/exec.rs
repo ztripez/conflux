@@ -89,6 +89,14 @@ impl Simulation {
         &self.field_data[field]
     }
 
+    /// Evaluates every declared region aggregate against the current materialized
+    /// field state, returning a report per aggregate (with provenance). This reads
+    /// state only; it is a projection, not a mutation. Call it after `new()` or any
+    /// `step()`/`run()` to summarize the field state at that point.
+    pub fn aggregate_report(&self) -> Vec<crate::report::AggregateReport> {
+        crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data)
+    }
+
     /// Advances the simulation `ticks` ticks, returning a report.
     pub fn run(&mut self, ticks: u64) -> Report {
         let mut report = Report::default();
