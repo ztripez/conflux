@@ -8,7 +8,10 @@ use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, Rejecti
 use conflux_planner::{plan, transfer_advisory, BackendChoice};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
-use conflux_runtime::{check_equivalence, AggregateOp, Simulation, Tolerance};
+use conflux_runtime::{
+    check_equivalence, AggregateOp, ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason,
+    Simulation, Tolerance,
+};
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
 };
@@ -286,4 +289,62 @@ fn watershed_yield_aggregates_per_basin_and_bridges_to_settlement() {
         Some(&[30.0, 30.0][..])
     );
     assert_eq!(sim.column("Settlement", "stores"), Some(&[30.0, 30.0][..])); // 0 + 30
+}
+
+#[test]
+fn selected_execution_is_opt_in_with_visible_fallback_and_refusal() {
+    let ir = lower(&selected_execution()).unwrap();
+
+    // Default mode is reference-only: both rules run on the reference, nothing
+    // implies optimization happened.
+    let mut reference = Simulation::new(ir.clone());
+    let reference_step = reference.step();
+    for rule in &reference_step.rules {
+        assert_eq!(rule.requested_mode, ExecutionMode::ReferenceOnly);
+        assert_eq!(rule.used_path, Some(ExecutionPath::Reference));
+        assert_eq!(rule.comparison_status, ComparisonStatus::IsReference);
+    }
+
+    // PreferCpuKernel: the eligible rule runs on the kernel; the parameter-reading
+    // rule falls back to the reference, reported (never silent).
+    let mut prefer = Simulation::with_mode(ir.clone(), ExecutionMode::PreferCpuKernel);
+    let prefer_step = prefer.step();
+    let accumulate = prefer_step
+        .rules
+        .iter()
+        .find(|r| r.rule == "accumulate")
+        .unwrap();
+    assert_eq!(accumulate.used_path, Some(ExecutionPath::CpuKernel));
+    assert_eq!(
+        accumulate.comparison_status,
+        ComparisonStatus::DeferredToEquivalenceHarness
+    );
+    let leak = prefer_step.rules.iter().find(|r| r.rule == "leak").unwrap();
+    assert_eq!(leak.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        leak.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
+    );
+
+    // RequireCpuKernel: the ineligible rule is refused (raw proposals preserved
+    // means none — it evaluated nothing), visibly, never silently run.
+    let mut require = Simulation::with_mode(ir, ExecutionMode::RequireCpuKernel);
+    let require_step = require.step();
+    let leak = require_step
+        .rules
+        .iter()
+        .find(|r| r.rule == "leak")
+        .unwrap();
+    assert_eq!(leak.used_path, None);
+    assert_eq!(
+        leak.fallback_reason,
+        Some(FallbackReason::RequiredKernelUnavailable)
+    );
+    assert_eq!(leak.comparison_status, ComparisonStatus::NotRun);
+    // The eligible rule still ran and the kernel matches the reference within
+    // tolerance (the harness is the authority for that comparison).
+    assert!(
+        check_equivalence(&lower(&selected_execution()).unwrap(), Tolerance::default())
+            .all_within_tolerance()
+    );
 }

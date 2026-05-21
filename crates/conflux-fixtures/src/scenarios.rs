@@ -20,6 +20,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("trace_hotspot_case", trace_hotspot_case),
     ("derived_kernel_case", derived_kernel_case),
     ("watershed_yield", watershed_yield),
+    ("selected_execution", selected_execution),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -215,6 +216,34 @@ pub fn watershed_yield() -> Model {
             .on("Settlement")
             .propose("stores", col("stores") + col("basin_yield"))
             .assess(Assessment::Finite),
+    );
+    model
+}
+
+/// Explicit selected-execution orchestration: one kernel-eligible rule
+/// (`accumulate`, pure column arithmetic) and one ineligible rule (`leak`, reads a
+/// parameter). Under a selection mode the runtime runs the kernel for `accumulate`
+/// and falls back (Prefer) or refuses (Require) for `leak`, while the default
+/// reference-only mode runs both on the reference. The contract suite pins that
+/// behavior and the report shape.
+pub fn selected_execution() -> Model {
+    let mut store = Table::new("Store", 2);
+    store
+        .stock("reserve", vec![10.0, 20.0])
+        .stock("inflow", vec![1.0, 2.0])
+        .stock("level", vec![5.0, 5.0]);
+    let mut model = Model::new("selected_execution");
+    model.param("rate", 0.5);
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("accumulate")
+            .on("Store")
+            .propose("reserve", col("reserve") + col("inflow")),
+    );
+    model.add_rule(
+        Rule::new("leak")
+            .on("Store")
+            .propose("level", col("level") - param("rate")),
     );
     model
 }
