@@ -27,7 +27,7 @@ pub use report::{
     AggregateReport, AssessmentOutcome, BridgeReport, FieldCellOutcome, FieldRuleFireReport,
     Report, RowOutcome, RuleFireReport, StepReport,
 };
-pub use selection::{ExecutionMode, ExecutionPath};
+pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
 pub use conflux_ir::AggregateOp;

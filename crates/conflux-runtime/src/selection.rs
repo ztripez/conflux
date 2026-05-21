@@ -62,6 +62,19 @@ pub enum ExecutionPath {
     CpuKernel,
 }
 
+/// Why a rule did not run on the requested CPU-kernel path. Typed so fallback and
+/// refusal are structural report data, never a stringly error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FallbackReason {
+    /// The rule is not kernel-eligible (extraction rejected it); under
+    /// [`ExecutionMode::PreferCpuKernel`] it ran on the reference instead.
+    NotKernelEligible,
+    /// [`ExecutionMode::RequireCpuKernel`] was requested but the rule has no
+    /// eligible kernel, so it was *refused* rather than silently run on the
+    /// reference.
+    RequiredKernelUnavailable,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

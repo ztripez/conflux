@@ -7,6 +7,8 @@ use std::fmt;
 
 use conflux_ir::{AggregateOp, Assessment};
 
+use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
+
 /// The full record of a run.
 #[derive(Clone, Debug, Default)]
 pub struct Report {
@@ -44,6 +46,33 @@ pub struct RuleFireReport {
     /// The cadence-derived time step exposed to the rule.
     pub dt: f64,
     pub rows: Vec<RowOutcome>,
+    /// The execution mode the caller requested for this run.
+    pub requested_mode: ExecutionMode,
+    /// The path resolution chose given the requested mode and the rule's
+    /// eligibility.
+    pub selected_path: ExecutionPath,
+    /// The path actually executed; `None` means the rule was refused (a required
+    /// kernel was unavailable), so no rows were evaluated.
+    pub used_path: Option<ExecutionPath>,
+    /// Why the rule did not run on the requested CPU-kernel path, if applicable.
+    pub fallback_reason: Option<FallbackReason>,
+}
+
+impl RuleFireReport {
+    /// A short Display suffix describing the execution path. Empty for a plain
+    /// reference run, so reference-only reports do not imply optimization happened.
+    fn execution_note(&self) -> &'static str {
+        match (self.used_path, self.fallback_reason) {
+            (Some(ExecutionPath::CpuKernel), _) => " [cpu-kernel]",
+            (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
+                " [fell back to reference: not kernel-eligible]"
+            }
+            (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
+                " [REFUSED: required kernel unavailable]"
+            }
+            _ => "",
+        }
+    }
 }
 
 /// One firing of one field rule on one tick, evaluated per cell.
@@ -146,8 +175,12 @@ impl fmt::Display for Report {
             for rule in &step.rules {
                 writeln!(
                     f,
-                    "  rule `{}` -> {}.{} (dt = {})",
-                    rule.rule, rule.table, rule.target_column, rule.dt
+                    "  rule `{}` -> {}.{} (dt = {}){}",
+                    rule.rule,
+                    rule.table,
+                    rule.target_column,
+                    rule.dt,
+                    rule.execution_note()
                 )?;
                 for row in &rule.rows {
                     let status = if row.committed { "COMMIT" } else { "REJECT" };
