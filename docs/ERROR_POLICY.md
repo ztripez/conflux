@@ -38,14 +38,15 @@ A deliberate split:
   emit an inf literal — a backend constraint, not a model error.)
 
   `Assessment::range` / `Assessment::max_relative_delta` constructors stay
-  unvalidated so they remain `const`-friendly and cheap; `lower()` is the gate.
+  unvalidated so they remain cheap and permissive; `lower()` is the gate.
 
 - **Data finiteness is runtime behavior, not a lowering error.** Non-finite
   proposed *values* (from `NaN`/`inf` literals, column data, or arithmetic such as
   division by zero) are **not** rejected at lowering. They are surfaced as data by
   the `Finite` assessment and the diagnostic buffers, consistent with the core law
   that instability is reported, never hidden or clamped. Backends additionally
-  reject what they cannot represent (e.g. WGSL `NonFiniteLiteral`).
+  reject what they cannot represent (e.g. WGSL `NonFiniteLiteral` for an inf/NaN
+  literal, or `NonFiniteDiagnosticBound` for an infinite range bound).
 
 This is why `lower()` validates the assessment's parameters but never the numbers
 the rule computes.
