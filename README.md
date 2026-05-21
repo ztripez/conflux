@@ -78,6 +78,9 @@ crates/
 
 ## Status
 
+The MVP ladder (MVP0–MVP7) is complete; the sections below describe each rung as
+it stands today.
+
 The CPU-only vertical slice (MVP1) is in place:
 
 ```text
@@ -99,7 +102,9 @@ kernels execute on the CPU in f32, and a model can run through both the
 simulation reference (f64) and the kernel path. The harness compares their
 per-row proposals within a declared tolerance — never bit-for-bit — and reports
 each rule as a matched kernel run or a fallback to the reference with its reason.
-(Assessment/diagnostic equivalence is not yet checked; that is a later rung.)
+(This reference-vs-kernel harness compares proposed values; diagnostics are
+lowered to executable buffers and compared separately across the CPU and GPU
+paths — see the MVP5 paragraph below.)
 
 The Residency bridge (MVP4) connects Conflux numeric resources to
 [Residency](https://github.com/ztripez/residency) through the `conflux-residency`
@@ -113,9 +118,10 @@ The first GPU compute backend (MVP5) lives in `conflux-wgsl`: it lowers an
 elementwise kernel to a stable, inspectable WGSL compute shader plus the
 bind/resource requirements a backend needs, and rejects kernels outside the
 supported subset with a reason. Both backends also lower the kernel's stability
-checks to an executable per-row diagnostic buffer (violation magnitudes), so
-instability surfaces as data; the equivalence example compares the GPU output and
-diagnostics against the CPU kernel path. Actual GPU execution is behind an
+checks to an executable per-row diagnostic buffer (violation magnitudes that are
+measured and reported, never clamped), so instability surfaces as data; the
+equivalence example compares the GPU output and diagnostics against the CPU
+kernel path. Actual GPU execution is behind an
 optional `gpu` feature (wgpu); the example runs on a real adapter and skips
 gracefully when no GPU is present.
 
