@@ -450,4 +450,24 @@ fn rejects_table_and_field_rule_sharing_a_name() {
         Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "shared"),
         other => panic!("expected DuplicateRule (table vs field), got {other:?}"),
     }
+
+    // Detection is symmetric: the collision is caught with the field rule declared
+    // first too.
+    let mut table = Table::new("T", 1);
+    table.stock("x", vec![0.0]);
+    let mut field = Field::new("F", Grid2::new(1, 1));
+    field.stock("y", vec![0.0]);
+    let mut reversed = Model::new("m");
+    reversed.add_table(table);
+    reversed.add_field(field);
+    reversed.add_field_rule(
+        FieldRule::new("shared")
+            .on_field("F")
+            .propose("y", cell("y")),
+    );
+    reversed.add_rule(Rule::new("shared").on("T").propose("x", col("x")));
+    assert!(matches!(
+        lower(&reversed),
+        Err(LowerError::DuplicateRule(_))
+    ));
 }

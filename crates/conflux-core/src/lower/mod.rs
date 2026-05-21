@@ -293,9 +293,9 @@ fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, 
 }
 
 /// Rule names are a single global namespace across table *and* field rules: every
-/// report, the planner, and the table/field equivalence harnesses key on the rule
-/// name as an identity, so a duplicate anywhere — table/table, field/field, or
-/// table/field — is rejected here at the single gate.
+/// report, the planner, the table/field equivalence harnesses, and WGSL module
+/// names key on the rule name as an identity, so a duplicate anywhere —
+/// table/table, field/field, or table/field — is rejected here at the single gate.
 fn check_unique_rule_names(model: &Model) -> Result<(), LowerError> {
     let mut names: HashSet<&str> = HashSet::new();
     let all = model

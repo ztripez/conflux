@@ -21,9 +21,9 @@ added in this phase — malformed assessment **shape** (below).
 
 Rule names are a **single global namespace**: table rules and field rules share it,
 and `lower()` rejects any duplicate (table/table, field/field, or table/field) with
-`DuplicateRule`. This is because every report, the planner, and the table/field
-equivalence harnesses key on the rule name as an identity, so a collision would
-silently merge unrelated rules.
+`DuplicateRule`. This is because every report, the planner, the table/field
+equivalence harnesses, and WGSL module names key on the rule name as an identity,
+so a collision would silently merge unrelated rules.
 
 `Rule` keeps its `Option`-based builder (`on` / `propose` / `every` / `assess`)
 validated by `lower()`. A type-state builder was considered and rejected for now:
