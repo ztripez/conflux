@@ -10,7 +10,7 @@ mod sim;
 mod types;
 
 pub use expr::{col, lit, param, Expr};
-pub use sim::{ColumnIr, ParamIr, RuleIr, SimIr, TableIr};
-pub use types::{Assessment, Cadence, ValueKind};
+pub use sim::{ColumnIr, FieldChannelIr, FieldIr, ParamIr, RuleIr, SimIr, TableIr};
+pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
 pub const CRATE_BOUNDARY: &str = "lowered simulation ir";
