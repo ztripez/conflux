@@ -15,7 +15,7 @@
 mod scenarios;
 
 pub use scenarios::{
-    derived_kernel_case, gpu_eligible_numeric, param_rule_fallback, resource_reserve,
+    derived_kernel_case, gpu_eligible_numeric, param_rule_fallback, resource_reserve, runoff_flow,
     selected_execution, settlement_growth, trace_hotspot_case, transfer_dominated_rule,
     unstable_population, watershed_yield, Scenario, ALL_SCENARIOS,
 };

@@ -106,6 +106,24 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         }
     }
 
+    // Field-local flows (absent unless declared).
+    if !ir.flows.is_empty() {
+        println!("  flows: {} flow(s)", ir.flows.len());
+        for flow in report.steps.first().map_or(&[][..], |s| &s.flows) {
+            let summary = flow.summary();
+            println!(
+                "    flow `{}` -> {}.{} [{:?}]: moved {}, boundary loss {}, conservation delta {}",
+                flow.flow,
+                flow.field,
+                flow.channel,
+                flow.conservation,
+                summary.total_moved,
+                summary.total_boundary_loss,
+                summary.conservation_delta
+            );
+        }
+    }
+
     // Kernel extraction + equivalence.
     let kernels = extract(&ir);
     println!(

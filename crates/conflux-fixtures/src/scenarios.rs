@@ -3,7 +3,8 @@
 //! the model name.
 
 use conflux_core::{
-    col, lit, param, Aggregate, Assessment, Bridge, Field, Grid2, Model, Region, Rule, Table,
+    cell, col, field_lit, lit, param, Aggregate, Assessment, Bridge, EdgePolicy, Field, Flow,
+    Grid2, Model, Region, Rule, Table,
 };
 
 /// A scenario's stable name paired with its builder.
@@ -21,6 +22,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("derived_kernel_case", derived_kernel_case),
     ("watershed_yield", watershed_yield),
     ("selected_execution", selected_execution),
+    ("runoff_flow", runoff_flow),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -244,6 +246,30 @@ pub fn selected_execution() -> Model {
         Rule::new("leak")
             .on("Store")
             .propose("level", col("level") - param("rate")),
+    );
+    model
+}
+
+/// The canonical runoff flow scenario: water moves one cell east across a small
+/// terrain strip with a `Reject` edge, so the rightmost cell's runoff leaves the
+/// grid as visible boundary loss while the interior movement stays conserved.
+///
+/// It exercises field-local flow execution and conservation reporting end to end
+/// through the public flow API — no manual debit/credit. The contract suite asserts
+/// the moved amounts, the boundary loss, and the conservation summary.
+pub fn runoff_flow() -> Model {
+    // water = [8, 0, 4]: cell 0 flows east in-bounds; cell 2 flows off the grid.
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![8.0, 0.0, 4.0]);
+    let mut model = Model::new("runoff_flow");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
     );
     model
 }
