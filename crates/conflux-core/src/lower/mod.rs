@@ -26,6 +26,8 @@ mod flows;
 mod actors;
 // Proximity-query lowering (sparse neighbor queries over actors), its own concern.
 mod queries;
+// Multiscale scale-link / projection lowering, its own concern.
+mod scale;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -398,6 +400,30 @@ pub enum LowerError {
          only meaningful for a same-set query"
     )]
     QuerySelfPolicyCrossSet { query: String },
+    #[error("duplicate scale link `{0}`")]
+    DuplicateScaleLink(String),
+    #[error("scale link `{0}` does not declare a source domain (use `.from_region(..)`)")]
+    ScaleLinkMissingSource(String),
+    #[error("scale link `{0}` does not declare a target domain (use `.to_table(..)`)")]
+    ScaleLinkMissingTarget(String),
+    #[error(
+        "scale link `{0}` does not declare an authority policy (use `.source_authoritative()`, \
+         `.target_authoritative()`, or `.report_only()`)"
+    )]
+    ScaleLinkMissingAuthority(String),
+    #[error("scale link `{link}` references unknown region `{region}`")]
+    ScaleLinkUnknownRegion { link: String, region: String },
+    #[error("scale link `{link}` references unknown table `{table}`")]
+    ScaleLinkUnknownTable { link: String, table: String },
+    #[error(
+        "scale link `{link}` relates {source_kind} -> {target_kind}, which is not a supported \
+         scale relationship in this slice (only region -> table)"
+    )]
+    UnsupportedScaleLink {
+        link: String,
+        source_kind: &'static str,
+        target_kind: &'static str,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -423,6 +449,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         actor_rules: Vec::new(),
         actor_movements: Vec::new(),
         queries: Vec::new(),
+        scale_links: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -433,6 +460,10 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.aggregates = aggregates;
     let bridges = bridges::lower_bridges(model, &ir)?;
     ir.bridges = bridges;
+    // Scale links resolve against the lowered regions and tables (their own
+    // multiscale concern, not folded into region/table/aggregate lowering).
+    let scale_links = scale::lower_scale_links(model, &ir)?;
+    ir.scale_links = scale_links;
     let flows = flows::lower_flows(model, &ir)?;
     ir.flows = flows;
     let actors = actors::lower_actors(model, &ir)?;

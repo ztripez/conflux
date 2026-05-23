@@ -16,7 +16,8 @@ pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,
     AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy,
     FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, ParamIr, QueryInput, QueryIr, QueryLimit,
-    QueryMetric, QueryOrdering, RegionIr, RegionMask, RuleIr, SelfPolicy, SimIr, TableIr,
+    QueryMetric, QueryOrdering, RegionIr, RegionMask, RelationshipKind, RuleIr, ScaleLinkIr,
+    ScaleRef, SelfPolicy, SimIr, TableIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 

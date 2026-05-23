@@ -8,9 +8,8 @@
 //! A scale link is **not** duplicate state and **not** an implicit projection. It
 //! introduces no cached parent value and computes nothing. Construction is
 //! permissive; references, the supported relationship kind, and a present authority
-//! policy are checked at `lower()` (a later slice). Projecting values across the
-//! link, reporting drift, and bridging into table state are each separate, explicit
-//! slices.
+//! policy are checked at `lower()`. Projecting values across the link, reporting
+//! drift, and bridging into table state are each separate, explicit slices.
 //!
 //! The first slice supports a region (child/source) -> table (parent/target)
 //! relationship, so the source is region-only here; other source kinds arrive with
@@ -20,10 +19,6 @@ use conflux_ir::Authority;
 
 /// A named scale relationship between two existing domains, with an authority
 /// policy. The child/source is bound with `from_*`, the parent/target with `to_*`.
-//
-// `source`/`target`/`authority` are authoring data consumed by scale-link lowering
-// (#124); this slice is authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ScaleLink {
     pub(crate) name: String,

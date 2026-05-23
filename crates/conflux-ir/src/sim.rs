@@ -23,6 +23,7 @@ pub struct SimIr {
     pub actor_rules: Vec<ActorRuleIr>,
     pub actor_movements: Vec<ActorMovementIr>,
     pub queries: Vec<QueryIr>,
+    pub scale_links: Vec<ScaleLinkIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -333,6 +334,48 @@ pub enum Authority {
     ReportOnly,
 }
 
+/// A resolved reference to one end of a scale link: a domain kind paired with its
+/// index into the matching `SimIr` collection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScaleRef {
+    /// Index into [`SimIr::regions`].
+    Region(usize),
+    /// Index into [`SimIr::tables`].
+    Table(usize),
+}
+
+impl ScaleRef {
+    /// A short, stable label for the domain kind (for reports/diagnostics).
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            ScaleRef::Region(_) => "region",
+            ScaleRef::Table(_) => "table",
+        }
+    }
+}
+
+/// The supported cross-scale relationship a scale link expresses. Only the
+/// region-to-table shape exists in this slice; other combinations are rejected at
+/// lowering until a slice defines them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RelationshipKind {
+    /// A region (child/source) related to a table (parent/target).
+    RegionToTable,
+}
+
+/// A lowered, validated scale link: a named cross-scale relationship between two
+/// resolved domains with an explicit [`Authority`] policy. It names a relationship
+/// and authority boundary only — it caches no parent value and projects nothing
+/// (projections are a separate concern).
+#[derive(Clone, Debug)]
+pub struct ScaleLinkIr {
+    pub name: String,
+    pub source: ScaleRef,
+    pub target: ScaleRef,
+    pub kind: RelationshipKind,
+    pub authority: Authority,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
@@ -395,6 +438,11 @@ impl SimIr {
     /// Finds a proximity query index by name.
     pub fn query_index(&self, name: &str) -> Option<usize> {
         self.queries.iter().position(|q| q.name == name)
+    }
+
+    /// Finds a scale-link index by name.
+    pub fn scale_link_index(&self, name: &str) -> Option<usize> {
+        self.scale_links.iter().position(|l| l.name == name)
     }
 }
 
