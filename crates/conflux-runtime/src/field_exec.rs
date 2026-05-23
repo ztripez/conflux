@@ -97,7 +97,7 @@ pub(crate) fn step_field_rules(
 
         let mut cells = Vec::with_capacity(grid.cells());
         for cell in 0..grid.cells() {
-            let (x, y) = (cell % grid.width, cell / grid.width);
+            let (x, y) = grid.xy(cell);
             let old_value = snapshot[rule.field][rule.target][cell];
             match eval_field(&rule.expr, &snapshot[rule.field], grid, &names, x, y) {
                 Some(proposed) => {

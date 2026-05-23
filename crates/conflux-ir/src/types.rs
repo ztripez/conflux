@@ -84,4 +84,12 @@ impl Grid2 {
     pub fn index(&self, x: usize, y: usize) -> usize {
         y * self.width + x
     }
+
+    /// The `(x, y)` coordinates of a row-major `cell` index — the inverse of
+    /// [`Grid2::index`]. The single source of truth for decomposing a cell index,
+    /// so the row-major convention is not re-spelled at each call site. Does not
+    /// bounds-check; callers must keep `cell < cells()`.
+    pub fn xy(&self, cell: usize) -> (usize, usize) {
+        (cell % self.width, cell / self.width)
+    }
 }

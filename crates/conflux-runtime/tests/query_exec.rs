@@ -278,6 +278,7 @@ fn display_surfaces_policy_and_neighbors() {
     assert!(text.contains("query `near` Herd -> Herd"));
     assert!(text.contains("Chebyshev"));
     assert!(text.contains("within 1"));
+    assert!(text.contains("DistanceThenIndex"));
     assert!(text.contains("exact=true"));
     assert!(text.contains("actor 0:"));
 }

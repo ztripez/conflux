@@ -12,7 +12,7 @@
 //! no HNSW/ANN/cached index — an index is purely an evaluation strategy a backend
 //! may choose later, never part of the semantics defined here.
 
-use conflux_ir::{Grid2, QueryLimit, QueryMetric, SelfPolicy, SimIr};
+use conflux_ir::{Grid2, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy, SimIr};
 
 use crate::report::{QueryNeighbor, QueryReport, QuerySourceResult};
 
@@ -42,6 +42,7 @@ pub(crate) fn evaluate_queries(ir: &SimIr, actor_positions: &[Vec<usize>]) -> Ve
                         query.metric,
                         query.limit,
                         query.self_policy,
+                        query.ordering,
                         same_set,
                     );
                     QuerySourceResult {
@@ -58,6 +59,7 @@ pub(crate) fn evaluate_queries(ir: &SimIr, actor_positions: &[Vec<usize>]) -> Ve
                 metric: query.metric,
                 limit: query.limit,
                 self_policy: query.self_policy,
+                ordering: query.ordering,
                 exact: true,
                 sources,
             }
@@ -76,6 +78,7 @@ fn neighbors_for(
     metric: QueryMetric,
     limit: QueryLimit,
     self_policy: SelfPolicy,
+    ordering: QueryOrdering,
     same_set: bool,
 ) -> Vec<QueryNeighbor> {
     let mut candidates: Vec<QueryNeighbor> = target_positions
@@ -99,14 +102,17 @@ fn neighbors_for(
         })
         .collect();
 
-    // Declared stable order: ascending distance, ties broken by ascending target
-    // index. `total_cmp` gives a deterministic order without unwrapping (distances
-    // are finite, so this matches the natural ordering).
-    candidates.sort_by(|a, b| {
-        a.distance
-            .total_cmp(&b.distance)
-            .then(a.target_actor.cmp(&b.target_actor))
-    });
+    // Apply the declared ordering. The `match` is exhaustive on purpose: a new
+    // `QueryOrdering` variant must fail to compile here rather than be silently
+    // ignored. `total_cmp` gives a deterministic order without unwrapping
+    // (distances are finite, so it matches the natural ordering).
+    match ordering {
+        QueryOrdering::DistanceThenIndex => candidates.sort_by(|a, b| {
+            a.distance
+                .total_cmp(&b.distance)
+                .then(a.target_actor.cmp(&b.target_actor))
+        }),
+    }
 
     if let QueryLimit::KNearest(k) = limit {
         candidates.truncate(k);
@@ -116,8 +122,8 @@ fn neighbors_for(
 
 /// Exact distance between two row-major cells in `grid` under `metric`.
 fn distance(a: usize, b: usize, grid: Grid2, metric: QueryMetric) -> f64 {
-    let (ax, ay) = (a % grid.width, a / grid.width);
-    let (bx, by) = (b % grid.width, b / grid.width);
+    let (ax, ay) = grid.xy(a);
+    let (bx, by) = grid.xy(b);
     let dx = (ax as f64 - bx as f64).abs();
     let dy = (ay as f64 - by as f64).abs();
     match metric {

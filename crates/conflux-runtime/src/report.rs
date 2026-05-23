@@ -6,7 +6,7 @@
 use std::fmt;
 
 use conflux_ir::{
-    AggregateOp, Assessment, ConservationPolicy, QueryLimit, QueryMetric, SelfPolicy,
+    AggregateOp, Assessment, ConservationPolicy, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy,
 };
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
@@ -331,6 +331,8 @@ pub struct QueryReport {
     pub metric: QueryMetric,
     pub limit: QueryLimit,
     pub self_policy: SelfPolicy,
+    /// The order neighbors are returned in (the policy the evaluator applied).
+    pub ordering: QueryOrdering,
     /// Always true in this slice: results are exact, not approximate.
     pub exact: bool,
     /// One result per source actor, in source-actor index order.
@@ -542,13 +544,14 @@ impl fmt::Display for QueryReport {
         };
         writeln!(
             f,
-            "query `{}` {} -> {} [{:?}, {}, {:?}, exact={}]",
+            "query `{}` {} -> {} [{:?}, {}, {:?}, {:?}, exact={}]",
             self.query,
             self.source_set,
             self.target_set,
             self.metric,
             limit,
             self.self_policy,
+            self.ordering,
             self.exact
         )?;
         for source in &self.sources {
