@@ -604,6 +604,13 @@ impl SimIr {
         self.units.iter().position(|u| u.name == name)
     }
 
+    /// The name of a unit index, for report provenance. `None` passes through as
+    /// `None` (unannotated/unknown), so report builders can resolve a column or
+    /// channel's `unit` field directly.
+    pub fn unit_name(&self, unit: Option<usize>) -> Option<&str> {
+        unit.map(|u| self.units[u].name.as_str())
+    }
+
     /// Finds a projection index by name.
     pub fn projection_index(&self, name: &str) -> Option<usize> {
         self.projections.iter().position(|p| p.name == name)

@@ -398,6 +398,8 @@ pub(crate) fn write_projection_bridges(
             table: table.name.clone(),
             signal: table.columns[projection.target_signal].name.clone(),
             value,
+            // The projected unit follows the source aggregate's unit (reused).
+            unit: aggregates[projection.aggregate].unit.clone(),
         });
     }
     reports

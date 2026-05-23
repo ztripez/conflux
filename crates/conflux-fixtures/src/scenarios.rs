@@ -5,7 +5,7 @@
 use conflux_core::{
     cell, col, field_lit, lit, param, ActorMovement, ActorRule, ActorSet, Aggregate, Assessment,
     Bridge, EdgePolicy, Field, Flow, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
-    QueryMetric, Region, Rule, ScaleLink, Table,
+    QueryMetric, Region, Rule, ScaleLink, Table, Unit,
 };
 
 /// A scenario's stable name paired with its builder.
@@ -264,8 +264,9 @@ pub fn selected_execution() -> Model {
 pub fn runoff_flow() -> Model {
     // water = [8, 0, 4]: cell 0 flows east in-bounds; cell 2 flows off the grid.
     let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
-    terrain.stock("water", vec![8.0, 0.0, 4.0]);
+    terrain.stock("water", vec![8.0, 0.0, 4.0]).unit("tons");
     let mut model = Model::new("runoff_flow");
+    model.add_unit(Unit::base("tons"));
     model.add_field(terrain);
     model.add_flow(
         Flow::new("runoff")
@@ -377,13 +378,16 @@ pub fn herd_proximity() -> Model {
 /// value and authority, the (zero) drift, and the bridge feeding table state.
 pub fn regional_projection() -> Model {
     let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
-    terrain.stock("yield", vec![10.0, 20.0]);
+    terrain.stock("yield", vec![10.0, 20.0]).unit("grain");
     let mut settlement = Table::new("Settlement", 1);
     settlement
         .stock("stores", vec![0.0])
         .signal("projected_yield", vec![0.0]);
 
     let mut model = Model::new("regional_projection");
+    // `yield` is measured in grain; the aggregate, projection, and bridge carry that
+    // unit through their reports.
+    model.add_unit(Unit::base("grain"));
     model.add_field(terrain);
     model.add_table(settlement);
     model.add_region(
