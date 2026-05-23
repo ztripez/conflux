@@ -7,27 +7,10 @@
 //! permissive; the field/channel references, the neighbor offset, and the
 //! conservation policy are validated at `lower()` (a later slice).
 
-use conflux_ir::{Assessment, EdgePolicy, FieldExpr};
-
-/// How a flow accounts for the quantity it moves. Always explicit — there is no
-/// hidden balancing pass.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ConservationPolicy {
-    /// The source decrease equals the destination increase, except for movement
-    /// that leaves the grid (reported as boundary loss).
-    Conserved,
-    /// Off-grid movement is allowed and reported as boundary loss — accounted, not
-    /// hidden.
-    BoundaryLoss,
-    /// Non-conserved loss or gain, allowed only because it is named and reported.
-    NamedLoss(String),
-}
+use conflux_ir::{Assessment, ConservationPolicy, EdgePolicy, FieldExpr};
 
 /// A fixed neighbor destination: a cell offset plus the edge behavior when the
 /// destination leaves the grid.
-//
-// Read by flow lowering (#90); inert in this authoring-only slice.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct FlowTarget {
     pub(crate) dx: i32,
@@ -36,10 +19,6 @@ pub(crate) struct FlowTarget {
 }
 
 /// A named movement of a quantity channel between cells of one field.
-//
-// `field`/`channel`/`amount`/`destination`/`conservation`/`assessments` are
-// authoring data consumed by flow lowering (#90); this slice is authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Flow {
     pub(crate) name: String,

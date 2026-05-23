@@ -4,7 +4,7 @@
 //! references are resolved to indices and all invariants (existing columns,
 //! stock targets, matching row counts) are guaranteed by lowering.
 
-use crate::{Assessment, Cadence, Expr, FieldExpr, Grid2, ValueKind};
+use crate::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, Grid2, ValueKind};
 
 /// A fully lowered simulation.
 #[derive(Clone, Debug)]
@@ -18,6 +18,7 @@ pub struct SimIr {
     pub regions: Vec<RegionIr>,
     pub aggregates: Vec<AggregateIr>,
     pub bridges: Vec<BridgeIr>,
+    pub flows: Vec<FlowIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -123,6 +124,40 @@ pub enum AggregateOp {
     Count,
 }
 
+/// How a flow accounts for the quantity it moves. Always explicit — there is no
+/// hidden balancing pass.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConservationPolicy {
+    /// Source decrease equals destination increase, except explicit boundary loss.
+    Conserved,
+    /// Off-grid movement is reported as boundary loss — accounted, not hidden.
+    BoundaryLoss,
+    /// Non-conserved loss or gain, allowed only because it is named and reported.
+    NamedLoss(String),
+}
+
+/// A lowered field-local flow: a named movement of a quantity stock channel from
+/// each source cell to a fixed neighbor, with explicit edge behavior and
+/// conservation policy. A flow moves quantity (debit/credit); it is not a field
+/// rule (assignment). Flows have no cadence in this slice — they run every tick,
+/// and `dt`/parameters are not available to the amount expression.
+#[derive(Clone, Debug)]
+pub struct FlowIr {
+    pub name: String,
+    /// Index into [`SimIr::fields`].
+    pub field: usize,
+    /// Index of the moved quantity stock channel within the field.
+    pub channel: usize,
+    /// Per-source-cell emitted amount.
+    pub amount: FieldExpr,
+    /// Fixed destination neighbor offset and its edge behavior.
+    pub dx: i32,
+    pub dy: i32,
+    pub edge: EdgePolicy,
+    pub conservation: ConservationPolicy,
+    pub assessments: Vec<Assessment>,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
@@ -170,6 +205,11 @@ impl SimIr {
     /// Finds an aggregate index by name.
     pub fn aggregate_index(&self, name: &str) -> Option<usize> {
         self.aggregates.iter().position(|a| a.name == name)
+    }
+
+    /// Finds a flow index by name.
+    pub fn flow_index(&self, name: &str) -> Option<usize> {
+        self.flows.iter().position(|f| f.name == name)
     }
 }
 

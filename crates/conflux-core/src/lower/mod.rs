@@ -20,6 +20,8 @@ mod regions;
 mod aggregates;
 // Field-to-table bridge lowering, its own concern.
 mod bridges;
+// Field-local flow lowering, its own concern.
+mod flows;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -227,6 +229,37 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error("duplicate flow `{0}`")]
+    DuplicateFlow(String),
+    #[error("flow `{0}` does not declare a field (use `.on_field(..)`)")]
+    FlowMissingField(String),
+    #[error("flow `{0}` does not declare a quantity channel (use `.move_channel(..)`)")]
+    FlowMissingChannel(String),
+    #[error("flow `{0}` does not declare an emitted amount (use `.amount(..)`)")]
+    FlowMissingAmount(String),
+    #[error("flow `{0}` does not declare a destination (use `.to_neighbor(..)`)")]
+    FlowMissingDestination(String),
+    #[error(
+        "flow `{0}` does not declare a conservation policy (use `.conserved()`, \
+         `.boundary_loss()`, or `.named_loss(..)`)"
+    )]
+    FlowMissingConservation(String),
+    #[error("flow `{flow}` targets unknown field `{field}`")]
+    FlowUnknownField { flow: String, field: String },
+    #[error("flow `{flow}`: unknown channel `{channel}` in field `{field}`")]
+    FlowUnknownChannel {
+        flow: String,
+        field: String,
+        channel: String,
+    },
+    #[error("flow `{flow}` moves `{field}.{channel}`, which is not a stock")]
+    FlowChannelNotStock {
+        flow: String,
+        field: String,
+        channel: String,
+    },
+    #[error("flow `{flow}` has a zero destination offset; a flow must move to a different cell")]
+    FlowZeroOffset { flow: String },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -247,16 +280,19 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         regions: Vec::new(),
         aggregates: Vec::new(),
         bridges: Vec::new(),
+        flows: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
-    // regions; bridges against the lowered aggregates and tables; rules/field rules
-    // are lowered afterward.
+    // regions; bridges against the lowered aggregates and tables; flows against the
+    // lowered fields; rules/field rules are lowered afterward.
     let regions = regions::lower_regions(model, &ir)?;
     ir.regions = regions;
     let aggregates = aggregates::lower_aggregates(model, &ir)?;
     ir.aggregates = aggregates;
     let bridges = bridges::lower_bridges(model, &ir)?;
     ir.bridges = bridges;
+    let flows = flows::lower_flows(model, &ir)?;
+    ir.flows = flows;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
