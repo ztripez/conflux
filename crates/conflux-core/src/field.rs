@@ -37,6 +37,7 @@ pub(crate) struct FieldChannel {
     pub(crate) kind: ValueKind,
     pub(crate) initial: Vec<f64>,
     pub(crate) derive: Option<Expr>,
+    pub(crate) unit: Option<String>,
 }
 
 impl Field {
@@ -58,6 +59,7 @@ impl Field {
             kind: ValueKind::Stock,
             initial,
             derive: None,
+            unit: None,
         });
         self
     }
@@ -69,6 +71,7 @@ impl Field {
             kind: ValueKind::Signal,
             initial: values,
             derive: None,
+            unit: None,
         });
         self
     }
@@ -82,7 +85,18 @@ impl Field {
             kind: ValueKind::Derived,
             initial: Vec::new(),
             derive: Some(expr),
+            unit: None,
         });
+        self
+    }
+
+    /// Annotates the most recently declared channel with a declared unit. Resolved
+    /// and validated at `lower()`; an unannotated channel is treated as unknown.
+    pub fn unit(&mut self, unit: impl Into<String>) -> &mut Self {
+        self.channels
+            .last_mut()
+            .expect("unit() must follow a channel declaration")
+            .unit = Some(unit.into());
         self
     }
 

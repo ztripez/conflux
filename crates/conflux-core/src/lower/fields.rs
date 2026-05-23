@@ -8,9 +8,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use conflux_ir::{Expr, FieldChannelIr, FieldIr, FieldRuleIr, SimIr, ValueKind};
+use conflux_ir::{Expr, FieldChannelIr, FieldIr, FieldRuleIr, SimIr, UnitIr, ValueKind};
 
-use super::{validate_assessments, LowerError, RESERVED_DT};
+use super::{units, validate_assessments, LowerError, RESERVED_DT};
 use crate::field::Field;
 use crate::model::{FieldRule, Model};
 
@@ -20,6 +20,7 @@ use crate::model::{FieldRule, Model};
 pub(super) fn lower_fields(
     model: &Model,
     param_names: &HashSet<String>,
+    unit_decls: &[UnitIr],
 ) -> Result<Vec<FieldIr>, LowerError> {
     // Table names are already validated unique by `lower_tables`; seed the set so a
     // field cannot collide with a table.
@@ -29,12 +30,16 @@ pub(super) fn lower_fields(
         if !domain_names.insert(field.name.as_str()) {
             return Err(LowerError::DuplicateField(field.name.clone()));
         }
-        fields.push(lower_field(field, param_names)?);
+        fields.push(lower_field(field, param_names, unit_decls)?);
     }
     Ok(fields)
 }
 
-fn lower_field(field: &Field, param_names: &HashSet<String>) -> Result<FieldIr, LowerError> {
+fn lower_field(
+    field: &Field,
+    param_names: &HashSet<String>,
+    unit_decls: &[UnitIr],
+) -> Result<FieldIr, LowerError> {
     let grid = field.grid;
     if grid.width == 0 || grid.height == 0 {
         return Err(LowerError::EmptyGrid {
@@ -77,11 +82,15 @@ fn lower_field(field: &Field, param_names: &HashSet<String>) -> Result<FieldIr, 
                 check_derived(field, &channel.name, expr, &channel_names, param_names)?;
             }
         }
+        let unit = units::resolve_unit(channel.unit.as_deref(), unit_decls, || {
+            format!("channel `{}.{}`", field.name, channel.name)
+        })?;
         channels.push(FieldChannelIr {
             name: channel.name.clone(),
             kind: channel.kind,
             initial: channel.initial.clone(),
             derive: channel.derive.clone(),
+            unit,
         });
     }
 
