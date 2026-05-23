@@ -9,12 +9,16 @@
 
 use std::collections::HashMap;
 
-use conflux_ir::{ActorSetIr, SimIr};
+use conflux_ir::{ActorSetIr, QueryInput, SimIr};
 
 use crate::eval::{eval, EvalCtx};
 use crate::exec::assess;
 use crate::field_exec::resolve_neighbor;
-use crate::report::{ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorRuleFireReport};
+use crate::query_exec::evaluate_queries;
+use crate::report::{
+    ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
+    ActorRuleFireReport,
+};
 
 /// Materializes per-actor channel buffers, indexed `[set][channel][actor]`, from
 /// each actor set's declared initial values.
@@ -105,6 +109,16 @@ pub(crate) fn step_actor_rules(
     // observes.
     let snapshot = actor_data.to_vec();
 
+    // Proximity-query inputs are evaluated once, on the same pre-movement actor
+    // positions every rule reads. Movement runs in a later phase, so a rule always
+    // observes neighbor relationships as they were at the start of this tick — not
+    // after this tick's movement. Skipped entirely when no rule consumes a query.
+    let query_reports = if ir.actor_rules.iter().any(|r| !r.query_inputs.is_empty()) {
+        evaluate_queries(ir, actor_positions)
+    } else {
+        Vec::new()
+    };
+
     let mut reports = Vec::new();
     for rule in &ir.actor_rules {
         if tick % rule.cadence.period != 0 {
@@ -134,6 +148,36 @@ pub(crate) fn step_actor_rules(
             .samples
             .iter()
             .map(|&c| ir.fields[set.field].channels[c].name.clone())
+            .collect();
+
+        // Each query input becomes one readable column: the per-actor scalar
+        // reduction of that query's result for the actor as its own source. The
+        // query's source set is this rule's set (validated at lowering), so result
+        // `a` is actor `a`.
+        for input in &rule.query_inputs {
+            let report = &query_reports[input.query];
+            let column: Vec<f64> = (0..set.count)
+                .map(|a| {
+                    let neighbors = &report.sources[a].neighbors;
+                    match input.input {
+                        QueryInput::Count => neighbors.len() as f64,
+                        QueryInput::NearestDistance => {
+                            neighbors.first().map_or(f64::INFINITY, |n| n.distance)
+                        }
+                    }
+                })
+                .collect();
+            names.insert(input.binding.as_str(), columns.len());
+            columns.push(column);
+        }
+        let query_inputs: Vec<ActorQueryInputBinding> = rule
+            .query_inputs
+            .iter()
+            .map(|qi| ActorQueryInputBinding {
+                binding: qi.binding.clone(),
+                query: ir.queries[qi.query].name.clone(),
+                input: qi.input,
+            })
             .collect();
 
         let mut outcomes = Vec::with_capacity(set.count);
@@ -167,6 +211,7 @@ pub(crate) fn step_actor_rules(
             target_channel: set.channels[target].name.clone(),
             dt,
             sampled,
+            query_inputs,
             actors: outcomes,
         });
     }

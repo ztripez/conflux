@@ -1,8 +1,8 @@
 //! Proximity-query authoring API and lowering.
 
 use conflux_core::{
-    lower, ActorSet, Field, Grid2, LowerError, Model, ProximityQuery, QueryLimit, QueryMetric,
-    QueryOrdering, SelfPolicy,
+    col, lower, ActorRule, ActorSet, Field, Grid2, LowerError, Model, ProximityQuery, QueryInput,
+    QueryLimit, QueryMetric, QueryOrdering, SelfPolicy,
 };
 
 /// A 3x2 `Terrain` field hosting a 2-actor `Herd`.
@@ -222,6 +222,124 @@ fn rejects_exclude_self_on_cross_set_query() {
     assert!(matches!(
         lower_with(model, query),
         Err(LowerError::QuerySelfPolicyCrossSet { .. })
+    ));
+}
+
+/// A `Herd` self-query "near" plus an actor rule consuming it via `inputs`.
+fn herd_consuming(rule_inputs: impl Fn(ActorRule) -> ActorRule) -> Model {
+    let mut model = herd_model();
+    model.add_proximity_query(
+        ProximityQuery::new("near")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .within_cells(1)
+            .exclude_self(),
+    );
+    let rule =
+        rule_inputs(ActorRule::new("graze").on_actors("Herd")).propose("energy", col("crowd"));
+    model.add_actor_rule(rule);
+    model
+}
+
+#[test]
+fn actor_rule_consumes_query_count() {
+    let ir = lower(&herd_consuming(|r| r.query_count("crowd", "near"))).unwrap();
+    let rule = &ir.actor_rules[0];
+    assert_eq!(rule.query_inputs.len(), 1);
+    assert_eq!(rule.query_inputs[0].binding, "crowd");
+    assert_eq!(rule.query_inputs[0].query, ir.query_index("near").unwrap());
+    assert_eq!(rule.query_inputs[0].input, QueryInput::Count);
+}
+
+#[test]
+fn actor_rule_consumes_nearest_distance() {
+    let ir = lower(&herd_consuming(|r| r.nearest_distance("crowd", "near"))).unwrap();
+    assert_eq!(
+        ir.actor_rules[0].query_inputs[0].input,
+        QueryInput::NearestDistance
+    );
+}
+
+#[test]
+fn rejects_consuming_unknown_query() {
+    match lower(&herd_consuming(|r| r.query_count("crowd", "ghost"))) {
+        Err(LowerError::ActorRuleUnknownQuery { query, .. }) => assert_eq!(query, "ghost"),
+        other => panic!("expected ActorRuleUnknownQuery, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_consuming_a_query_with_a_different_source_set() {
+    // The query's source is `Wolves`, but the rule runs on `Herd`.
+    let mut model = herd_model();
+    let wolves = ActorSet::new("Wolves", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(1, 0)])
+        .stock("hunger", vec![2.0]);
+    model.add_actor_set(wolves);
+    model.add_proximity_query(
+        ProximityQuery::new("prey")
+            .from_actors("Wolves")
+            .to_actors("Herd")
+            .within_cells(1),
+    );
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .query_count("crowd", "prey")
+            .propose("energy", col("crowd")),
+    );
+    match lower(&model) {
+        Err(LowerError::ActorRuleQuerySourceMismatch {
+            query_source,
+            actor_set,
+            ..
+        }) => {
+            assert_eq!(query_source, "Wolves");
+            assert_eq!(actor_set, "Herd");
+        }
+        other => panic!("expected ActorRuleQuerySourceMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_binding_that_shadows_an_actor_channel() {
+    // `energy` is an actor channel, so a query binding may not reuse the name.
+    match lower(&herd_consuming(|r| r.query_count("energy", "near"))) {
+        Err(LowerError::ActorQueryBindingShadows { binding, .. }) => assert_eq!(binding, "energy"),
+        other => panic!("expected ActorQueryBindingShadows, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_duplicate_query_binding() {
+    match lower(&herd_consuming(|r| {
+        r.query_count("crowd", "near")
+            .nearest_distance("crowd", "near")
+    })) {
+        Err(LowerError::DuplicateActorQueryBinding { binding, .. }) => assert_eq!(binding, "crowd"),
+        other => panic!("expected DuplicateActorQueryBinding, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_expression_reading_an_undeclared_binding() {
+    // `col("crowd")` with no query input declared is an unknown channel.
+    let mut model = herd_model();
+    model.add_proximity_query(
+        ProximityQuery::new("near")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .within_cells(1),
+    );
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("crowd")),
+    );
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::ActorRuleUnknownChannel { .. })
     ));
 }
 

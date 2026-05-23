@@ -27,10 +27,11 @@ pub use field_equivalence::{
 };
 pub use plan::ExecutionPlan;
 pub use report::{
-    ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorRuleFireReport, AggregateReport,
-    AssessmentOutcome, AssessmentSummary, BridgeReport, ComparisonStatus, FieldCellOutcome,
-    FieldRuleFireReport, FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, QueryNeighbor,
-    QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
+    ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
+    ActorRuleFireReport, AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport,
+    ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport,
+    FlowSummary, FlowTransfer, QueryNeighbor, QueryReport, QuerySourceResult, Report, RowOutcome,
+    RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 

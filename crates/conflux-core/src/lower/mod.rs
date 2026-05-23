@@ -341,6 +341,25 @@ pub enum LowerError {
         actors: String,
         channel: String,
     },
+    #[error("actor rule `{rule}` consumes unknown proximity query `{query}`")]
+    ActorRuleUnknownQuery { rule: String, query: String },
+    #[error(
+        "actor rule `{rule}` consumes query `{query}`, whose source actor set `{query_source}` is \
+         not the rule's actor set `{actor_set}`; a rule may only consume queries it is the source of"
+    )]
+    ActorRuleQuerySourceMismatch {
+        rule: String,
+        query: String,
+        query_source: String,
+        actor_set: String,
+    },
+    #[error(
+        "actor rule `{rule}` query binding `{binding}` shadows an actor channel or sampled \
+         host-field channel of the same name"
+    )]
+    ActorQueryBindingShadows { rule: String, binding: String },
+    #[error("actor rule `{rule}` declares query binding `{binding}` more than once")]
+    DuplicateActorQueryBinding { rule: String, binding: String },
     #[error("duplicate actor movement `{0}`")]
     DuplicateActorMovement(String),
     #[error("actor movement `{0}` does not declare an actor set (use `.on_actors(..)`)")]
@@ -418,13 +437,14 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.flows = flows;
     let actors = actors::lower_actors(model, &ir)?;
     ir.actors = actors;
+    // Queries resolve against the lowered actor sets and their host fields, and must
+    // be lowered before actor rules so a rule can resolve the query it consumes.
+    let queries = queries::lower_queries(model, &ir)?;
+    ir.queries = queries;
     let actor_rules = actors::lower_actor_rules(model, &ir)?;
     ir.actor_rules = actor_rules;
     let actor_movements = actors::lower_actor_movements(model, &ir)?;
     ir.actor_movements = actor_movements;
-    // Queries resolve against the lowered actor sets and their host fields.
-    let queries = queries::lower_queries(model, &ir)?;
-    ir.queries = queries;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

@@ -202,6 +202,34 @@ pub struct ActorRuleIr {
     /// Host-field channel indices sampled at each actor's current cell. Each is
     /// readable in `expr` via `col(<host-field channel name>)`.
     pub samples: Vec<usize>,
+    /// Declared proximity-query values consumed by this rule. Each binds a local
+    /// name (read in `expr` via `col(<binding>)`) to a scalar reduction of a named
+    /// query's per-source-actor result. The declared query is the only neighbor
+    /// access an actor rule has — there are no ad-hoc neighbor scans.
+    pub query_inputs: Vec<ActorQueryInputIr>,
+}
+
+/// A proximity-query value an actor rule consumes: a named binding bound to one
+/// scalar reduction ([`QueryInput`]) of a query's per-source-actor result. The
+/// query's source actor set equals the rule's actor set (validated at lowering),
+/// so the result for actor `a` is the query result for source actor `a`.
+#[derive(Clone, Debug)]
+pub struct ActorQueryInputIr {
+    /// The local name the value is read under (`col(binding)` in the expression).
+    pub binding: String,
+    /// Index into [`SimIr::queries`].
+    pub query: usize,
+    pub input: QueryInput,
+}
+
+/// A scalar reduction of a proximity query's per-source-actor result, usable as an
+/// actor-rule input. A deliberately tiny, exact subset — no arbitrary actor reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryInput {
+    /// The number of neighbors the query returned for the source actor.
+    Count,
+    /// The distance to the nearest neighbor; `+inf` when there are none.
+    NearestDistance,
 }
 
 /// An explicit actor movement: each actor's host-field position shifts by a fixed
