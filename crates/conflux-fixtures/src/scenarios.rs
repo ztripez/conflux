@@ -27,6 +27,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("herd_grazing", herd_grazing),
     ("herd_proximity", herd_proximity),
     ("regional_projection", regional_projection),
+    ("unit_checked_settlement", unit_checked_settlement),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -416,6 +417,57 @@ pub fn regional_projection() -> Model {
         Rule::new("accumulate")
             .on("Settlement")
             .propose("stores", col("stores") + col("projected_yield")),
+    );
+    model
+}
+
+/// The canonical dimensional-validation scenario: a unit-annotated settlement whose
+/// regional grain harvest is aggregated, bridged into a table signal, and added to
+/// its grain store with matching units.
+///
+/// It exercises the whole units track end to end through the public API: declared
+/// units (`people`, `grain`), unit-annotated table columns and a field channel, a
+/// `grain`-valued aggregate bridged into a `grain`-valued signal, and a same-unit
+/// `harvest` rule (`grain = grain + harvest`) that lowers cleanly and runs. The
+/// aggregate report carries the `grain` unit (surfaced in the baseline report).
+///
+/// The contract suite pairs this with a negative case it builds from this model —
+/// adding a `population (people) + harvest (grain)` rule — to assert the single
+/// lowering gate rejects the dimensionally invalid expression. Unit checking is the
+/// gate's job: the fixture never hand-checks units.
+pub fn unit_checked_settlement() -> Model {
+    // Regional grain yield over a 2-cell terrain (5 + 5 = 10 grain).
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("grain_yield", vec![5.0, 5.0]).unit("grain");
+
+    let mut settlement = Table::new("Settlement", 1);
+    settlement
+        .stock("population", vec![100.0])
+        .unit("people")
+        .stock("grain", vec![0.0])
+        .unit("grain")
+        .signal("harvest", vec![0.0])
+        .unit("grain");
+
+    let mut model = Model::new("unit_checked_settlement");
+    model.add_unit(Unit::base("people"));
+    model.add_unit(Unit::base("grain"));
+    model.add_field(terrain);
+    model.add_table(settlement);
+    model.add_region(
+        Region::new("territory")
+            .on_field("Terrain")
+            .mask(vec![true, true]),
+    );
+    // The aggregate's output unit follows `grain_yield` (grain).
+    model.add_aggregate(Aggregate::sum("total_grain", "territory", "grain_yield"));
+    // Bridge the regional total into the table's harvest signal.
+    model.add_bridge(Bridge::new("total_grain").to_signal("Settlement", "harvest"));
+    // Same-unit harvest update: grain (grain) + harvest (grain) -> grain.
+    model.add_rule(
+        Rule::new("harvest_grain")
+            .on("Settlement")
+            .propose("grain", col("grain") + col("harvest")),
     );
     model
 }

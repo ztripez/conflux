@@ -2,7 +2,9 @@
 //! failure modes* across the stack, so future backends / planner changes /
 //! agent-written code have stable, named scenarios to check against.
 
-use conflux_core::{lower, Authority, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
+use conflux_core::{
+    col, lower, Authority, LowerError, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy,
+};
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
 use conflux_planner::{plan, transfer_advisory, BackendChoice};
@@ -522,4 +524,46 @@ fn regional_projection_projects_a_basin_total_and_bridges_it() {
     let aggregates = sim.aggregate_report();
     let basin = aggregates.iter().find(|a| a.name == "basin_yield").unwrap();
     assert_eq!(basin.unit.as_deref(), Some("grain"));
+}
+
+#[test]
+fn unit_checked_settlement_validates_dimensions_and_carries_units() {
+    let ir = lower(&unit_checked_settlement()).unwrap();
+
+    // Lowered column units (annotated through the public unit API).
+    let settlement = &ir.tables[ir.table_index("Settlement").unwrap()];
+    let unit =
+        |col: &str| ir.unit_name(settlement.columns[settlement.column_index(col).unwrap()].unit);
+    assert_eq!(unit("population"), Some("people"));
+    assert_eq!(unit("grain"), Some("grain"));
+    assert_eq!(unit("harvest"), Some("grain"));
+
+    // Valid same-unit arithmetic runs: harvest (regional total 10, grain) is bridged
+    // into the signal and added to the grain store.
+    let mut sim = Simulation::new(ir);
+    sim.step();
+    assert_eq!(sim.column("Settlement", "grain"), Some(&[10.0][..]));
+
+    // The aggregate report preserves the source channel's unit.
+    let aggregates = sim.aggregate_report();
+    let total = aggregates.iter().find(|a| a.name == "total_grain").unwrap();
+    assert_eq!(total.unit.as_deref(), Some("grain"));
+    assert_eq!(total.value, 10.0);
+}
+
+#[test]
+fn unit_checked_settlement_rejects_an_incompatible_expression() {
+    // Build the negative case from the canonical fixture through the public API: a
+    // rule adding population (people) to harvest (grain). The single lowering gate —
+    // not the fixture — must reject it.
+    let mut model = unit_checked_settlement();
+    model.add_rule(
+        Rule::new("bad")
+            .on("Settlement")
+            .propose("population", col("population") + col("harvest")),
+    );
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::IncompatibleDimensions { .. })
+    ));
 }
