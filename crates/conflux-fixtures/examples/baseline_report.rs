@@ -124,6 +124,44 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         }
     }
 
+    // Actor sets (absent unless declared).
+    if !ir.actors.is_empty() {
+        println!(
+            "  actors: {} set(s), {} rule(s), {} movement(s)",
+            ir.actors.len(),
+            ir.actor_rules.len(),
+            ir.actor_movements.len()
+        );
+        if let Some(step) = report.steps.first() {
+            for rule in &step.actor_rules {
+                let committed = rule.actors.iter().filter(|a| a.committed).count();
+                println!(
+                    "    actor rule `{}` -> {}.{}: {}/{} committed{}",
+                    rule.rule,
+                    rule.actor_set,
+                    rule.target_channel,
+                    committed,
+                    rule.actors.len(),
+                    if rule.sampled.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", samples {:?}", rule.sampled)
+                    }
+                );
+            }
+            for movement in &step.actor_movements {
+                let moved = movement.moves.iter().filter(|m| !m.rejected).count();
+                println!(
+                    "    actor movement `{}` -> {}: {}/{} moved",
+                    movement.movement,
+                    movement.actor_set,
+                    moved,
+                    movement.moves.len()
+                );
+            }
+        }
+    }
+
     // Kernel extraction + equivalence.
     let kernels = extract(&ir);
     println!(

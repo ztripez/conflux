@@ -382,3 +382,26 @@ fn runoff_flow_moves_water_and_reports_boundary_loss() {
     assert_eq!(summary.total_boundary_loss, 2.0);
     assert_eq!(summary.conservation_delta, 0.0);
 }
+
+#[test]
+fn herd_grazing_grazes_the_field_and_drifts_east() {
+    let ir = lower(&herd_grazing()).unwrap();
+
+    // Lowered actor identity, positions (cells), and channels.
+    assert_eq!(ir.actors.len(), 1);
+    assert_eq!(ir.actors[0].name, "Herd");
+    assert_eq!(ir.actors[0].positions, vec![0, 1]);
+    assert!(ir.actors[0].channels.iter().any(|c| c.name == "energy"));
+
+    let mut sim = Simulation::new(ir);
+    let step = sim.step();
+
+    // graze: energy += sampled grass ([5, 10] at cells 0, 1).
+    assert_eq!(sim.actor_channel("Herd", "energy"), Some(&[5.0, 10.0][..]));
+    assert_eq!(step.actor_rules[0].sampled, vec!["grass".to_string()]);
+
+    // drift east: cells 0,1 -> 1,2.
+    assert_eq!(sim.actor_positions("Herd"), Some(&[1, 2][..]));
+    assert_eq!(step.actor_movements[0].moves.len(), 2);
+    assert!(step.actor_movements[0].moves.iter().all(|m| !m.rejected));
+}

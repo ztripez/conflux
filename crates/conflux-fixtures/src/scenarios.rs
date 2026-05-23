@@ -3,8 +3,8 @@
 //! the model name.
 
 use conflux_core::{
-    cell, col, field_lit, lit, param, Aggregate, Assessment, Bridge, EdgePolicy, Field, Flow,
-    Grid2, Model, Region, Rule, Table,
+    cell, col, field_lit, lit, param, ActorMovement, ActorRule, ActorSet, Aggregate, Assessment,
+    Bridge, EdgePolicy, Field, Flow, Grid2, Model, Region, Rule, Table,
 };
 
 /// A scenario's stable name paired with its builder.
@@ -23,6 +23,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("watershed_yield", watershed_yield),
     ("selected_execution", selected_execution),
     ("runoff_flow", runoff_flow),
+    ("herd_grazing", herd_grazing),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -271,5 +272,40 @@ pub fn runoff_flow() -> Model {
             .to_neighbor(1, 0, EdgePolicy::Reject)
             .conserved(),
     );
+    model
+}
+
+/// The canonical actor scenario: a `Herd` of sparse actors grazing a `Terrain`
+/// field and drifting east across it.
+///
+/// It exercises the whole actor track end to end through the public API: an actor
+/// set positioned on a field, an actor rule that samples the host field at each
+/// actor's cell (`energy += grass`), and an explicit movement with edge behavior.
+/// The contract suite asserts the lowered actor identity, the grazing update, the
+/// sampling provenance, and the movement.
+pub fn herd_grazing() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("grass", vec![5.0, 10.0, 20.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![0.0, 0.0]);
+
+    let mut model = Model::new("herd_grazing");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    // Each actor gains the grass at its current cell.
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("grass")
+            .propose("energy", col("energy") + col("grass")),
+    );
+    // Then the herd drifts one cell east, leaving the grid at the edge (Reject).
+    model.add_actor_movement(ActorMovement::new("drift").on_actors("Herd").by_offset(
+        1,
+        0,
+        EdgePolicy::Reject,
+    ));
     model
 }
