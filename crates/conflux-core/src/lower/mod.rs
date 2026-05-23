@@ -451,11 +451,6 @@ pub enum LowerError {
         link: String,
         link_region: String,
     },
-    #[error(
-        "projection `{projection}` over scale link `{link}` requires a region -> table link, but \
-         the link's target is not a table"
-    )]
-    ProjectionLinkTargetNotTable { projection: String, link: String },
     #[error("projection `{projection}` targets unknown signal `{signal}` in table `{table}`")]
     ProjectionUnknownSignal {
         projection: String,

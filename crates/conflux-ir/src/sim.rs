@@ -373,9 +373,9 @@ pub struct ScaleLinkIr {
 /// A projection is a named computation, not a shadow column. Its value is its
 /// source [`AggregateIr`]'s value (reused, never recomputed) and its operation is
 /// that aggregate's operation; it adds the cross-scale provenance (which link, which
-/// target signal) and inherits the link's authority. The projection itself writes
-/// nothing — evaluation is report-only, and any state write is a separate explicit
-/// bridge.
+/// target signal) and inherits the linked [`ScaleLinkIr`]'s authority (reached via
+/// `scale_link`, not stored here). The projection itself writes nothing — evaluation
+/// is report-only, and any state write is a separate explicit bridge.
 #[derive(Clone, Debug)]
 pub struct ProjectionIr {
     pub name: String,

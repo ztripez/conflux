@@ -149,22 +149,23 @@ fn lower_projection(projection: &Projection, ir: &SimIr) -> Result<ProjectionIr,
     })?;
     let aggregate = &ir.aggregates[aggregate_idx];
 
-    // The projection's source aggregate must reduce over the link's source region:
-    // the projection carries *that* region's value up the link.
-    let link_region = match link.source {
-        ScaleRef::Region(r) => r,
-        // A region -> table link always has a region source (guaranteed by scale-link
-        // lowering); this arm cannot occur, but is handled rather than panicking.
-        ScaleRef::Table(_) => {
-            return Err(LowerError::ProjectionSourceMismatch {
-                projection: name.to_string(),
-                aggregate: aggregate_name.clone(),
-                aggregate_region: ir.regions[aggregate.region].name.clone(),
-                link: link_name.clone(),
-                link_region: "(non-region source)".to_string(),
-            })
+    // Resolve the link's endpoints. Scale-link lowering guarantees the shape per
+    // relationship kind, so the endpoint variants are destructured against that
+    // invariant rather than re-validated here.
+    let (link_region, target_table) = match link.kind {
+        RelationshipKind::RegionToTable => {
+            let ScaleRef::Region(region) = link.source else {
+                unreachable!("a RegionToTable scale link has a region source (#124)");
+            };
+            let ScaleRef::Table(table) = link.target else {
+                unreachable!("a RegionToTable scale link has a table target (#124)");
+            };
+            (region, table)
         }
     };
+
+    // The projection's source aggregate must reduce over the link's source region:
+    // the projection carries *that* region's value up the link.
     if aggregate.region != link_region {
         return Err(LowerError::ProjectionSourceMismatch {
             projection: name.to_string(),
@@ -176,15 +177,6 @@ fn lower_projection(projection: &Projection, ir: &SimIr) -> Result<ProjectionIr,
     }
 
     // The target signal is a signal column on the link's target table.
-    let target_table = match link.target {
-        ScaleRef::Table(t) => t,
-        ScaleRef::Region(_) => {
-            return Err(LowerError::ProjectionLinkTargetNotTable {
-                projection: name.to_string(),
-                link: link_name.clone(),
-            })
-        }
-    };
     let table = &ir.tables[target_table];
     let target_signal =
         table
