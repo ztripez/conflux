@@ -27,13 +27,16 @@ Split trigger: extract the remaining table/rule/expr concerns into their own
 new expression forms) or `mod.rs` passes ~600 lines. Each new domain gets its own
 `lower/<domain>.rs`, never an ad-hoc addition to `mod.rs`.
 
-## `crates/conflux-runtime/src/exec.rs` — 243 lines  ⚠ highest risk
+## `crates/conflux-runtime/src/exec.rs` — ~455 lines  ⚠ highest risk
 
-Responsibilities (four, all part of the CPU reference executor): simulation state
+Responsibilities (all part of the CPU reference executor): simulation state
 (`Simulation`), the tick/step loop (`step`, `run`), derived-column recompute
-(`recompute_derived`), and assessment evaluation (`assess`), plus small lookup
-helpers. Cohesive today, but it is the module most likely to absorb the next
-responsibility by inertia.
+(`recompute_derived`), assessment evaluation (`assess`), the bridge write
+(`write_bridges`), and per-row commit (`commit_row`), plus small lookup helpers.
+New domains have been kept *out* of it — field rules (`field_exec.rs`), flows
+(`flow_exec.rs`), aggregates (`aggregate_eval.rs`), and selection
+(`selection.rs`) are siblings — but it is still the module most likely to absorb
+the next responsibility by inertia.
 
 Verdict: **no action now**, top of the watch list.
 

@@ -70,6 +70,9 @@ pub(crate) fn step_flows(
 
             // Diagnostic only: assessments over the emitted amount are reported but
             // do not gate the movement, so conservation accounting stays exact.
+            // `Finite`/`Range` are meaningful here; the old value is 0.0 (an
+            // emission has no prior value), so `MaxRelativeDelta` is degenerate on
+            // flows in this slice and not a useful choice.
             let assessments = assess(&flow.assessments, 0.0, amount);
 
             transfers.push(FlowTransfer {
