@@ -6,15 +6,11 @@
 //! self-inclusion policy, a stable ordering, and (for now) exact evaluation. An
 //! index/ANN backend is only a later implementation option; the declaration here is
 //! the source of truth. Construction is permissive; references and policy validity
-//! are checked at `lower()` (a later slice).
+//! are checked at `lower()`.
 
 use conflux_ir::{ApproximationPolicy, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
 
 /// A named sparse proximity query over actor positions.
-//
-// `source`/`target`/`limit` are authoring data consumed by query lowering (#112);
-// this slice is authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ProximityQuery {
     pub(crate) name: String,

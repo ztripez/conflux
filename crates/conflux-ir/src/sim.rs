@@ -22,6 +22,7 @@ pub struct SimIr {
     pub actors: Vec<ActorSetIr>,
     pub actor_rules: Vec<ActorRuleIr>,
     pub actor_movements: Vec<ActorMovementIr>,
+    pub queries: Vec<QueryIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -258,6 +259,34 @@ pub enum ApproximationPolicy {
     Exact,
 }
 
+/// A lowered, validated proximity query: resolved source/target actor-set indices
+/// plus the fully explicit metric, limit, self, ordering, and approximation policy.
+///
+/// This is the *semantic* query model. It carries no index/ANN/backend concept —
+/// only `ApproximationPolicy::Exact` exists in this slice, and an index is purely
+/// an evaluation strategy decided later, never part of the query's meaning. For a
+/// same-set query `source == target`. The host field is shared by source and
+/// target (guaranteed by lowering), so distances are well defined.
+#[derive(Clone, Debug)]
+pub struct QueryIr {
+    pub name: String,
+    /// Index into [`SimIr::actors`] — the actors the query runs from (one result
+    /// set per source actor).
+    pub source: usize,
+    /// Index into [`SimIr::actors`] — the candidate-neighbor actors. Equals
+    /// `source` for a same-set query.
+    pub target: usize,
+    pub metric: QueryMetric,
+    /// The neighbor bound; always present (validated at lowering). For
+    /// [`QueryLimit::KNearest`], exact evaluation returns *up to* `k` neighbors —
+    /// if fewer than `k` candidates exist (after the self policy), the result is
+    /// the smaller set, never padded.
+    pub limit: QueryLimit,
+    pub self_policy: SelfPolicy,
+    pub ordering: QueryOrdering,
+    pub approximation: ApproximationPolicy,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
@@ -315,6 +344,11 @@ impl SimIr {
     /// Finds an actor set index by name.
     pub fn actor_index(&self, name: &str) -> Option<usize> {
         self.actors.iter().position(|a| a.name == name)
+    }
+
+    /// Finds a proximity query index by name.
+    pub fn query_index(&self, name: &str) -> Option<usize> {
+        self.queries.iter().position(|q| q.name == name)
     }
 }
 
