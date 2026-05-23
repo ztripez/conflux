@@ -13,6 +13,7 @@ use conflux_kernel::{execute_elementwise, extract, Kernel};
 
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
+use crate::flow_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
     AssessmentOutcome, BridgeReport, ComparisonStatus, Report, RowOutcome, RuleFireReport,
@@ -268,11 +269,16 @@ impl Simulation {
         // two domains do not interact within a tick.
         let field_rules = field_exec::step_field_rules(ir, tick, &mut self.field_data, &params);
 
+        // Flows are their own phase after field rules: they move quantity between
+        // cells of the post-field-rule field state.
+        let flows = flow_exec::step_flows(ir, &mut self.field_data, &params);
+
         StepReport {
             tick,
             rules: rule_reports,
             field_rules,
             bridges,
+            flows,
         }
     }
 }

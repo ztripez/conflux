@@ -10,6 +10,7 @@ mod eval;
 mod exec;
 mod field_equivalence;
 mod field_exec;
+mod flow_exec;
 mod plan;
 mod report;
 mod selection;
@@ -25,7 +26,8 @@ pub use field_equivalence::{
 pub use plan::ExecutionPlan;
 pub use report::{
     AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport, ComparisonStatus,
-    FieldCellOutcome, FieldRuleFireReport, Report, RowOutcome, RuleFireReport, StepReport,
+    FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport, FlowTransfer, Report,
+    RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
