@@ -235,3 +235,245 @@ fn unannotated_models_carry_no_units() {
     let ir = lower(&table_model()).unwrap();
     assert!(ir.tables[0].columns.iter().all(|c| c.unit.is_none()));
 }
+
+// ---- #137: dimensional checks ----
+
+use conflux_core::{ActorRule, EdgePolicy, FieldRule, Flow, ProximityQuery};
+
+/// A `Store` table with `population: people` and `rainfall: length`, plus units.
+fn dimensioned_store() -> Model {
+    let mut store = Table::new("Store", 1);
+    store
+        .stock("population", vec![100.0])
+        .unit("people")
+        .signal("rainfall", vec![5.0])
+        .unit("length")
+        .stock("births", vec![3.0])
+        .unit("people");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("people"));
+    model.add_unit(Unit::base("length"));
+    model.add_table(store);
+    model
+}
+
+#[test]
+fn valid_same_unit_arithmetic_lowers() {
+    // population (people) + births (people) -> people, target population (people).
+    let mut model = dimensioned_store();
+    model.add_rule(
+        Rule::new("grow")
+            .on("Store")
+            .propose("population", col("population") + col("births")),
+    );
+    assert!(lower(&model).is_ok());
+}
+
+#[test]
+fn rejects_adding_incompatible_dimensions() {
+    // population (people) + rainfall (length) -> incompatible.
+    let mut model = dimensioned_store();
+    model.add_rule(
+        Rule::new("bad")
+            .on("Store")
+            .propose("population", col("population") + col("rainfall")),
+    );
+    match lower(&model) {
+        Err(LowerError::IncompatibleDimensions { left, right, .. }) => {
+            assert!(
+                (left == "people" && right == "length") || (left == "length" && right == "people")
+            );
+        }
+        other => panic!("expected IncompatibleDimensions, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_proposal_unit_mismatch() {
+    // Target population is people, but rainfall is length.
+    let mut model = dimensioned_store();
+    model.add_rule(
+        Rule::new("bad")
+            .on("Store")
+            .propose("population", col("rainfall")),
+    );
+    match lower(&model) {
+        Err(LowerError::TargetDimensionMismatch { target, expr, .. }) => {
+            assert_eq!(target, "people");
+            assert_eq!(expr, "length");
+        }
+        other => panic!("expected TargetDimensionMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn multiplication_composes_dimensions() {
+    // grain (grain) over time: harvest = rate (grain/year) * years (year) -> grain.
+    let mut store = Table::new("Store", 1);
+    store
+        .stock("grain", vec![0.0])
+        .unit("grain")
+        .signal("rate", vec![2.0])
+        .unit("grain_per_year")
+        .signal("years", vec![1.0])
+        .unit("year");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("grain"));
+    model.add_unit(Unit::base("year"));
+    model.add_unit(Unit::ratio("grain_per_year", "grain", "year"));
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("harvest")
+            .on("Store")
+            .propose("grain", col("grain") + col("rate") * col("years")),
+    );
+    assert!(lower(&model).is_ok(), "grain + (grain/year * year) = grain");
+}
+
+#[test]
+fn unknown_operands_are_conservative() {
+    // population (people) + an unannotated column -> unknown, no rejection.
+    let mut store = Table::new("Store", 1);
+    store
+        .stock("population", vec![100.0])
+        .unit("people")
+        .signal("mystery", vec![1.0]); // unannotated
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("people"));
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("grow")
+            .on("Store")
+            .propose("population", col("population") + col("mystery")),
+    );
+    assert!(lower(&model).is_ok());
+}
+
+#[test]
+fn rejects_incompatible_dimensions_in_a_derived_column() {
+    let mut store = Table::new("Store", 1);
+    store
+        .stock("population", vec![100.0])
+        .unit("people")
+        .signal("rainfall", vec![5.0])
+        .unit("length")
+        .derived("bad", col("population") + col("rainfall"));
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("people"));
+    model.add_unit(Unit::base("length"));
+    model.add_table(store);
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::IncompatibleDimensions { .. })
+    ));
+}
+
+#[test]
+fn rejects_incompatible_dimensions_in_a_field_rule() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain
+        .stock("water", vec![1.0, 2.0])
+        .unit("tons")
+        .signal("heat", vec![1.0, 1.0])
+        .unit("kelvin");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("tons"));
+    model.add_unit(Unit::base("kelvin"));
+    model.add_field(terrain);
+    model.add_field_rule(FieldRule::new("bad").on_field("Terrain").propose(
+        "water",
+        conflux_core::cell("water") + conflux_core::cell("heat"),
+    ));
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::IncompatibleDimensions { .. })
+    ));
+}
+
+#[test]
+fn rejects_incompatible_dimensions_in_an_actor_rule() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("grass", vec![0.0, 0.0]).unit("tons");
+    let herd = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![10.0])
+        .unit("joules");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("joules"));
+    model.add_unit(Unit::base("tons"));
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    // energy (joules) + sampled grass (tons) -> incompatible.
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("grass")
+            .propose("energy", col("energy") + col("grass")),
+    );
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::IncompatibleDimensions { .. })
+    ));
+}
+
+#[test]
+fn rejects_flow_amount_unit_mismatch() {
+    // Moving `water` (tons) but the amount is expressed from `heat` (kelvin).
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain
+        .stock("water", vec![10.0, 0.0])
+        .unit("tons")
+        .signal("heat", vec![3.0, 3.0])
+        .unit("kelvin");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("tons"));
+    model.add_unit(Unit::base("kelvin"));
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("leak")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(conflux_core::cell("heat"))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    match lower(&model) {
+        Err(LowerError::TargetDimensionMismatch { target, expr, .. }) => {
+            assert_eq!(target, "tons");
+            assert_eq!(expr, "kelvin");
+        }
+        other => panic!("expected TargetDimensionMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn query_bindings_are_dimensionally_unknown() {
+    // A query_count binding has no declared unit, so combining it with a dimensioned
+    // channel is conservatively allowed.
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("grass", vec![0.0, 0.0, 0.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![0.0, 0.0])
+        .unit("joules");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("joules"));
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_proximity_query(
+        ProximityQuery::new("near")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .within_cells(1)
+            .exclude_self(),
+    );
+    model.add_actor_rule(
+        ActorRule::new("react")
+            .on_actors("Herd")
+            .query_count("n", "near")
+            .propose("energy", col("energy") + col("n")),
+    );
+    assert!(lower(&model).is_ok());
+}

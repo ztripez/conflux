@@ -28,8 +28,10 @@ mod actors;
 mod queries;
 // Multiscale scale-link / projection lowering, its own concern.
 mod scale;
-// Unit / dimension lowering and (later) dimensional checks, its own concern.
+// Unit / dimension lowering, its own concern.
 mod units;
+// Dimensional checking over the lowered IR (the units-validation pass).
+mod dimension;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -43,6 +45,18 @@ pub enum LowerError {
     UnitUnknownReference { unit: String, reference: String },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
+    #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
+    IncompatibleDimensions {
+        context: String,
+        left: String,
+        right: String,
+    },
+    #[error("{context}: expression has dimension {expr} but the target has dimension {target}")]
+    TargetDimensionMismatch {
+        context: String,
+        target: String,
+        expr: String,
+    },
     #[error("duplicate parameter `{0}`")]
     DuplicateParam(String),
     #[error("parameter `{0}` is reserved and supplied by the executor")]
@@ -557,11 +571,15 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
-    Ok(SimIr {
+    let ir = SimIr {
         rules,
         field_rules,
         ..ir
-    })
+    };
+    // Dimensional checks run last, over the fully lowered IR (every column/channel
+    // now carries its resolved unit). The runtime stays unit-erased.
+    dimension::check(&ir)?;
+    Ok(ir)
 }
 
 fn lower_params(model: &Model) -> Result<Vec<ParamIr>, LowerError> {
