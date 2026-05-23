@@ -318,6 +318,10 @@ pub struct QueryIr {
 /// Which side of a scale link owns the concept that crosses it. Always explicit: a
 /// scale link names a relationship and an authority boundary, and never silently
 /// reconciles state across scales.
+///
+/// This is the *simulation-scale* authority (which domain owns a cross-scale
+/// concept); it is unrelated to Residency's buffer-residency authority, which lives
+/// behind the `conflux-residency` bridge and concerns where data physically lives.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Authority {
     /// The source/child domain is authoritative; values flow source -> target.

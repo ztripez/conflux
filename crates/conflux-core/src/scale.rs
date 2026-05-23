@@ -11,6 +11,10 @@
 //! policy are checked at `lower()` (a later slice). Projecting values across the
 //! link, reporting drift, and bridging into table state are each separate, explicit
 //! slices.
+//!
+//! The first slice supports a region (child/source) -> table (parent/target)
+//! relationship, so the source is region-only here; other source kinds arrive with
+//! the domain combinations that need them.
 
 use conflux_ir::Authority;
 
