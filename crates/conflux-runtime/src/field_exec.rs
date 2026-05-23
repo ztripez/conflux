@@ -41,7 +41,7 @@ pub(crate) fn materialize_fields(ir: &SimIr, params: &HashMap<&str, f64>) -> Vec
 
 /// Recomputes a field's derived channels (same-cell expressions) from the current
 /// stock/signal values, so they stay consistent after commits.
-fn recompute_field_derived(
+pub(crate) fn recompute_field_derived(
     field: &FieldIr,
     channels: &mut [Vec<f64>],
     params: &HashMap<&str, f64>,
@@ -142,7 +142,7 @@ pub(crate) fn step_field_rules(
     reports
 }
 
-fn channel_map(field: &FieldIr) -> HashMap<&str, usize> {
+pub(crate) fn channel_map(field: &FieldIr) -> HashMap<&str, usize> {
     field
         .channels
         .iter()
@@ -156,7 +156,7 @@ fn channel_map(field: &FieldIr) -> HashMap<&str, usize> {
 /// `Wrap` reads are always in bounds. A reference to a missing channel (an
 /// internal error past lowering) surfaces as `NaN`, which the `Finite` assessment
 /// catches, rather than panicking.
-fn eval_field(
+pub(crate) fn eval_field(
     expr: &FieldExpr,
     channels: &[Vec<f64>],
     grid: Grid2,
@@ -206,7 +206,7 @@ fn read(channels: &[Vec<f64>], names: &HashMap<&str, usize>, name: &str, cell: u
 /// Resolves the absolute cell of a neighbor offset under `edge`. `Wrap` is
 /// toroidal (always in bounds); `Reject` returns `None` when the offset leaves
 /// the grid — nothing is clamped or substituted.
-fn resolve_neighbor(
+pub(crate) fn resolve_neighbor(
     x: usize,
     y: usize,
     dx: i32,
