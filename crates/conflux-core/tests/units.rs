@@ -62,6 +62,39 @@ fn resolves_a_ratio_to_a_composed_dimension() {
 }
 
 #[test]
+fn ratio_can_reference_an_earlier_ratio() {
+    // A ratio of a ratio composes dimensions: (grain/year) / season = grain/(year·season).
+    let mut model = table_model();
+    model.add_unit(Unit::base("grain"));
+    model.add_unit(Unit::base("year"));
+    model.add_unit(Unit::base("season"));
+    model.add_unit(Unit::ratio("grain_per_year", "grain", "year"));
+    model.add_unit(Unit::ratio(
+        "grain_per_year_season",
+        "grain_per_year",
+        "season",
+    ));
+    let ir = lower(&model).unwrap();
+    let dim = &ir.units[ir.unit_index("grain_per_year_season").unwrap()].dimension;
+    let expected = Dimension::base("grain")
+        .divide(&Dimension::base("year"))
+        .divide(&Dimension::base("season"));
+    assert_eq!(*dim, expected);
+}
+
+#[test]
+fn dimension_label_renders_num_over_den() {
+    assert_eq!(Dimension::dimensionless().label(), "dimensionless");
+    assert_eq!(Dimension::base("grain").label(), "grain");
+    let per_year = Dimension::base("grain").divide(&Dimension::base("year"));
+    assert_eq!(per_year.label(), "grain/year");
+    let inv_year = Dimension::dimensionless().divide(&Dimension::base("year"));
+    assert_eq!(inv_year.label(), "1/year");
+    let area = Dimension::base("m").multiply(&Dimension::base("m"));
+    assert_eq!(area.label(), "m^2");
+}
+
+#[test]
 fn models_without_units_lower_unchanged() {
     let ir = lower(&table_model()).expect("a unit-free model lowers");
     assert!(ir.units.is_empty());

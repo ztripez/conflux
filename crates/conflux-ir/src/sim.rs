@@ -97,22 +97,42 @@ impl Dimension {
     }
 
     /// A short, stable label for diagnostics: `dimensionless`, a single base name,
-    /// or a `num/den` style product of base^exponent terms.
+    /// or a `num/den` rendering with positive exponents in the numerator and
+    /// negative exponents in the denominator (e.g. `grain/year`, `grain/year^2`,
+    /// `1/year`, `grain^2`).
     pub fn label(&self) -> String {
         if self.factors.is_empty() {
             return "dimensionless".to_string();
         }
-        self.factors
+        let render = |base: &str, exp: i32| {
+            if exp == 1 {
+                base.to_string()
+            } else {
+                format!("{base}^{exp}")
+            }
+        };
+        let numerator: Vec<String> = self
+            .factors
             .iter()
-            .map(|(base, exp)| {
-                if *exp == 1 {
-                    base.clone()
-                } else {
-                    format!("{base}^{exp}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("·")
+            .filter(|(_, exp)| *exp > 0)
+            .map(|(base, exp)| render(base, *exp))
+            .collect();
+        let denominator: Vec<String> = self
+            .factors
+            .iter()
+            .filter(|(_, exp)| *exp < 0)
+            .map(|(base, exp)| render(base, -*exp))
+            .collect();
+        let num = if numerator.is_empty() {
+            "1".to_string()
+        } else {
+            numerator.join("·")
+        };
+        if denominator.is_empty() {
+            num
+        } else {
+            format!("{num}/{}", denominator.join("·"))
+        }
     }
 }
 
