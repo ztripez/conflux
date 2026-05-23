@@ -20,7 +20,7 @@ pub use bridge::Bridge;
 pub use field::Field;
 pub use flow::Flow;
 pub use lower::{lower, LowerError};
-pub use model::{ActorRule, FieldRule, Model, Rule, Table};
+pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use region::Region;
 
 // Re-export the shared primitives so callers can build models from one crate.

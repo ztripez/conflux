@@ -21,6 +21,7 @@ pub struct SimIr {
     pub flows: Vec<FlowIr>,
     pub actors: Vec<ActorSetIr>,
     pub actor_rules: Vec<ActorRuleIr>,
+    pub actor_movements: Vec<ActorMovementIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -197,6 +198,20 @@ pub struct ActorRuleIr {
     pub cadence: Cadence,
     pub expr: Expr,
     pub assessments: Vec<Assessment>,
+}
+
+/// An explicit actor movement: each actor's host-field position shifts by a fixed
+/// `(dx, dy)` offset at a cadence, with explicit edge behavior. Movement is actor
+/// position semantics — not pathfinding, routing, or an engine transform.
+#[derive(Clone, Debug)]
+pub struct ActorMovementIr {
+    pub name: String,
+    /// Index into [`SimIr::actors`].
+    pub actor_set: usize,
+    pub dx: i32,
+    pub dy: i32,
+    pub edge: EdgePolicy,
+    pub cadence: Cadence,
 }
 
 /// The explicit bridge from a region aggregate into a table signal: the aggregate

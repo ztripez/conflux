@@ -4,7 +4,7 @@
 //! parameters, and rules are built with these types and the `col` / `lit` /
 //! `param` expression constructors re-exported from the crate root.
 
-use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
+use conflux_ir::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, ValueKind};
 
 use crate::actor::ActorSet;
 use crate::aggregate::Aggregate;
@@ -35,6 +35,8 @@ pub struct Model {
     pub(crate) actors: Vec<ActorSet>,
     // Lowered into actor-rule IR by `lower()`.
     pub(crate) actor_rules: Vec<ActorRule>,
+    // Lowered into actor-movement IR by `lower()`.
+    pub(crate) actor_movements: Vec<ActorMovement>,
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +61,7 @@ impl Model {
             flows: Vec::new(),
             actors: Vec::new(),
             actor_rules: Vec::new(),
+            actor_movements: Vec::new(),
         }
     }
 
@@ -140,6 +143,13 @@ impl Model {
     /// validated and lowered by `lower()`.
     pub fn add_actor_rule(&mut self, rule: ActorRule) -> &mut Self {
         self.actor_rules.push(rule);
+        self
+    }
+
+    /// Adds an actor movement (shifts actor positions over the host field). It is
+    /// validated and lowered by `lower()`.
+    pub fn add_actor_movement(&mut self, movement: ActorMovement) -> &mut Self {
+        self.actor_movements.push(movement);
         self
     }
 }
@@ -304,6 +314,49 @@ impl FieldRule {
     /// Adds an assessment applied to the proposed value before commit.
     pub fn assess(mut self, assessment: Assessment) -> Self {
         self.assessments.push(assessment);
+        self
+    }
+}
+
+/// An explicit actor movement: shifts each actor's host-field position by a fixed
+/// `(dx, dy)` offset at a cadence, with explicit edge behavior. Movement updates
+/// actor position; it is not pathfinding, routing, or an engine transform.
+#[derive(Clone, Debug)]
+pub struct ActorMovement {
+    pub(crate) name: String,
+    pub(crate) actors: Option<String>,
+    pub(crate) offset: Option<(i32, i32, EdgePolicy)>,
+    pub(crate) cadence: Cadence,
+}
+
+impl ActorMovement {
+    /// Starts a movement. It fires every tick until [`ActorMovement::every`] sets a
+    /// cadence.
+    pub fn new(name: impl Into<String>) -> Self {
+        ActorMovement {
+            name: name.into(),
+            actors: None,
+            offset: None,
+            cadence: Cadence::every(1),
+        }
+    }
+
+    /// Binds the movement to an actor set.
+    pub fn on_actors(mut self, actors: impl Into<String>) -> Self {
+        self.actors = Some(actors.into());
+        self
+    }
+
+    /// Each actor moves by the fixed offset `(dx, dy)`, with `edge` behavior when
+    /// the move leaves the host field.
+    pub fn by_offset(mut self, dx: i32, dy: i32, edge: EdgePolicy) -> Self {
+        self.offset = Some((dx, dy, edge));
+        self
+    }
+
+    /// Sets the cadence period in ticks.
+    pub fn every(mut self, period: u64) -> Self {
+        self.cadence = Cadence::every(period);
         self
     }
 }

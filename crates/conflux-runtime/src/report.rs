@@ -30,6 +30,28 @@ pub struct StepReport {
     pub flows: Vec<FlowFireReport>,
     /// Actor rule firings this tick (empty when no actor rules are declared).
     pub actor_rules: Vec<ActorRuleFireReport>,
+    /// Actor movements applied this tick (empty when none are declared).
+    pub actor_movements: Vec<ActorMovementReport>,
+}
+
+/// One actor movement applied on one tick: the per-actor position shifts.
+#[derive(Clone, Debug)]
+pub struct ActorMovementReport {
+    pub movement: String,
+    pub actor_set: String,
+    pub moves: Vec<ActorMoveOutcome>,
+}
+
+/// The result of one actor's movement: its old position, the proposed target
+/// (which may be off the grid), and the used position. `rejected` is true when an
+/// off-grid `Reject` move left the actor in place — never silently clamped.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ActorMoveOutcome {
+    pub actor: usize,
+    pub old: (usize, usize),
+    pub proposed: (i64, i64),
+    pub used: (usize, usize),
+    pub rejected: bool,
 }
 
 /// One firing of one actor rule on one tick, evaluated per actor.
@@ -436,6 +458,24 @@ impl fmt::Display for Report {
                         if !assessment.passed {
                             writeln!(f, "      FAILED: {}", assessment.detail)?;
                         }
+                    }
+                }
+            }
+            for movement in &step.actor_movements {
+                writeln!(
+                    f,
+                    "  actor movement `{}` -> {}",
+                    movement.movement, movement.actor_set
+                )?;
+                for m in &movement.moves {
+                    if m.rejected {
+                        writeln!(
+                            f,
+                            "    actor {}: {:?} -> {:?} [REJECTED: off-grid, stays {:?}]",
+                            m.actor, m.old, m.proposed, m.used
+                        )?;
+                    } else {
+                        writeln!(f, "    actor {}: {:?} -> {:?}", m.actor, m.old, m.used)?;
                     }
                 }
             }
