@@ -560,6 +560,39 @@ fn rejects_a_nonpositive_or_nonfinite_factor() {
         lower(&negative),
         Err(LowerError::ConversionInvalidFactor { .. })
     ));
+
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mut model = length_units();
+        model.add_conversion(Conversion::new("c", "kilometer", "meter", bad));
+        assert!(
+            matches!(
+                lower(&model),
+                Err(LowerError::ConversionInvalidFactor { .. })
+            ),
+            "non-finite factor {bad} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn alias_of_alias_resolves_transitively() {
+    // centimeter -> meter -> (base) length; all share one dimension, so a conversion
+    // between the two aliases is same-dimension and lowers.
+    let mut model = table_model();
+    model.add_unit(Unit::base("meter"));
+    model.add_unit(Unit::alias("kilometer", "meter"));
+    model.add_unit(Unit::alias("centimeter", "kilometer"));
+    model.add_conversion(Conversion::new(
+        "cm_to_km",
+        "centimeter",
+        "kilometer",
+        0.00001,
+    ));
+    let ir = lower(&model).expect("alias-of-alias same-dimension conversion lowers");
+    let m = ir.unit_index("meter").unwrap();
+    let cm = ir.unit_index("centimeter").unwrap();
+    assert_eq!(ir.units[cm].dimension, ir.units[m].dimension);
+    assert_eq!(ir.conversions.len(), 1);
 }
 
 #[test]

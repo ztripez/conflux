@@ -10,7 +10,7 @@
 //! behavior, and conversions are never applied automatically. The value-annotation
 //! resolver ([`resolve_unit`]) and the dimensional checks build on this vocabulary.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use conflux_ir::{ConversionIr, Dimension, UnitIr};
 
@@ -78,7 +78,6 @@ pub(super) fn lower_conversions(
     model: &Model,
     units: &[UnitIr],
 ) -> Result<Vec<ConversionIr>, LowerError> {
-    use std::collections::HashSet;
     let mut names: HashSet<&str> = HashSet::new();
     let mut conversions = Vec::with_capacity(model.conversions.len());
     for conversion in &model.conversions {
