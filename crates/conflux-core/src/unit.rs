@@ -30,6 +30,10 @@ pub(crate) enum UnitSpec {
         numerator: String,
         denominator: String,
     },
+    /// A distinct unit that shares the dimension of a previously declared unit (a
+    /// different scale of the same quantity, e.g. `kilometer` aliasing `meter`).
+    /// Same-dimension units are what explicit conversions relate.
+    Alias { of: String },
 }
 
 impl Unit {
@@ -67,7 +71,55 @@ impl Unit {
         }
     }
 
+    /// A distinct unit sharing the dimension of a previously declared unit `of` — a
+    /// different scale of the same quantity (e.g. `Unit::alias("kilometer",
+    /// "meter")`). Same-dimension units are what an explicit [`Conversion`] relates.
+    pub fn alias(name: impl Into<String>, of: impl Into<String>) -> Self {
+        Unit {
+            name: name.into(),
+            spec: UnitSpec::Alias { of: of.into() },
+        }
+    }
+
     /// The unit's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// A named, explicit, multiplicative conversion between two same-dimension units.
+///
+/// Conversions are **policy, not hidden math**: declaring one records that
+/// `target_value = source_value * factor`, but nothing converts automatically — no
+/// expression silently converts, and addition/subtraction never inserts a factor.
+/// The two units must share a dimension (validated at `lower()`). The factor is
+/// carried as metadata; an invocation surface is a later, narrow slice.
+#[derive(Clone, Debug)]
+pub struct Conversion {
+    pub(crate) name: String,
+    pub(crate) source: String,
+    pub(crate) target: String,
+    pub(crate) factor: f64,
+}
+
+impl Conversion {
+    /// A multiplicative conversion `name` from `source` to `target`:
+    /// `target_value = source_value * factor`.
+    pub fn new(
+        name: impl Into<String>,
+        source: impl Into<String>,
+        target: impl Into<String>,
+        factor: f64,
+    ) -> Self {
+        Conversion {
+            name: name.into(),
+            source: source.into(),
+            target: target.into(),
+            factor,
+        }
+    }
+
+    /// The conversion's name.
     pub fn name(&self) -> &str {
         &self.name
     }

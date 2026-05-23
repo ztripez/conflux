@@ -14,7 +14,7 @@ use crate::flow::Flow;
 use crate::query::ProximityQuery;
 use crate::region::Region;
 use crate::scale::{Projection, ProjectionBridge, ScaleLink};
-use crate::unit::Unit;
+use crate::unit::{Conversion, Unit};
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
@@ -22,6 +22,8 @@ pub struct Model {
     pub(crate) name: String,
     // Lowered into unit IR by `lower()`; validation metadata only.
     pub(crate) units: Vec<Unit>,
+    // Lowered into conversion IR by `lower()`; declared, never auto-applied.
+    pub(crate) conversions: Vec<Conversion>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -64,6 +66,7 @@ impl Model {
         Model {
             name: name.into(),
             units: Vec::new(),
+            conversions: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -88,6 +91,14 @@ impl Model {
     /// change runtime numeric behavior.
     pub fn add_unit(&mut self, unit: Unit) -> &mut Self {
         self.units.push(unit);
+        self
+    }
+
+    /// Declares an explicit unit conversion. Validated and lowered by `lower()`
+    /// (same-dimension only); it is never applied automatically — declaring one
+    /// changes no value and no expression silently converts.
+    pub fn add_conversion(&mut self, conversion: Conversion) -> &mut Self {
+        self.conversions.push(conversion);
         self
     }
 

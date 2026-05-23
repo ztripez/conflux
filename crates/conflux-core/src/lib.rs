@@ -27,14 +27,14 @@ pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use query::ProximityQuery;
 pub use region::Region;
 pub use scale::{Projection, ProjectionBridge, ScaleLink};
-pub use unit::Unit;
+pub use unit::{Conversion, Unit};
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{
     cell, col, field_lit, lit, neighbor, param, AggregateOp, ApproximationPolicy, Assessment,
-    Authority, Cadence, ConservationPolicy, Dimension, EdgePolicy, Expr, FieldExpr, Grid2,
-    QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy,
-    UnitIr, ValueKind,
+    Authority, Cadence, ConservationPolicy, ConversionIr, Dimension, EdgePolicy, Expr, FieldExpr,
+    Grid2, QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef,
+    SelfPolicy, UnitIr, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";
