@@ -19,6 +19,7 @@ pub struct SimIr {
     pub aggregates: Vec<AggregateIr>,
     pub bridges: Vec<BridgeIr>,
     pub flows: Vec<FlowIr>,
+    pub actors: Vec<ActorSetIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -158,6 +159,29 @@ pub struct FlowIr {
     pub assessments: Vec<Assessment>,
 }
 
+/// A lowered actor set: a fixed number of sparse entities positioned on a host
+/// field, each with per-actor scalar channels. A distinct sparse domain — not a
+/// table and not an ECS.
+#[derive(Clone, Debug)]
+pub struct ActorSetIr {
+    pub name: String,
+    /// Index into [`SimIr::fields`] (the position space).
+    pub field: usize,
+    pub count: usize,
+    /// One host-field cell index per actor (row-major `y * width + x`), validated
+    /// in bounds at lowering.
+    pub positions: Vec<usize>,
+    pub channels: Vec<ActorChannelIr>,
+}
+
+/// A per-actor scalar channel, one value per actor.
+#[derive(Clone, Debug)]
+pub struct ActorChannelIr {
+    pub name: String,
+    pub kind: ValueKind,
+    pub initial: Vec<f64>,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
@@ -210,6 +234,11 @@ impl SimIr {
     /// Finds a flow index by name.
     pub fn flow_index(&self, name: &str) -> Option<usize> {
         self.flows.iter().position(|f| f.name == name)
+    }
+
+    /// Finds an actor set index by name.
+    pub fn actor_index(&self, name: &str) -> Option<usize> {
+        self.actors.iter().position(|a| a.name == name)
     }
 }
 

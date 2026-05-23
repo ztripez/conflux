@@ -13,8 +13,9 @@ mod types;
 pub use expr::{col, lit, param, Expr};
 pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use sim::{
-    AggregateIr, AggregateOp, BridgeIr, ColumnIr, ConservationPolicy, FieldChannelIr, FieldIr,
-    FieldRuleIr, FlowIr, ParamIr, RegionIr, RegionMask, RuleIr, SimIr, TableIr,
+    ActorChannelIr, ActorSetIr, AggregateIr, AggregateOp, BridgeIr, ColumnIr, ConservationPolicy,
+    FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, ParamIr, RegionIr, RegionMask, RuleIr, SimIr,
+    TableIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
