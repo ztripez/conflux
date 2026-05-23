@@ -163,6 +163,15 @@ impl Simulation {
         crate::query_exec::evaluate_queries(&self.ir, &self.actor_positions)
     }
 
+    /// Evaluates every declared upward projection against the current materialized
+    /// field and table state, returning a report per projection: the projected
+    /// value (the source aggregate's, reused), the observed target signal, and the
+    /// drift between them. This is a read-only observation — it never reconciles or
+    /// writes target state. Call it after `new()` or any `step()`/`run()`.
+    pub fn projection_report(&self) -> Vec<crate::report::ProjectionReport> {
+        crate::projection_exec::evaluate_projections(&self.ir, &self.field_data, &self.data)
+    }
+
     /// Advances the simulation `ticks` ticks, returning a report.
     pub fn run(&mut self, ticks: u64) -> Report {
         let mut report = Report::default();
