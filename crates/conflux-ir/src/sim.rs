@@ -25,6 +25,7 @@ pub struct SimIr {
     pub queries: Vec<QueryIr>,
     pub scale_links: Vec<ScaleLinkIr>,
     pub projections: Vec<ProjectionIr>,
+    pub projection_bridges: Vec<ProjectionBridgeIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -387,6 +388,19 @@ pub struct ProjectionIr {
     pub target_table: usize,
     /// Signal column index within `target_table` — the projection's report identity.
     pub target_signal: usize,
+}
+
+/// The explicit bridge that writes a projection's value into its target table
+/// signal each tick. This is the *only* state-writing boundary for projections —
+/// projection evaluation itself never mutates target state. It writes the projected
+/// value (the source aggregate's value) to every row of the projection's target
+/// signal, signals only, and runs in the same start-of-tick phase as aggregate
+/// bridges. Only a source-authoritative projection may be bridged (guaranteed by
+/// lowering); there is no target-authoritative writeback.
+#[derive(Clone, Debug)]
+pub struct ProjectionBridgeIr {
+    /// Index into [`SimIr::projections`]; the target table+signal come from it.
+    pub projection: usize,
 }
 
 /// The explicit bridge from a region aggregate into a table signal: the aggregate

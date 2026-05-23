@@ -31,8 +31,8 @@ pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
     ActorRuleFireReport, AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport,
     ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport,
-    FlowSummary, FlowTransfer, ProjectionReport, QueryNeighbor, QueryReport, QuerySourceResult,
-    Report, RowOutcome, RuleFireReport, StepReport,
+    FlowSummary, FlowTransfer, ProjectionBridgeReport, ProjectionReport, QueryNeighbor,
+    QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 

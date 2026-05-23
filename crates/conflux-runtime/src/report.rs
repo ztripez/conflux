@@ -35,6 +35,9 @@ pub struct StepReport {
     pub actor_rules: Vec<ActorRuleFireReport>,
     /// Actor movements applied this tick (empty when none are declared).
     pub actor_movements: Vec<ActorMovementReport>,
+    /// Projection-to-table bridges applied this tick, in declaration order (empty
+    /// when none are declared).
+    pub projection_bridges: Vec<ProjectionBridgeReport>,
 }
 
 /// One actor movement applied on one tick: the per-actor position shifts.
@@ -188,6 +191,18 @@ pub enum FlowDestination {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BridgeReport {
     pub aggregate: String,
+    pub table: String,
+    pub signal: String,
+    pub value: f64,
+}
+
+/// One projection-to-table bridge applied on one tick: the projection's value
+/// written into every row of its target table signal. The value is the source
+/// aggregate's value (reused); this is the only state-writing boundary for
+/// projections.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectionBridgeReport {
+    pub projection: String,
     pub table: String,
     pub signal: String,
     pub value: f64,
@@ -453,6 +468,13 @@ impl fmt::Display for Report {
                     f,
                     "  bridge `{}` -> {}.{} = {}",
                     bridge.aggregate, bridge.table, bridge.signal, bridge.value
+                )?;
+            }
+            for bridge in &step.projection_bridges {
+                writeln!(
+                    f,
+                    "  projection bridge `{}` -> {}.{} = {}",
+                    bridge.projection, bridge.table, bridge.signal, bridge.value
                 )?;
             }
             for rule in &step.rules {

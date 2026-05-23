@@ -4,8 +4,8 @@
 //! bridging arrive in later slices. A link-free model must lower unchanged.
 
 use conflux_core::{
-    col, lit, lower, Aggregate, Authority, Field, Grid2, LowerError, Model, Projection, Region,
-    ScaleLink, Table,
+    col, lit, lower, Aggregate, Authority, Bridge, Field, Grid2, LowerError, Model, Projection,
+    ProjectionBridge, Region, ScaleLink, Table,
 };
 
 /// A `Terrain` field with a `north` region, a `Settlement` table, and a basin-total
@@ -371,4 +371,103 @@ fn rejects_target_that_is_not_a_signal() {
 fn models_without_projections_lower_unchanged() {
     let ir = lower(&multiscale_model()).expect("a projection-free model lowers");
     assert!(ir.projections.is_empty());
+}
+
+/// `multiscale_model` + `basin` link (authority) + `yield_up` projection, ready for
+/// a projection bridge to be added by the caller.
+fn bridgeable_model(authority: Authority) -> Model {
+    let mut model = multiscale_model();
+    let link = ScaleLink::new("basin")
+        .from_region("north")
+        .to_table("Settlement");
+    let link = match authority {
+        Authority::SourceAuthoritative => link.source_authoritative(),
+        Authority::TargetAuthoritative => link.target_authoritative(),
+        Authority::ReportOnly => link.report_only(),
+    };
+    model.add_scale_link(link);
+    model.add_projection(
+        Projection::new("yield_up")
+            .over_link("basin")
+            .of_aggregate("north_total")
+            .to_signal("projected_yield"),
+    );
+    model
+}
+
+#[test]
+fn lowers_a_valid_projection_bridge() {
+    let mut model = bridgeable_model(Authority::SourceAuthoritative);
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    let ir = lower(&model).expect("a valid projection bridge lowers");
+    assert_eq!(ir.projection_bridges.len(), 1);
+    assert_eq!(
+        ir.projection_bridges[0].projection,
+        ir.projection_index("yield_up").unwrap()
+    );
+}
+
+#[test]
+fn rejects_bridge_for_unknown_projection() {
+    let mut model = bridgeable_model(Authority::SourceAuthoritative);
+    model.add_projection_bridge(ProjectionBridge::new("ghost"));
+    match lower(&model) {
+        Err(LowerError::ProjectionBridgeUnknownProjection(name)) => assert_eq!(name, "ghost"),
+        other => panic!("expected ProjectionBridgeUnknownProjection, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_duplicate_projection_bridge() {
+    let mut model = bridgeable_model(Authority::SourceAuthoritative);
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    match lower(&model) {
+        Err(LowerError::DuplicateProjectionBridge(name)) => assert_eq!(name, "yield_up"),
+        other => panic!("expected DuplicateProjectionBridge, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_bridging_a_report_only_projection() {
+    let mut model = bridgeable_model(Authority::ReportOnly);
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    match lower(&model) {
+        Err(LowerError::ProjectionBridgeNotSourceAuthoritative { projection }) => {
+            assert_eq!(projection, "yield_up");
+        }
+        other => panic!("expected ProjectionBridgeNotSourceAuthoritative, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_bridging_a_target_authoritative_projection() {
+    let mut model = bridgeable_model(Authority::TargetAuthoritative);
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::ProjectionBridgeNotSourceAuthoritative { .. })
+    ));
+}
+
+#[test]
+fn rejects_projection_bridge_colliding_with_an_aggregate_bridge() {
+    // An aggregate bridge already writes Settlement.projected_yield; a projection
+    // bridge to the same signal would be a second writer.
+    let mut model = bridgeable_model(Authority::SourceAuthoritative);
+    model.add_bridge(Bridge::new("north_total").to_signal("Settlement", "projected_yield"));
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    match lower(&model) {
+        Err(LowerError::ProjectionBridgeDuplicateTarget { signal, .. }) => {
+            assert_eq!(signal, "projected_yield");
+        }
+        other => panic!("expected ProjectionBridgeDuplicateTarget, got {other:?}"),
+    }
+}
+
+#[test]
+fn models_without_projection_bridges_lower_unchanged() {
+    let ir = lower(&bridgeable_model(Authority::SourceAuthoritative))
+        .expect("a bridge-free model lowers");
+    assert!(ir.projection_bridges.is_empty());
 }

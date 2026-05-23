@@ -17,8 +17,8 @@ use crate::field_exec;
 use crate::flow_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
-    AssessmentOutcome, BridgeReport, ComparisonStatus, Report, RowOutcome, RuleFireReport,
-    StepReport,
+    AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport, Report, RowOutcome,
+    RuleFireReport, StepReport,
 };
 use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
 
@@ -193,7 +193,7 @@ impl Simulation {
         // before table rules run. This keeps the start-of-tick snapshot internally
         // consistent: derived values match their inputs — including just-bridged
         // signals — so rules never observe a stale derived column.
-        let bridges = prepare_rule_snapshot(
+        let (bridges, projection_bridges) = prepare_rule_snapshot(
             &self.ir,
             &self.plan,
             &params,
@@ -341,30 +341,66 @@ impl Simulation {
             flows,
             actor_rules,
             actor_movements,
+            projection_bridges,
         }
     }
 }
 
-/// Prepares the start-of-tick rule-input state in `table_data`: applies bridges
-/// (writing signal columns from `field_data`), then — only if a bridge wrote —
+/// Prepares the start-of-tick rule-input state in `table_data`: applies aggregate
+/// and projection bridges (writing signal columns), then — only if a bridge wrote —
 /// refreshes derived columns so any derived reading a bridged signal reflects the
-/// same-tick value rather than the previous tick's. Returns a report per bridge.
+/// same-tick value rather than the previous tick's. Returns the aggregate-bridge and
+/// projection-bridge reports.
 ///
-/// Shared by `step()` and the equivalence harness so both feed rules and kernels
-/// the identical, internally consistent snapshot.
+/// Projection bridges run in the same start-of-tick phase as aggregate bridges, so
+/// table rules see projected values, and they are the only place projections write
+/// state. Shared by `step()` and the equivalence harness so both feed rules and
+/// kernels the identical, internally consistent snapshot.
 pub(crate) fn prepare_rule_snapshot(
     ir: &SimIr,
     plan: &ExecutionPlan,
     params: &HashMap<&str, f64>,
     field_data: &[Vec<Vec<f64>>],
     table_data: &mut [Vec<Vec<f64>>],
-) -> Vec<BridgeReport> {
+) -> (Vec<BridgeReport>, Vec<ProjectionBridgeReport>) {
     let bridges = write_bridges(ir, field_data, table_data);
-    if !bridges.is_empty() {
+    let projection_bridges = write_projection_bridges(ir, field_data, table_data);
+    if !bridges.is_empty() || !projection_bridges.is_empty() {
         // Bridges changed signals; derived columns reading them are now stale.
         recompute_derived(ir, plan, table_data, params);
     }
-    bridges
+    (bridges, projection_bridges)
+}
+
+/// Writes each projection bridge's value — the projected source aggregate's value
+/// (reused, not recomputed) — into every row of its target table signal, returning
+/// a report per bridge. Signals only, mirroring `write_bridges`. Lowering guarantees
+/// the projection is source-authoritative and the target signal has a single writer.
+pub(crate) fn write_projection_bridges(
+    ir: &SimIr,
+    field_data: &[Vec<Vec<f64>>],
+    table_data: &mut [Vec<Vec<f64>>],
+) -> Vec<ProjectionBridgeReport> {
+    if ir.projection_bridges.is_empty() {
+        return Vec::new();
+    }
+    let aggregates = crate::aggregate_eval::evaluate_aggregates(ir, field_data);
+    let mut reports = Vec::with_capacity(ir.projection_bridges.len());
+    for bridge in &ir.projection_bridges {
+        let projection = &ir.projections[bridge.projection];
+        let value = aggregates[projection.aggregate].value;
+        for slot in table_data[projection.target_table][projection.target_signal].iter_mut() {
+            *slot = value;
+        }
+        let table = &ir.tables[projection.target_table];
+        reports.push(ProjectionBridgeReport {
+            projection: projection.name.clone(),
+            table: table.name.clone(),
+            signal: table.columns[projection.target_signal].name.clone(),
+            value,
+        });
+    }
+    reports
 }
 
 /// Writes each bridge's aggregate value (computed from `field_data`) into every row

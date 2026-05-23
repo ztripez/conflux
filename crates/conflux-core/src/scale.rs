@@ -147,6 +147,35 @@ impl Projection {
     }
 }
 
+/// An explicit bridge that writes a [`Projection`]'s value into its target table
+/// signal each tick.
+///
+/// This is the only state-writing boundary for projections: declaring it opts a
+/// projection out of report-only and into writing the target signal (signals only),
+/// in the same start-of-tick phase as aggregate bridges. Only a source-authoritative
+/// projection may be bridged — a report-only or target-authoritative link is
+/// rejected at `lower()` (no target-authoritative writeback in this slice). The
+/// target table+signal come from the projection; this declaration just enables the
+/// write.
+#[derive(Clone, Debug)]
+pub struct ProjectionBridge {
+    pub(crate) projection: String,
+}
+
+impl ProjectionBridge {
+    /// Bridges the named projection's value into its declared target signal.
+    pub fn new(projection: impl Into<String>) -> Self {
+        ProjectionBridge {
+            projection: projection.into(),
+        }
+    }
+
+    /// The projection this bridge writes.
+    pub fn projection(&self) -> &str {
+        &self.projection
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
