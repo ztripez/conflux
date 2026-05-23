@@ -51,7 +51,7 @@ pub(crate) fn step_actor_movements(
 
         let mut moves = Vec::with_capacity(set.count);
         for (actor, slot) in actor_positions[s].iter_mut().enumerate() {
-            let (x, y) = (*slot % grid.width, *slot / grid.width);
+            let (x, y) = grid.xy(*slot);
             let proposed = (x as i64 + movement.dx as i64, y as i64 + movement.dy as i64);
             let outcome =
                 match resolve_neighbor(x, y, movement.dx, movement.dy, grid, movement.edge) {

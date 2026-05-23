@@ -5,7 +5,9 @@
 
 use std::fmt;
 
-use conflux_ir::{AggregateOp, Assessment, ConservationPolicy};
+use conflux_ir::{
+    AggregateOp, Assessment, ConservationPolicy, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy,
+};
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
@@ -314,6 +316,54 @@ pub struct AggregateReport {
     pub weight_total: f64,
 }
 
+/// One proximity query's exact evaluation: its declared policy plus a result per
+/// source actor. This is provenance for the query contract — exact distances,
+/// deterministically ordered, with no spatial index involved (`exact` is always
+/// true in this slice). It reads actor positions only; evaluating a query never
+/// mutates actor state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryReport {
+    pub query: String,
+    /// The actor set the query runs from.
+    pub source_set: String,
+    /// The candidate-neighbor actor set (equals `source_set` for a same-set query).
+    pub target_set: String,
+    pub metric: QueryMetric,
+    pub limit: QueryLimit,
+    pub self_policy: SelfPolicy,
+    /// The order neighbors are returned in (the policy the evaluator applied).
+    pub ordering: QueryOrdering,
+    /// Always true in this slice: results are exact, not approximate.
+    pub exact: bool,
+    /// One result per source actor, in source-actor index order.
+    pub sources: Vec<QuerySourceResult>,
+}
+
+/// One source actor's neighbors under a proximity query, in the query's declared
+/// stable order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QuerySourceResult {
+    /// Index of the source actor within the source set.
+    pub source_actor: usize,
+    pub neighbors: Vec<QueryNeighbor>,
+}
+
+/// A single neighbor returned by a proximity query.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct QueryNeighbor {
+    /// Index of the neighbor within the target set.
+    pub target_actor: usize,
+    /// Exact distance in the query's metric.
+    pub distance: f64,
+}
+
+impl QueryReport {
+    /// Total number of neighbor results across all source actors.
+    pub fn neighbor_count(&self) -> usize {
+        self.sources.iter().map(|s| s.neighbors.len()).sum()
+    }
+}
+
 /// The result of one assessment against a proposed value.
 #[derive(Clone, Debug)]
 pub struct AssessmentOutcome {
@@ -481,6 +531,41 @@ impl fmt::Display for Report {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for QueryReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let limit = match self.limit {
+            QueryLimit::Within(radius) => format!("within {radius}"),
+            QueryLimit::KNearest(k) => format!("{k}-nearest"),
+        };
+        writeln!(
+            f,
+            "query `{}` {} -> {} [{:?}, {}, {:?}, {:?}, exact={}]",
+            self.query,
+            self.source_set,
+            self.target_set,
+            self.metric,
+            limit,
+            self.self_policy,
+            self.ordering,
+            self.exact
+        )?;
+        for source in &self.sources {
+            let neighbors: Vec<String> = source
+                .neighbors
+                .iter()
+                .map(|n| format!("({}, {})", n.target_actor, n.distance))
+                .collect();
+            writeln!(
+                f,
+                "  actor {}: [{}]",
+                source.source_actor,
+                neighbors.join(", ")
+            )?;
         }
         Ok(())
     }

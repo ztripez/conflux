@@ -13,6 +13,7 @@ mod field_equivalence;
 mod field_exec;
 mod flow_exec;
 mod plan;
+mod query_exec;
 mod report;
 mod selection;
 
@@ -28,8 +29,8 @@ pub use plan::ExecutionPlan;
 pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorRuleFireReport, AggregateReport,
     AssessmentOutcome, AssessmentSummary, BridgeReport, ComparisonStatus, FieldCellOutcome,
-    FieldRuleFireReport, FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, Report,
-    RowOutcome, RuleFireReport, StepReport,
+    FieldRuleFireReport, FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, QueryNeighbor,
+    QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
