@@ -466,6 +466,27 @@ fn rejects_projection_bridge_colliding_with_an_aggregate_bridge() {
 }
 
 #[test]
+fn rejects_two_bridged_projections_writing_one_signal() {
+    // Two distinct projections may target the same signal, but only one can be
+    // bridged into it — the single-writer rule covers projection-vs-projection too.
+    let mut model = bridgeable_model(Authority::SourceAuthoritative);
+    model.add_projection(
+        Projection::new("yield_up_again")
+            .over_link("basin")
+            .of_aggregate("north_total")
+            .to_signal("projected_yield"),
+    );
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    model.add_projection_bridge(ProjectionBridge::new("yield_up_again"));
+    match lower(&model) {
+        Err(LowerError::ProjectionBridgeDuplicateTarget { signal, .. }) => {
+            assert_eq!(signal, "projected_yield");
+        }
+        other => panic!("expected ProjectionBridgeDuplicateTarget, got {other:?}"),
+    }
+}
+
+#[test]
 fn models_without_projection_bridges_lower_unchanged() {
     let ir = lower(&bridgeable_model(Authority::SourceAuthoritative))
         .expect("a bridge-free model lowers");
