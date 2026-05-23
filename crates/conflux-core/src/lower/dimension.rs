@@ -14,6 +14,11 @@
 //!   units in this slice);
 //! - **unknown** (unannotated) operands are conservative — they never cause a
 //!   rejection, only a known-vs-known mismatch does.
+//!
+//! A consequence of the literal rule: adding or subtracting a bare literal to a
+//! dimensioned value (e.g. `grain + 1.0`) is a dimensional error, since the literal
+//! is dimensionless. Scale a dimensioned value with multiplication
+//! (`grain * 2.0` stays `grain`) rather than adding a bare constant.
 
 use std::collections::HashMap;
 
