@@ -10,7 +10,7 @@ use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{
     check_equivalence, AggregateOp, ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason,
-    Simulation, Tolerance,
+    FlowDestination, Simulation, Tolerance,
 };
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
@@ -347,4 +347,38 @@ fn selected_execution_is_opt_in_with_visible_fallback_and_refusal() {
         check_equivalence(&lower(&selected_execution()).unwrap(), Tolerance::default())
             .all_within_tolerance()
     );
+}
+
+#[test]
+fn runoff_flow_moves_water_and_reports_boundary_loss() {
+    let ir = lower(&runoff_flow()).unwrap();
+
+    // Lowered flow identity and quantity channel.
+    assert_eq!(ir.flows.len(), 1);
+    assert_eq!(ir.flows[0].name, "runoff");
+    assert_eq!(
+        ir.flows[0].channel,
+        ir.fields[0].channel_index("water").unwrap()
+    );
+
+    let mut sim = Simulation::new(ir);
+    let step = sim.step();
+    let report = &step.flows[0];
+
+    // In-bounds: cell 0 -> cell 1 (4); boundary: cell 2 -> off-grid (2).
+    assert!(report
+        .transfers
+        .iter()
+        .any(|t| t.source == 0 && t.destination == FlowDestination::Cell(1) && t.amount == 4.0));
+    assert!(report
+        .transfers
+        .iter()
+        .any(|t| t.source == 2 && t.destination == FlowDestination::Boundary && t.amount == 2.0));
+
+    // Conservation summary: total drops by exactly the boundary loss, delta zero.
+    let summary = report.summary();
+    assert_eq!(summary.total_before, 12.0);
+    assert_eq!(summary.total_after, 10.0);
+    assert_eq!(summary.total_boundary_loss, 2.0);
+    assert_eq!(summary.conservation_delta, 0.0);
 }
