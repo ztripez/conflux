@@ -424,6 +424,45 @@ pub enum LowerError {
         source_kind: &'static str,
         target_kind: &'static str,
     },
+    #[error("duplicate projection `{0}`")]
+    DuplicateProjection(String),
+    #[error("projection `{0}` does not declare a scale link (use `.over_link(..)`)")]
+    ProjectionMissingLink(String),
+    #[error("projection `{0}` does not declare a source aggregate (use `.of_aggregate(..)`)")]
+    ProjectionMissingAggregate(String),
+    #[error("projection `{0}` does not declare a target signal (use `.to_signal(..)`)")]
+    ProjectionMissingSignal(String),
+    #[error("projection `{projection}` references unknown scale link `{link}`")]
+    ProjectionUnknownLink { projection: String, link: String },
+    #[error("projection `{projection}` references unknown aggregate `{aggregate}`")]
+    ProjectionUnknownAggregate {
+        projection: String,
+        aggregate: String,
+    },
+    #[error(
+        "projection `{projection}` uses aggregate `{aggregate}` over region `{aggregate_region}`, \
+         but its scale link `{link}` projects from region `{link_region}`; the projection's source \
+         must be the link's source region"
+    )]
+    ProjectionSourceMismatch {
+        projection: String,
+        aggregate: String,
+        aggregate_region: String,
+        link: String,
+        link_region: String,
+    },
+    #[error("projection `{projection}` targets unknown signal `{signal}` in table `{table}`")]
+    ProjectionUnknownSignal {
+        projection: String,
+        table: String,
+        signal: String,
+    },
+    #[error("projection `{projection}` targets `{table}.{signal}`, which is not a signal")]
+    ProjectionTargetNotSignal {
+        projection: String,
+        table: String,
+        signal: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -450,6 +489,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         actor_movements: Vec::new(),
         queries: Vec::new(),
         scale_links: Vec::new(),
+        projections: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -464,6 +504,9 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     // multiscale concern, not folded into region/table/aggregate lowering).
     let scale_links = scale::lower_scale_links(model, &ir)?;
     ir.scale_links = scale_links;
+    // Projections resolve against the lowered scale links, aggregates, and tables.
+    let projections = scale::lower_projections(model, &ir)?;
+    ir.projections = projections;
     let flows = flows::lower_flows(model, &ir)?;
     ir.flows = flows;
     let actors = actors::lower_actors(model, &ir)?;

@@ -24,6 +24,7 @@ pub struct SimIr {
     pub actor_movements: Vec<ActorMovementIr>,
     pub queries: Vec<QueryIr>,
     pub scale_links: Vec<ScaleLinkIr>,
+    pub projections: Vec<ProjectionIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -366,6 +367,28 @@ pub struct ScaleLinkIr {
     pub authority: Authority,
 }
 
+/// A lowered, validated upward projection: an existing aggregate's value carried up
+/// a scale link to a target-scale signal identity.
+///
+/// A projection is a named computation, not a shadow column. Its value is its
+/// source [`AggregateIr`]'s value (reused, never recomputed) and its operation is
+/// that aggregate's operation; it adds the cross-scale provenance (which link, which
+/// target signal) and inherits the linked [`ScaleLinkIr`]'s authority (reached via
+/// `scale_link`, not stored here). The projection itself writes nothing — evaluation
+/// is report-only, and any state write is a separate explicit bridge.
+#[derive(Clone, Debug)]
+pub struct ProjectionIr {
+    pub name: String,
+    /// Index into [`SimIr::scale_links`] — the relationship + authority crossed.
+    pub scale_link: usize,
+    /// Index into [`SimIr::aggregates`] — the source value (reused, not recomputed).
+    pub aggregate: usize,
+    /// Index into [`SimIr::tables`] — the link's target table (denormalized).
+    pub target_table: usize,
+    /// Signal column index within `target_table` — the projection's report identity.
+    pub target_signal: usize,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
@@ -433,6 +456,11 @@ impl SimIr {
     /// Finds a scale-link index by name.
     pub fn scale_link_index(&self, name: &str) -> Option<usize> {
         self.scale_links.iter().position(|l| l.name == name)
+    }
+
+    /// Finds a projection index by name.
+    pub fn projection_index(&self, name: &str) -> Option<usize> {
+        self.projections.iter().position(|p| p.name == name)
     }
 }
 
