@@ -13,11 +13,11 @@
 
 use std::collections::HashSet;
 
-use conflux_ir::{RelationshipKind, ScaleLinkIr, ScaleRef, SimIr};
+use conflux_ir::{ProjectionIr, RelationshipKind, ScaleLinkIr, ScaleRef, SimIr, ValueKind};
 
 use super::LowerError;
 use crate::model::Model;
-use crate::scale::{ScaleEndpoint, ScaleLink};
+use crate::scale::{Projection, ScaleEndpoint, ScaleLink};
 
 /// Lowers every scale link against the already-lowered regions and tables in `ir`.
 /// Scale-link names are their own namespace (a distinct report/identity space, not
@@ -94,4 +94,119 @@ fn endpoint_kind(endpoint: &ScaleEndpoint) -> &'static str {
         ScaleEndpoint::Region(_) => "region",
         ScaleEndpoint::Table(_) => "table",
     }
+}
+
+/// Lowers every upward projection against the already-lowered scale links,
+/// aggregates, and tables in `ir`. Projection names are their own namespace. A
+/// projection reuses an existing aggregate as its source value (its operation is
+/// that aggregate's operation) and names a target signal on the link's target
+/// table; it does not duplicate aggregate logic and computes nothing here.
+pub(super) fn lower_projections(
+    model: &Model,
+    ir: &SimIr,
+) -> Result<Vec<ProjectionIr>, LowerError> {
+    let mut names: HashSet<&str> = HashSet::new();
+    let mut projections = Vec::with_capacity(model.projections.len());
+    for projection in &model.projections {
+        if !names.insert(projection.name()) {
+            return Err(LowerError::DuplicateProjection(
+                projection.name().to_string(),
+            ));
+        }
+        projections.push(lower_projection(projection, ir)?);
+    }
+    Ok(projections)
+}
+
+fn lower_projection(projection: &Projection, ir: &SimIr) -> Result<ProjectionIr, LowerError> {
+    let name = projection.name();
+    let link_name = projection
+        .scale_link
+        .as_ref()
+        .ok_or_else(|| LowerError::ProjectionMissingLink(name.to_string()))?;
+    let aggregate_name = projection
+        .aggregate
+        .as_ref()
+        .ok_or_else(|| LowerError::ProjectionMissingAggregate(name.to_string()))?;
+    let signal_name = projection
+        .target_signal
+        .as_ref()
+        .ok_or_else(|| LowerError::ProjectionMissingSignal(name.to_string()))?;
+
+    let link_idx =
+        ir.scale_link_index(link_name)
+            .ok_or_else(|| LowerError::ProjectionUnknownLink {
+                projection: name.to_string(),
+                link: link_name.clone(),
+            })?;
+    let link = &ir.scale_links[link_idx];
+
+    let aggregate_idx = ir.aggregate_index(aggregate_name).ok_or_else(|| {
+        LowerError::ProjectionUnknownAggregate {
+            projection: name.to_string(),
+            aggregate: aggregate_name.clone(),
+        }
+    })?;
+    let aggregate = &ir.aggregates[aggregate_idx];
+
+    // The projection's source aggregate must reduce over the link's source region:
+    // the projection carries *that* region's value up the link.
+    let link_region = match link.source {
+        ScaleRef::Region(r) => r,
+        // A region -> table link always has a region source (guaranteed by scale-link
+        // lowering); this arm cannot occur, but is handled rather than panicking.
+        ScaleRef::Table(_) => {
+            return Err(LowerError::ProjectionSourceMismatch {
+                projection: name.to_string(),
+                aggregate: aggregate_name.clone(),
+                aggregate_region: ir.regions[aggregate.region].name.clone(),
+                link: link_name.clone(),
+                link_region: "(non-region source)".to_string(),
+            })
+        }
+    };
+    if aggregate.region != link_region {
+        return Err(LowerError::ProjectionSourceMismatch {
+            projection: name.to_string(),
+            aggregate: aggregate_name.clone(),
+            aggregate_region: ir.regions[aggregate.region].name.clone(),
+            link: link_name.clone(),
+            link_region: ir.regions[link_region].name.clone(),
+        });
+    }
+
+    // The target signal is a signal column on the link's target table.
+    let target_table = match link.target {
+        ScaleRef::Table(t) => t,
+        ScaleRef::Region(_) => {
+            return Err(LowerError::ProjectionLinkTargetNotTable {
+                projection: name.to_string(),
+                link: link_name.clone(),
+            })
+        }
+    };
+    let table = &ir.tables[target_table];
+    let target_signal =
+        table
+            .column_index(signal_name)
+            .ok_or_else(|| LowerError::ProjectionUnknownSignal {
+                projection: name.to_string(),
+                table: table.name.clone(),
+                signal: signal_name.clone(),
+            })?;
+    if table.columns[target_signal].kind != ValueKind::Signal {
+        return Err(LowerError::ProjectionTargetNotSignal {
+            projection: name.to_string(),
+            table: table.name.clone(),
+            signal: signal_name.clone(),
+        });
+    }
+
+    Ok(ProjectionIr {
+        name: name.to_string(),
+        scale_link: link_idx,
+        aggregate: aggregate_idx,
+        target_table,
+        target_signal,
+    })
 }

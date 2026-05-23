@@ -25,7 +25,7 @@ pub use lower::{lower, LowerError};
 pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use query::ProximityQuery;
 pub use region::Region;
-pub use scale::ScaleLink;
+pub use scale::{Projection, ScaleLink};
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{

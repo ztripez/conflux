@@ -4,7 +4,8 @@
 //! bridging arrive in later slices. A link-free model must lower unchanged.
 
 use conflux_core::{
-    col, lit, lower, Aggregate, Authority, Field, Grid2, Model, Region, ScaleLink, Table,
+    col, lit, lower, Aggregate, Authority, Field, Grid2, LowerError, Model, Projection, Region,
+    ScaleLink, Table,
 };
 
 /// A `Terrain` field with a `north` region, a `Settlement` table, and a basin-total
@@ -193,4 +194,181 @@ fn rejects_unsupported_domain_combination() {
         }
         other => panic!("expected UnsupportedScaleLink, got {other:?}"),
     }
+}
+
+/// `multiscale_model` plus a `basin` link (north -> Settlement) and `projection`.
+fn lower_projection(projection: Projection) -> Result<conflux_ir::SimIr, LowerError> {
+    let mut model = multiscale_model();
+    model.add_scale_link(
+        ScaleLink::new("basin")
+            .from_region("north")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(projection);
+    lower(&model)
+}
+
+/// A valid projection: `north_total` over `basin` -> `projected_yield`.
+fn valid_projection() -> Projection {
+    Projection::new("yield_up")
+        .over_link("basin")
+        .of_aggregate("north_total")
+        .to_signal("projected_yield")
+}
+
+#[test]
+fn lowers_a_valid_projection() {
+    let ir = lower_projection(valid_projection()).expect("a valid projection lowers");
+    assert_eq!(ir.projections.len(), 1);
+    let p = &ir.projections[0];
+    assert_eq!(p.name, "yield_up");
+    assert_eq!(p.scale_link, ir.scale_link_index("basin").unwrap());
+    assert_eq!(p.aggregate, ir.aggregate_index("north_total").unwrap());
+    assert_eq!(p.target_table, ir.table_index("Settlement").unwrap());
+    // `projected_yield` is the second column on Settlement (after `stores`).
+    assert_eq!(
+        p.target_signal,
+        ir.tables[p.target_table]
+            .column_index("projected_yield")
+            .unwrap()
+    );
+    assert_eq!(ir.projection_index("yield_up"), Some(0));
+}
+
+#[test]
+fn rejects_duplicate_projection_names() {
+    let mut model = multiscale_model();
+    model.add_scale_link(
+        ScaleLink::new("basin")
+            .from_region("north")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(valid_projection());
+    model.add_projection(valid_projection());
+    match lower(&model) {
+        Err(LowerError::DuplicateProjection(name)) => assert_eq!(name, "yield_up"),
+        other => panic!("expected DuplicateProjection, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_missing_link_aggregate_or_signal() {
+    assert!(matches!(
+        lower_projection(
+            Projection::new("p")
+                .of_aggregate("north_total")
+                .to_signal("projected_yield")
+        ),
+        Err(LowerError::ProjectionMissingLink(_))
+    ));
+    assert!(matches!(
+        lower_projection(
+            Projection::new("p")
+                .over_link("basin")
+                .to_signal("projected_yield")
+        ),
+        Err(LowerError::ProjectionMissingAggregate(_))
+    ));
+    assert!(matches!(
+        lower_projection(
+            Projection::new("p")
+                .over_link("basin")
+                .of_aggregate("north_total")
+        ),
+        Err(LowerError::ProjectionMissingSignal(_))
+    ));
+}
+
+#[test]
+fn rejects_unknown_link_or_aggregate() {
+    match lower_projection(
+        Projection::new("p")
+            .over_link("ghost")
+            .of_aggregate("north_total")
+            .to_signal("projected_yield"),
+    ) {
+        Err(LowerError::ProjectionUnknownLink { link, .. }) => assert_eq!(link, "ghost"),
+        other => panic!("expected ProjectionUnknownLink, got {other:?}"),
+    }
+    match lower_projection(
+        Projection::new("p")
+            .over_link("basin")
+            .of_aggregate("nope")
+            .to_signal("projected_yield"),
+    ) {
+        Err(LowerError::ProjectionUnknownAggregate { aggregate, .. }) => {
+            assert_eq!(aggregate, "nope")
+        }
+        other => panic!("expected ProjectionUnknownAggregate, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_aggregate_over_a_different_region_than_the_link_source() {
+    // A second region/aggregate not matching the link's source region `north`.
+    let mut model = multiscale_model();
+    model.add_region(
+        Region::new("south")
+            .on_field("Terrain")
+            .mask(vec![true, false]),
+    );
+    model.add_aggregate(Aggregate::sum("south_total", "south", "yield"));
+    model.add_scale_link(
+        ScaleLink::new("basin")
+            .from_region("north")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(
+        Projection::new("p")
+            .over_link("basin")
+            .of_aggregate("south_total")
+            .to_signal("projected_yield"),
+    );
+    match lower(&model) {
+        Err(LowerError::ProjectionSourceMismatch {
+            aggregate_region,
+            link_region,
+            ..
+        }) => {
+            assert_eq!(aggregate_region, "south");
+            assert_eq!(link_region, "north");
+        }
+        other => panic!("expected ProjectionSourceMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_unknown_target_signal() {
+    match lower_projection(
+        Projection::new("p")
+            .over_link("basin")
+            .of_aggregate("north_total")
+            .to_signal("ghost"),
+    ) {
+        Err(LowerError::ProjectionUnknownSignal { signal, .. }) => assert_eq!(signal, "ghost"),
+        other => panic!("expected ProjectionUnknownSignal, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_target_that_is_not_a_signal() {
+    // `stores` is a stock, not a signal.
+    match lower_projection(
+        Projection::new("p")
+            .over_link("basin")
+            .of_aggregate("north_total")
+            .to_signal("stores"),
+    ) {
+        Err(LowerError::ProjectionTargetNotSignal { signal, .. }) => assert_eq!(signal, "stores"),
+        other => panic!("expected ProjectionTargetNotSignal, got {other:?}"),
+    }
+}
+
+#[test]
+fn models_without_projections_lower_unchanged() {
+    let ir = lower(&multiscale_model()).expect("a projection-free model lowers");
+    assert!(ir.projections.is_empty());
 }

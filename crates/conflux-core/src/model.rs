@@ -13,7 +13,7 @@ use crate::field::Field;
 use crate::flow::Flow;
 use crate::query::ProximityQuery;
 use crate::region::Region;
-use crate::scale::ScaleLink;
+use crate::scale::{Projection, ScaleLink};
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
@@ -41,8 +41,10 @@ pub struct Model {
     pub(crate) actor_movements: Vec<ActorMovement>,
     // Lowered into proximity-query IR by `lower()` in a later slice (#112).
     pub(crate) queries: Vec<ProximityQuery>,
-    // Lowered into scale-link IR by `lower()` in a later slice (#124).
+    // Lowered into scale-link IR by `lower()`.
     pub(crate) scale_links: Vec<ScaleLink>,
+    // Lowered into projection IR by `lower()`.
+    pub(crate) projections: Vec<Projection>,
 }
 
 #[derive(Clone, Debug)]
@@ -70,6 +72,7 @@ impl Model {
             actor_movements: Vec::new(),
             queries: Vec::new(),
             scale_links: Vec::new(),
+            projections: Vec::new(),
         }
     }
 
@@ -174,6 +177,14 @@ impl Model {
     /// `lower()`; it caches no parent value and projects nothing.
     pub fn add_scale_link(&mut self, link: ScaleLink) -> &mut Self {
         self.scale_links.push(link);
+        self
+    }
+
+    /// Adds an upward projection (an existing aggregate's value carried up a scale
+    /// link to a target signal identity). It is validated and lowered to projection
+    /// IR by `lower()`; evaluation is report-only and writes nothing.
+    pub fn add_projection(&mut self, projection: Projection) -> &mut Self {
+        self.projections.push(projection);
         self
     }
 }

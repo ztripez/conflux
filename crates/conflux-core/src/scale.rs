@@ -91,6 +91,62 @@ impl ScaleLink {
     }
 }
 
+/// A named one-way upward projection over a [`ScaleLink`]: it carries an existing
+/// region aggregate's value up to a target-scale signal identity.
+///
+/// A projection is **not** a shadow column. It is a named computation with a
+/// source (an existing aggregate — reused, never recomputed), a target identity (a
+/// signal on the link's target table), and the link's authority. Its operation is
+/// the source aggregate's operation. Construction is permissive; references and
+/// source/target compatibility are checked at `lower()`. Evaluation is report-only
+/// until an explicit bridge slice; declaring a projection mutates nothing.
+#[derive(Clone, Debug)]
+pub struct Projection {
+    pub(crate) name: String,
+    pub(crate) scale_link: Option<String>,
+    pub(crate) aggregate: Option<String>,
+    pub(crate) target_signal: Option<String>,
+}
+
+impl Projection {
+    /// Starts a projection. Bind the scale link, source aggregate, and target signal
+    /// with the builders below; an unbound projection is reported at lowering.
+    pub fn new(name: impl Into<String>) -> Self {
+        Projection {
+            name: name.into(),
+            scale_link: None,
+            aggregate: None,
+            target_signal: None,
+        }
+    }
+
+    /// The scale link this projection crosses (its source/target domains and
+    /// authority).
+    pub fn over_link(mut self, link: impl Into<String>) -> Self {
+        self.scale_link = Some(link.into());
+        self
+    }
+
+    /// The existing aggregate whose value is projected (reused, not recomputed). It
+    /// must be over the link's source region.
+    pub fn of_aggregate(mut self, aggregate: impl Into<String>) -> Self {
+        self.aggregate = Some(aggregate.into());
+        self
+    }
+
+    /// The target identity: a signal column on the link's target table that this
+    /// projection's value maps to (report-only here; bridging is a later slice).
+    pub fn to_signal(mut self, signal: impl Into<String>) -> Self {
+        self.target_signal = Some(signal.into());
+        self
+    }
+
+    /// The projection's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
