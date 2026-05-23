@@ -42,6 +42,10 @@ pub(crate) fn step_flows(
         let grid = field.grid;
         let names = channel_map(field);
 
+        // Channel total before this flow runs (sequential: it reflects earlier
+        // flows' debits/credits, even though emitted amounts read the snapshot).
+        let total_before: f64 = field_data[flow.field][flow.channel].iter().sum();
+
         let mut transfers = Vec::new();
         for cell in 0..grid.cells() {
             let (x, y) = (cell % grid.width, cell / grid.width);
@@ -83,11 +87,15 @@ pub(crate) fn step_flows(
             });
         }
 
+        let total_after: f64 = field_data[flow.field][flow.channel].iter().sum();
+
         reports.push(FlowFireReport {
             flow: flow.name.clone(),
             field: field.name.clone(),
             channel: field.channels[flow.channel].name.clone(),
             conservation: flow.conservation.clone(),
+            total_before,
+            total_after,
             transfers,
         });
     }

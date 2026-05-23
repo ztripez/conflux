@@ -39,7 +39,59 @@ pub struct FlowFireReport {
     pub field: String,
     pub channel: String,
     pub conservation: ConservationPolicy,
+    /// The quantity channel's total across the field before this flow ran.
+    pub total_before: f64,
+    /// The total after this flow ran (drops by exactly the boundary loss when the
+    /// flow is otherwise conservative).
+    pub total_after: f64,
     pub transfers: Vec<FlowTransfer>,
+}
+
+/// A per-flow conservation/balance rollup, computed from the transfers and the
+/// before/after totals. It describes drift; it never fixes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlowSummary {
+    pub total_before: f64,
+    pub total_after: f64,
+    /// Sum of emitted amounts (each debited from its source).
+    pub total_moved: f64,
+    /// Sum of amounts that left the grid (`Reject` destinations).
+    pub total_boundary_loss: f64,
+    /// Field-total change not explained by boundary loss:
+    /// `(total_after - total_before) + total_boundary_loss`. Zero for a flow whose
+    /// in-grid movement conserves quantity (the expected case here).
+    pub conservation_delta: f64,
+    /// Number of failed assessments across all transfers (raw amounts are still
+    /// preserved per transfer).
+    pub violations: usize,
+}
+
+impl FlowFireReport {
+    /// Summarizes this flow's conservation/balance accounting from its transfers
+    /// and before/after totals.
+    pub fn summary(&self) -> FlowSummary {
+        let total_moved: f64 = self.transfers.iter().map(|t| t.amount).sum();
+        let total_boundary_loss: f64 = self
+            .transfers
+            .iter()
+            .filter(|t| t.destination == FlowDestination::Boundary)
+            .map(|t| t.amount)
+            .sum();
+        let violations = self
+            .transfers
+            .iter()
+            .flat_map(|t| &t.assessments)
+            .filter(|a| !a.passed)
+            .count();
+        FlowSummary {
+            total_before: self.total_before,
+            total_after: self.total_after,
+            total_moved,
+            total_boundary_loss,
+            conservation_delta: (self.total_after - self.total_before) + total_boundary_loss,
+            violations,
+        }
+    }
 }
 
 /// One source cell's emitted movement under a flow.
@@ -311,10 +363,18 @@ impl fmt::Display for Report {
                 }
             }
             for flow in &step.flows {
+                let summary = flow.summary();
                 writeln!(
                     f,
-                    "  flow `{}` -> {}.{} ({:?})",
-                    flow.flow, flow.field, flow.channel, flow.conservation
+                    "  flow `{}` -> {}.{} ({:?}): moved {}, boundary loss {}, delta {}, {} violation(s)",
+                    flow.flow,
+                    flow.field,
+                    flow.channel,
+                    flow.conservation,
+                    summary.total_moved,
+                    summary.total_boundary_loss,
+                    summary.conservation_delta,
+                    summary.violations
                 )?;
                 for transfer in &flow.transfers {
                     match transfer.destination {
