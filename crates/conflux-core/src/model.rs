@@ -9,6 +9,7 @@ use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
 use crate::field::Field;
+use crate::flow::Flow;
 use crate::region::Region;
 
 /// A complete simulation declaration, ready to be lowered.
@@ -27,6 +28,8 @@ pub struct Model {
     pub(crate) aggregates: Vec<Aggregate>,
     // Lowered into bridge IR by `lower()`.
     pub(crate) bridges: Vec<Bridge>,
+    // Lowered into flow IR by `lower()` in a later slice (#90).
+    pub(crate) flows: Vec<Flow>,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +51,7 @@ impl Model {
             regions: Vec::new(),
             aggregates: Vec::new(),
             bridges: Vec::new(),
+            flows: Vec::new(),
         }
     }
 
@@ -107,6 +111,14 @@ impl Model {
     /// signal). It is validated and lowered by `lower()`.
     pub fn add_bridge(&mut self, bridge: Bridge) -> &mut Self {
         self.bridges.push(bridge);
+        self
+    }
+
+    /// Adds a field-local flow (moves a quantity channel between cells of a field).
+    /// Validation and lowering arrive in a later slice (#90); declaring one is
+    /// inert until then.
+    pub fn add_flow(&mut self, flow: Flow) -> &mut Self {
+        self.flows.push(flow);
         self
     }
 }

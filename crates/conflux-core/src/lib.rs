@@ -8,6 +8,7 @@
 mod aggregate;
 mod bridge;
 mod field;
+mod flow;
 mod lower;
 mod model;
 mod region;
@@ -15,6 +16,7 @@ mod region;
 pub use aggregate::Aggregate;
 pub use bridge::Bridge;
 pub use field::Field;
+pub use flow::{ConservationPolicy, Flow};
 pub use lower::{lower, LowerError};
 pub use model::{FieldRule, Model, Rule, Table};
 pub use region::Region;
