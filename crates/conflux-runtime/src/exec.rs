@@ -154,6 +154,15 @@ impl Simulation {
         crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data)
     }
 
+    /// Evaluates every declared proximity query exactly against the current actor
+    /// positions, returning a report per query (policy, per-source neighbors, and
+    /// provenance). This reads positions only — a projection, never a mutation, and
+    /// it uses no spatial index. Call it after `new()` or any `step()`/`run()` to
+    /// summarize neighbor relationships at that point.
+    pub fn query_report(&self) -> Vec<crate::report::QueryReport> {
+        crate::query_exec::evaluate_queries(&self.ir, &self.actor_positions)
+    }
+
     /// Advances the simulation `ticks` ticks, returning a report.
     pub fn run(&mut self, ticks: u64) -> Report {
         let mut report = Report::default();
