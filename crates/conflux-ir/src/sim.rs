@@ -344,16 +344,6 @@ pub enum ScaleRef {
     Table(usize),
 }
 
-impl ScaleRef {
-    /// A short, stable label for the domain kind (for reports/diagnostics).
-    pub fn kind_label(&self) -> &'static str {
-        match self {
-            ScaleRef::Region(_) => "region",
-            ScaleRef::Table(_) => "table",
-        }
-    }
-}
-
 /// The supported cross-scale relationship a scale link expresses. Only the
 /// region-to-table shape exists in this slice; other combinations are rejected at
 /// lowering until a slice defines them.
