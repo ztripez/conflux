@@ -6,13 +6,13 @@
 //! indices. Actors are a distinct sparse domain — actor-set names share the
 //! top-level domain namespace with tables, fields, and regions.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use conflux_ir::{ActorChannelIr, ActorSetIr, SimIr};
+use conflux_ir::{ActorChannelIr, ActorRuleIr, ActorSetIr, SimIr, ValueKind};
 
-use super::LowerError;
+use super::{validate_assessments, LowerError, RESERVED_DT};
 use crate::actor::ActorSet;
-use crate::model::Model;
+use crate::model::{ActorRule, Model};
 
 /// Lowers every actor set, resolving and validating against the already-lowered
 /// fields in `ir`.
@@ -112,5 +112,106 @@ fn lower_actor_set(set: &ActorSet, ir: &SimIr) -> Result<ActorSetIr, LowerError>
         count: set.count,
         positions: cells,
         channels,
+    })
+}
+
+/// Lowers every actor rule against the already-lowered actor sets in `ir`. Rule
+/// names are validated globally (see `check_unique_rule_names`); here we check
+/// targets, expression references, cadence, single-writer, and assessment shape.
+pub(super) fn lower_actor_rules(model: &Model, ir: &SimIr) -> Result<Vec<ActorRuleIr>, LowerError> {
+    let params: HashSet<String> = ir.params.iter().map(|p| p.name.clone()).collect();
+    // A stock channel may have at most one writer per actor set.
+    let mut writers: HashMap<(usize, usize), String> = HashMap::new();
+    let mut rules = Vec::with_capacity(model.actor_rules.len());
+    for rule in &model.actor_rules {
+        rules.push(lower_actor_rule(rule, ir, &params, &mut writers)?);
+    }
+    Ok(rules)
+}
+
+fn lower_actor_rule(
+    rule: &ActorRule,
+    ir: &SimIr,
+    params: &HashSet<String>,
+    writers: &mut HashMap<(usize, usize), String>,
+) -> Result<ActorRuleIr, LowerError> {
+    let name = rule.name.as_str();
+    let set_name = rule
+        .actors
+        .as_ref()
+        .ok_or_else(|| LowerError::ActorRuleMissingActorSet(name.to_string()))?;
+    let (target_name, expr) = match (&rule.target, &rule.expr) {
+        (Some(target), Some(expr)) => (target, expr),
+        _ => return Err(LowerError::ActorRuleMissingProposal(name.to_string())),
+    };
+
+    if rule.cadence.period < 1 {
+        return Err(LowerError::BadCadence {
+            rule: name.to_string(),
+        });
+    }
+
+    let set_idx = ir
+        .actor_index(set_name)
+        .ok_or_else(|| LowerError::ActorRuleUnknownActorSet {
+            rule: name.to_string(),
+            actors: set_name.clone(),
+        })?;
+    let set = &ir.actors[set_idx];
+    let channel_index = |channel: &str| set.channels.iter().position(|c| c.name == channel);
+
+    let unknown_channel = |channel: &str| LowerError::ActorRuleUnknownChannel {
+        rule: name.to_string(),
+        actors: set_name.clone(),
+        channel: channel.to_string(),
+    };
+
+    // Target must be an existing stock channel on the set.
+    let target = channel_index(target_name).ok_or_else(|| unknown_channel(target_name))?;
+    if set.channels[target].kind != ValueKind::Stock {
+        return Err(LowerError::ActorRuleTargetNotStock {
+            rule: name.to_string(),
+            actors: set_name.clone(),
+            channel: target_name.clone(),
+        });
+    }
+
+    // The expression may only read this set's channels and declared params (`dt`
+    // is available to rules via the cadence).
+    let mut used_columns = Vec::new();
+    let mut used_params = Vec::new();
+    expr.referenced(&mut used_columns, &mut used_params);
+    for channel in used_columns {
+        if channel_index(&channel).is_none() {
+            return Err(unknown_channel(&channel));
+        }
+    }
+    for param in used_params {
+        if param != RESERVED_DT && !params.contains(&param) {
+            return Err(LowerError::UnknownParam {
+                context: format!("actor rule `{name}`"),
+                param,
+            });
+        }
+    }
+
+    if let Some(first) = writers.insert((set_idx, target), name.to_string()) {
+        return Err(LowerError::ActorDuplicateWriter {
+            actors: set_name.clone(),
+            channel: target_name.clone(),
+            first,
+            second: name.to_string(),
+        });
+    }
+
+    validate_assessments(&rule.assessments, name)?;
+
+    Ok(ActorRuleIr {
+        name: name.to_string(),
+        actor_set: set_idx,
+        target,
+        cadence: rule.cadence,
+        expr: expr.clone(),
+        assessments: rule.assessments.clone(),
     })
 }

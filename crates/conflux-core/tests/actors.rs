@@ -1,6 +1,25 @@
 //! Actor-set authoring API and lowering.
 
-use conflux_core::{lower, ActorSet, Field, Grid2, LowerError, Model};
+use conflux_core::{
+    col, lit, lower, ActorRule, ActorSet, Field, Grid2, LowerError, Model, Rule, Table,
+};
+
+/// A `Terrain` field hosting a 2-actor `Herd` (stock `energy`, signal `speed`)
+/// with `rule`, for actor-rule lowering tests.
+fn herd_with_rule(rule: ActorRule) -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 2));
+    terrain.stock("grass", vec![5.0; 6]);
+    let set = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![10.0, 8.0])
+        .signal("speed", vec![1.0, 1.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(set);
+    model.add_actor_rule(rule);
+    model
+}
 
 /// A 3x2 `Terrain` field (stock `grass`) with `actors` added, for lowering tests.
 fn terrain_actor_model(actors: ActorSet) -> Model {
@@ -195,4 +214,140 @@ fn rejects_missing_field_or_positions() {
         lower(&terrain_actor_model(no_positions)),
         Err(LowerError::ActorMissingPositions(_))
     ));
+}
+
+#[test]
+fn lowers_a_valid_actor_rule() {
+    let ir = lower(&herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy") + lit(1.0)),
+    ))
+    .unwrap();
+    assert_eq!(ir.actor_rules.len(), 1);
+    let rule = &ir.actor_rules[0];
+    assert_eq!(rule.name, "graze");
+    assert_eq!(rule.actor_set, 0);
+    assert_eq!(rule.target, 0); // energy
+}
+
+#[test]
+fn rejects_actor_rule_missing_actor_set() {
+    let rule = ActorRule::new("r").propose("energy", col("energy"));
+    assert!(matches!(
+        lower(&herd_with_rule(rule)),
+        Err(LowerError::ActorRuleMissingActorSet(_))
+    ));
+}
+
+#[test]
+fn rejects_actor_rule_missing_proposal() {
+    let rule = ActorRule::new("r").on_actors("Herd");
+    assert!(matches!(
+        lower(&herd_with_rule(rule)),
+        Err(LowerError::ActorRuleMissingProposal(_))
+    ));
+}
+
+#[test]
+fn rejects_actor_rule_on_unknown_actor_set() {
+    let rule = ActorRule::new("r")
+        .on_actors("Nope")
+        .propose("energy", col("energy"));
+    match lower(&herd_with_rule(rule)) {
+        Err(LowerError::ActorRuleUnknownActorSet { actors, .. }) => assert_eq!(actors, "Nope"),
+        other => panic!("expected ActorRuleUnknownActorSet, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_actor_rule_reading_unknown_channel() {
+    let rule = ActorRule::new("r")
+        .on_actors("Herd")
+        .propose("energy", col("ghost"));
+    match lower(&herd_with_rule(rule)) {
+        Err(LowerError::ActorRuleUnknownChannel { channel, .. }) => assert_eq!(channel, "ghost"),
+        other => panic!("expected ActorRuleUnknownChannel, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_actor_rule_targeting_non_stock() {
+    // `speed` is a signal, not a stock.
+    let rule = ActorRule::new("r")
+        .on_actors("Herd")
+        .propose("speed", col("energy"));
+    match lower(&herd_with_rule(rule)) {
+        Err(LowerError::ActorRuleTargetNotStock { channel, .. }) => assert_eq!(channel, "speed"),
+        other => panic!("expected ActorRuleTargetNotStock, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_actor_rule_zero_cadence() {
+    let rule = ActorRule::new("r")
+        .on_actors("Herd")
+        .every(0)
+        .propose("energy", col("energy"));
+    assert!(matches!(
+        lower(&herd_with_rule(rule)),
+        Err(LowerError::BadCadence { .. })
+    ));
+}
+
+#[test]
+fn rejects_two_actor_rules_writing_one_channel() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 2));
+    terrain.stock("grass", vec![5.0; 6]);
+    let set = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![10.0, 8.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(set);
+    model.add_actor_rule(
+        ActorRule::new("a")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_rule(
+        ActorRule::new("b")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    match lower(&model) {
+        Err(LowerError::ActorDuplicateWriter { first, second, .. }) => {
+            assert_eq!(first, "a");
+            assert_eq!(second, "b");
+        }
+        other => panic!("expected ActorDuplicateWriter, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_actor_rule_name_colliding_with_a_table_rule() {
+    // Rule names are one global namespace across table, field, and actor rules.
+    let mut store = Table::new("Store", 1);
+    store.stock("x", vec![0.0]);
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("grass", vec![5.0]);
+    let set = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![10.0]);
+    let mut model = Model::new("world");
+    model.add_table(store);
+    model.add_field(terrain);
+    model.add_actor_set(set);
+    model.add_rule(Rule::new("dup").on("Store").propose("x", col("x")));
+    model.add_actor_rule(
+        ActorRule::new("dup")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    match lower(&model) {
+        Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "dup"),
+        other => panic!("expected DuplicateRule (actor vs table rule), got {other:?}"),
+    }
 }

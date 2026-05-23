@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
 use conflux_kernel::{execute_elementwise, extract, Kernel};
 
+use crate::actor_exec;
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::flow_exec;
@@ -30,6 +31,8 @@ pub struct Simulation {
     data: Vec<Vec<Vec<f64>>>,
     /// Field channel data indexed `field_data[field][channel][cell]` (row-major).
     field_data: Vec<Vec<Vec<f64>>>,
+    /// Actor channel data indexed `actor_data[set][channel][actor]`.
+    actor_data: Vec<Vec<Vec<f64>>>,
     /// The caller-declared execution mode (default [`ExecutionMode::ReferenceOnly`]).
     mode: ExecutionMode,
     /// Accepted CPU kernels by rule name, used to run the selected kernel path.
@@ -65,6 +68,7 @@ impl Simulation {
         let params = param_map(&ir);
         recompute_derived(&ir, &plan, &mut data, &params);
         let field_data = field_exec::materialize_fields(&ir, &params);
+        let actor_data = actor_exec::materialize_actors(&ir);
 
         let kernels = if mode.requests_kernel() {
             extract(&ir)
@@ -82,6 +86,7 @@ impl Simulation {
             tick: 0,
             data,
             field_data,
+            actor_data,
             mode,
             kernels,
         }
@@ -118,6 +123,16 @@ impl Simulation {
     /// `[channel][cell]` (row-major). `field` indexes [`SimIr::fields`].
     pub fn field_data(&self, field: usize) -> &[Vec<f64>] {
         &self.field_data[field]
+    }
+
+    /// Reads the current per-actor values of an actor-set channel, if it exists.
+    pub fn actor_channel(&self, actor_set: &str, channel: &str) -> Option<&[f64]> {
+        let s = self.ir.actor_index(actor_set)?;
+        let c = self.ir.actors[s]
+            .channels
+            .iter()
+            .position(|ch| ch.name == channel)?;
+        Some(&self.actor_data[s][c])
     }
 
     /// Evaluates every declared region aggregate against the current materialized
@@ -273,12 +288,17 @@ impl Simulation {
         // cells of the post-field-rule field state.
         let flows = flow_exec::step_flows(ir, &mut self.field_data, &params);
 
+        // Actor rules update per-actor state; they touch only actor channels in this
+        // slice, so they do not interact with the other domains within a tick.
+        let actor_rules = actor_exec::step_actor_rules(ir, tick, &mut self.actor_data, &params);
+
         StepReport {
             tick,
             rules: rule_reports,
             field_rules,
             bridges,
             flows,
+            actor_rules,
         }
     }
 }
