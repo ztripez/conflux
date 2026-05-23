@@ -6,6 +6,7 @@
 
 use conflux_ir::{Assessment, Cadence, Expr, FieldExpr, ValueKind};
 
+use crate::actor::ActorSet;
 use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
 use crate::field::Field;
@@ -28,8 +29,10 @@ pub struct Model {
     pub(crate) aggregates: Vec<Aggregate>,
     // Lowered into bridge IR by `lower()`.
     pub(crate) bridges: Vec<Bridge>,
-    // Lowered into flow IR by `lower()` in a later slice (#90).
+    // Lowered into flow IR by `lower()`.
     pub(crate) flows: Vec<Flow>,
+    // Lowered into actor IR by `lower()` in a later slice (#100).
+    pub(crate) actors: Vec<ActorSet>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +55,7 @@ impl Model {
             aggregates: Vec::new(),
             bridges: Vec::new(),
             flows: Vec::new(),
+            actors: Vec::new(),
         }
     }
 
@@ -119,6 +123,14 @@ impl Model {
     /// inert until then.
     pub fn add_flow(&mut self, flow: Flow) -> &mut Self {
         self.flows.push(flow);
+        self
+    }
+
+    /// Adds an actor set (sparse positioned entities on a host field). Validation
+    /// and lowering arrive in a later slice (#100); declaring one is inert until
+    /// then.
+    pub fn add_actor_set(&mut self, actors: ActorSet) -> &mut Self {
+        self.actors.push(actors);
         self
     }
 }
