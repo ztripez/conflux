@@ -146,7 +146,7 @@ fn lower_actor_rule(
     };
 
     if rule.cadence.period < 1 {
-        return Err(LowerError::ActorRuleBadCadence {
+        return Err(LowerError::BadCadence {
             rule: name.to_string(),
         });
     }

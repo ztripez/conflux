@@ -32,6 +32,16 @@ pub(crate) fn step_actor_rules(
     actor_data: &mut [Vec<Vec<f64>>],
     params: &HashMap<&str, f64>,
 ) -> Vec<ActorRuleFireReport> {
+    if ir.actor_rules.is_empty() {
+        return Vec::new();
+    }
+
+    // One frozen start-of-tick snapshot of all actor state, shared by every actor
+    // rule (like the field executor): rules read the snapshot and commit into the
+    // live state, so neither actor order nor rule order changes what any rule
+    // observes.
+    let snapshot = actor_data.to_vec();
+
     let mut reports = Vec::new();
     for rule in &ir.actor_rules {
         if tick % rule.cadence.period != 0 {
@@ -44,21 +54,17 @@ pub(crate) fn step_actor_rules(
         let dt = rule.cadence.period as f64;
         let names = channel_map(set);
 
-        // Frozen start-of-tick snapshot: every actor reads the same state, so
-        // evaluation order cannot change what any actor observes.
-        let snapshot = actor_data[s].clone();
-
         let mut outcomes = Vec::with_capacity(set.count);
         for actor in 0..set.count {
             let ctx = EvalCtx {
                 columns_by_name: &names,
-                columns: &snapshot,
+                columns: &snapshot[s],
                 params,
                 dt,
                 row: actor,
             };
             let proposed = eval(&rule.expr, &ctx);
-            let old = snapshot[target][actor];
+            let old = snapshot[s][target][actor];
             let assessments = assess(&rule.assessments, old, proposed);
             let committed = assessments.iter().all(|a| a.passed);
             if committed {

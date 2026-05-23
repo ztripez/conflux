@@ -26,7 +26,7 @@ mod flows;
 mod actors;
 
 /// The parameter name the executor reserves for the rule cadence.
-pub(super) const RESERVED_DT: &str = "dt";
+const RESERVED_DT: &str = "dt";
 
 /// An error found while lowering a [`Model`].
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -314,8 +314,6 @@ pub enum LowerError {
         actors: String,
         channel: String,
     },
-    #[error("actor rule `{rule}`: cadence period must be at least 1")]
-    ActorRuleBadCadence { rule: String },
     #[error(
         "actor stock `{actors}.{channel}` is written by multiple actor rules (`{first}` and \
          `{second}`); a single writer per stock is allowed"
