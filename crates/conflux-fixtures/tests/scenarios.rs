@@ -2,7 +2,7 @@
 //! failure modes* across the stack, so future backends / planner changes /
 //! agent-written code have stable, named scenarios to check against.
 
-use conflux_core::lower;
+use conflux_core::{lower, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
 use conflux_planner::{plan, transfer_advisory, BackendChoice};
@@ -404,4 +404,57 @@ fn herd_grazing_grazes_the_field_and_drifts_east() {
     assert_eq!(sim.actor_positions("Herd"), Some(&[1, 2][..]));
     assert_eq!(step.actor_movements[0].moves.len(), 2);
     assert!(step.actor_movements[0].moves.iter().all(|m| !m.rejected));
+}
+
+#[test]
+fn herd_proximity_consumes_an_exact_declared_query() {
+    let ir = lower(&herd_proximity()).unwrap();
+
+    // Lowered query identity + policy.
+    assert_eq!(ir.queries.len(), 1);
+    let q = &ir.queries[0];
+    assert_eq!(q.name, "nearby_herd");
+    assert_eq!(q.source, q.target, "same-set query");
+    assert_eq!(q.metric, QueryMetric::Chebyshev);
+    assert_eq!(q.limit, QueryLimit::Within(1.0));
+    assert_eq!(q.self_policy, SelfPolicy::Exclude);
+    assert_eq!(q.ordering, QueryOrdering::DistanceThenIndex);
+
+    let mut sim = Simulation::new(ir);
+
+    // Exact neighbor results + deterministic ordering, read from the declared query
+    // (never a manual scan). Actors are at x = 0, 1, 2, 4 on a 5x1 strip.
+    let report = sim.query_report();
+    let nearby = &report[0];
+    let neighbors = |a: usize| -> Vec<usize> {
+        nearby.sources[a]
+            .neighbors
+            .iter()
+            .map(|n| n.target_actor)
+            .collect()
+    };
+    assert_eq!(neighbors(0), vec![1]);
+    assert_eq!(
+        neighbors(1),
+        vec![0, 2],
+        "tie at distance 1, ascending index"
+    );
+    assert_eq!(neighbors(2), vec![1]);
+    assert_eq!(
+        neighbors(3),
+        Vec::<usize>::new(),
+        "the actor at x=4 is isolated"
+    );
+
+    // The query-derived count drives the proposal: alertness becomes each actor's
+    // nearby-herd count.
+    let step = sim.step();
+    assert_eq!(
+        sim.actor_channel("Herd", "alertness"),
+        Some(&[1.0, 2.0, 1.0, 0.0][..])
+    );
+    // Provenance records the consumed query input.
+    let rule = &step.actor_rules[0];
+    assert_eq!(rule.query_inputs.len(), 1);
+    assert_eq!(rule.query_inputs[0].query, "nearby_herd");
 }

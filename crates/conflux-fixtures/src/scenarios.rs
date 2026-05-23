@@ -4,7 +4,8 @@
 
 use conflux_core::{
     cell, col, field_lit, lit, param, ActorMovement, ActorRule, ActorSet, Aggregate, Assessment,
-    Bridge, EdgePolicy, Field, Flow, Grid2, Model, Region, Rule, Table,
+    Bridge, EdgePolicy, Field, Flow, Grid2, Model, ProximityQuery, QueryMetric, Region, Rule,
+    Table,
 };
 
 /// A scenario's stable name paired with its builder.
@@ -24,6 +25,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("selected_execution", selected_execution),
     ("runoff_flow", runoff_flow),
     ("herd_grazing", herd_grazing),
+    ("herd_proximity", herd_proximity),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -307,5 +309,50 @@ pub fn herd_grazing() -> Model {
         0,
         EdgePolicy::Reject,
     ));
+    model
+}
+
+/// The canonical proximity-query scenario: a `Herd` whose alertness rises with how
+/// many herd-mates are nearby, computed by a *declared* exact proximity query.
+///
+/// It exercises the whole proximity track end to end through the public API: a
+/// same-set `nearby_herd` query (Chebyshev within 1 cell, self excluded, stable
+/// distance-then-index ordering), an actor rule that consumes the query's neighbor
+/// count (`alertness = query_count`), and — because neighbors come from a declared
+/// query, never a manual scan — the planner's index-eligibility advisory.
+///
+/// On the 5x1 strip with actors at x = 0, 1, 2, 4 the exact neighbor counts are
+/// `[1, 2, 1, 0]`: the actor at x = 4 is isolated, and the actor at x = 1 has two
+/// neighbors at equal distance, returned in ascending-index tie order. The
+/// contract suite asserts the lowered query identity/policy, the exact neighbor
+/// results and ordering, and that the query value drives the proposal.
+pub fn herd_proximity() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(5, 1));
+    terrain.stock("grass", vec![0.0; 5]);
+    let herd = ActorSet::new("Herd", 4)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0), (2, 0), (4, 0)])
+        .stock("alertness", vec![0.0, 0.0, 0.0, 0.0]);
+
+    let mut model = Model::new("herd_proximity");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    // Same-set neighbors within one cell, self excluded, stable order.
+    model.add_proximity_query(
+        ProximityQuery::new("nearby_herd")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .metric(QueryMetric::Chebyshev)
+            .within_cells(1)
+            .exclude_self()
+            .ordered_by_distance_then_index(),
+    );
+    // Each actor's alertness becomes its current nearby-herd count.
+    model.add_actor_rule(
+        ActorRule::new("alert")
+            .on_actors("Herd")
+            .query_count("nearby", "nearby_herd")
+            .propose("alertness", col("nearby")),
+    );
     model
 }

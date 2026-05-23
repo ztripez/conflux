@@ -12,7 +12,7 @@
 use conflux_core::{lower, ValueKind};
 use conflux_fixtures::ALL_SCENARIOS;
 use conflux_kernel::{execute_elementwise, extract};
-use conflux_planner::{plan, transfer_advisory};
+use conflux_planner::{index_eligibility, plan, transfer_advisory};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{check_equivalence, Simulation, Tolerance};
@@ -159,6 +159,33 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
                     movement.moves.len()
                 );
             }
+        }
+    }
+
+    // Proximity queries: exact neighbor results + the advisory index eligibility
+    // (absent unless declared). The neighbors come from the declared query, never a
+    // manual scan.
+    if !ir.queries.is_empty() {
+        println!("  queries: {} proximity query/queries", ir.queries.len());
+        for query in sim.query_report() {
+            println!(
+                "    query `{}` {} -> {}: {} neighbor result(s) over {} source(s)",
+                query.query,
+                query.source_set,
+                query.target_set,
+                query.neighbor_count(),
+                query.sources.len()
+            );
+        }
+        for q in index_eligibility(&ir).queries {
+            let verdict = if q.eligible { "eligible" } else { "rejected" };
+            println!(
+                "    index `{}`: {} [candidate {}, {}]",
+                q.query,
+                verdict,
+                q.candidate_index.label(),
+                q.approximation.label()
+            );
         }
     }
 
