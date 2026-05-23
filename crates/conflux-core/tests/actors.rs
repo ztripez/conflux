@@ -477,3 +477,40 @@ fn rejects_duplicate_movement_names() {
         other => panic!("expected DuplicateActorMovement, got {other:?}"),
     }
 }
+
+#[test]
+fn rejects_sampling_unknown_field_channel() {
+    let rule = ActorRule::new("graze")
+        .on_actors("Herd")
+        .sample_field("ghost")
+        .propose("energy", col("energy"));
+    match lower(&herd_with_rule(rule)) {
+        Err(LowerError::ActorSampleUnknownChannel { channel, .. }) => assert_eq!(channel, "ghost"),
+        other => panic!("expected ActorSampleUnknownChannel, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_sample_shadowing_an_actor_channel() {
+    // The host field and the actor set both have an "energy" channel, so sampling it
+    // would be ambiguous with the actor channel.
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("energy", vec![5.0]);
+    let set = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(set);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("energy")
+            .propose("energy", col("energy")),
+    );
+    match lower(&model) {
+        Err(LowerError::ActorSampleShadowsChannel { channel, .. }) => assert_eq!(channel, "energy"),
+        other => panic!("expected ActorSampleShadowsChannel, got {other:?}"),
+    }
+}

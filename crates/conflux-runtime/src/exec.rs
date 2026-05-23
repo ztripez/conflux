@@ -299,9 +299,17 @@ impl Simulation {
         // cells of the post-field-rule field state.
         let flows = flow_exec::step_flows(ir, &mut self.field_data, &params);
 
-        // Actor rules update per-actor state; they touch only actor channels in this
-        // slice, so they do not interact with the other domains within a tick.
-        let actor_rules = actor_exec::step_actor_rules(ir, tick, &mut self.actor_data, &params);
+        // Actor rules update per-actor state, optionally sampling the current field
+        // state at each actor's (pre-movement) position. They write only actor
+        // channels.
+        let actor_rules = actor_exec::step_actor_rules(
+            ir,
+            tick,
+            &mut self.actor_data,
+            &self.field_data,
+            &self.actor_positions,
+            &params,
+        );
 
         // Movement is its own phase after actor state rules: it shifts actor
         // positions over the host field.

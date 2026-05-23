@@ -198,6 +198,9 @@ pub struct ActorRuleIr {
     pub cadence: Cadence,
     pub expr: Expr,
     pub assessments: Vec<Assessment>,
+    /// Host-field channel indices sampled at each actor's current cell. Each is
+    /// readable in `expr` via `col(<host-field channel name>)`.
+    pub samples: Vec<usize>,
 }
 
 /// An explicit actor movement: each actor's host-field position shifts by a fixed

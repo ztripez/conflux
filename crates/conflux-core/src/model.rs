@@ -373,6 +373,9 @@ pub struct ActorRule {
     pub(crate) cadence: Cadence,
     pub(crate) expr: Option<Expr>,
     pub(crate) assessments: Vec<Assessment>,
+    /// Host-field channels sampled at each actor's current cell; each becomes
+    /// readable in the expression via `col(<channel>)`.
+    pub(crate) samples: Vec<String>,
 }
 
 impl ActorRule {
@@ -386,12 +389,21 @@ impl ActorRule {
             cadence: Cadence::every(1),
             expr: None,
             assessments: Vec::new(),
+            samples: Vec::new(),
         }
     }
 
     /// Binds the rule to an actor set.
     pub fn on_actors(mut self, actors: impl Into<String>) -> Self {
         self.actors = Some(actors.into());
+        self
+    }
+
+    /// Samples the host field's `channel` at each actor's current cell, making it
+    /// readable in the expression via `col(channel)`. Read-only — actors never
+    /// write the field.
+    pub fn sample_field(mut self, channel: impl Into<String>) -> Self {
+        self.samples.push(channel.into());
         self
     }
 
