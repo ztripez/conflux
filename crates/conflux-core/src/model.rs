@@ -14,11 +14,14 @@ use crate::flow::Flow;
 use crate::query::ProximityQuery;
 use crate::region::Region;
 use crate::scale::{Projection, ProjectionBridge, ScaleLink};
+use crate::unit::Unit;
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
 pub struct Model {
     pub(crate) name: String,
+    // Lowered into unit IR by `lower()`; validation metadata only.
+    pub(crate) units: Vec<Unit>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -60,6 +63,7 @@ impl Model {
     pub fn new(name: impl Into<String>) -> Self {
         Model {
             name: name.into(),
+            units: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -77,6 +81,14 @@ impl Model {
             projections: Vec::new(),
             projection_bridges: Vec::new(),
         }
+    }
+
+    /// Declares a unit/dimension. Units are validation metadata and report
+    /// provenance; they are validated and lowered to unit IR by `lower()` and never
+    /// change runtime numeric behavior.
+    pub fn add_unit(&mut self, unit: Unit) -> &mut Self {
+        self.units.push(unit);
+        self
     }
 
     /// Declares a scalar parameter shared across rules.

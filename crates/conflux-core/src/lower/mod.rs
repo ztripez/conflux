@@ -28,6 +28,8 @@ mod actors;
 mod queries;
 // Multiscale scale-link / projection lowering, its own concern.
 mod scale;
+// Unit / dimension lowering and (later) dimensional checks, its own concern.
+mod units;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -35,6 +37,10 @@ const RESERVED_DT: &str = "dt";
 /// An error found while lowering a [`Model`].
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum LowerError {
+    #[error("duplicate unit `{0}`")]
+    DuplicateUnit(String),
+    #[error("unit `{unit}` references unknown unit `{reference}`; declare it first")]
+    UnitUnknownReference { unit: String, reference: String },
     #[error("duplicate parameter `{0}`")]
     DuplicateParam(String),
     #[error("parameter `{0}` is reserved and supplied by the executor")]
@@ -485,6 +491,9 @@ pub enum LowerError {
 
 /// Validates and lowers a model to simulation IR.
 pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
+    // Units are foundational validation metadata: lower them first so later value
+    // annotations and dimensional checks resolve against a stable vocabulary.
+    let units = units::lower_units(model)?;
     let params = lower_params(model)?;
     let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
@@ -493,6 +502,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let fields = fields::lower_fields(model, &param_names)?;
     let mut ir = SimIr {
         name: model.name.clone(),
+        units,
         params,
         tables,
         fields,
