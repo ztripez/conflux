@@ -24,6 +24,8 @@ mod bridges;
 mod flows;
 // Actor-set lowering, its own concern.
 mod actors;
+// Proximity-query lowering (sparse neighbor queries over actors), its own concern.
+mod queries;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -349,6 +351,34 @@ pub enum LowerError {
     ActorMovementUnknownActorSet { movement: String, actors: String },
     #[error("actor movement `{movement}` has a zero offset; a movement must change position")]
     ActorMovementZeroOffset { movement: String },
+    #[error("duplicate proximity query `{0}`")]
+    DuplicateQuery(String),
+    #[error("proximity query `{0}` does not declare a source actor set (use `.from_actors(..)`)")]
+    QueryMissingSource(String),
+    #[error("proximity query `{0}` does not declare a neighbor bound (use `.within_cells(..)` or `.k_nearest(..)`)")]
+    QueryMissingLimit(String),
+    #[error("proximity query `{query}` runs from unknown actor set `{actors}`")]
+    QueryUnknownSourceActorSet { query: String, actors: String },
+    #[error("proximity query `{query}` targets unknown actor set `{actors}`")]
+    QueryUnknownTargetActorSet { query: String, actors: String },
+    #[error(
+        "proximity query `{query}` spans two host fields (source `{source_field}`, target \
+         `{target_field}`); distance is only defined within one field"
+    )]
+    QueryCrossFieldHost {
+        query: String,
+        source_field: String,
+        target_field: String,
+    },
+    #[error("proximity query `{query}` has a non-positive radius ({radius}); radius must be finite and greater than zero")]
+    QueryNonPositiveRadius { query: String, radius: f64 },
+    #[error("proximity query `{query}` requests zero nearest neighbors; k must be at least 1")]
+    QueryZeroKNearest { query: String },
+    #[error(
+        "proximity query `{query}` excludes self across distinct actor sets; `exclude_self` is \
+         only meaningful for a same-set query"
+    )]
+    QuerySelfPolicyCrossSet { query: String },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -373,6 +403,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         actors: Vec::new(),
         actor_rules: Vec::new(),
         actor_movements: Vec::new(),
+        queries: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -391,6 +422,9 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.actor_rules = actor_rules;
     let actor_movements = actors::lower_actor_movements(model, &ir)?;
     ir.actor_movements = actor_movements;
+    // Queries resolve against the lowered actor sets and their host fields.
+    let queries = queries::lower_queries(model, &ir)?;
+    ir.queries = queries;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

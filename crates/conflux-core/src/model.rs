@@ -157,9 +157,9 @@ impl Model {
         self
     }
 
-    /// Adds a proximity query (declared sparse-neighbor query over actors).
-    /// Validation and lowering arrive in a later slice (#112); declaring one is
-    /// inert until then.
+    /// Adds a proximity query (declared sparse-neighbor query over actors). It is
+    /// validated and lowered to query IR by `lower()`; exact CPU evaluation is a
+    /// later slice.
     pub fn add_proximity_query(&mut self, query: ProximityQuery) -> &mut Self {
         self.queries.push(query);
         self

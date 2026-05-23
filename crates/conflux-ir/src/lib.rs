@@ -15,8 +15,8 @@ pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorRuleIr, ActorSetIr, AggregateIr, AggregateOp,
     ApproximationPolicy, BridgeIr, ColumnIr, ConservationPolicy, FieldChannelIr, FieldIr,
-    FieldRuleIr, FlowIr, ParamIr, QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask,
-    RuleIr, SelfPolicy, SimIr, TableIr,
+    FieldRuleIr, FlowIr, ParamIr, QueryIr, QueryLimit, QueryMetric, QueryOrdering, RegionIr,
+    RegionMask, RuleIr, SelfPolicy, SimIr, TableIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
