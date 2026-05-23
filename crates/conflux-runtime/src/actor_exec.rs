@@ -13,7 +13,8 @@ use conflux_ir::{ActorSetIr, SimIr};
 
 use crate::eval::{eval, EvalCtx};
 use crate::exec::assess;
-use crate::report::{ActorOutcome, ActorRuleFireReport};
+use crate::field_exec::resolve_neighbor;
+use crate::report::{ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorRuleFireReport};
 
 /// Materializes per-actor channel buffers, indexed `[set][channel][actor]`, from
 /// each actor set's declared initial values.
@@ -22,6 +23,66 @@ pub(crate) fn materialize_actors(ir: &SimIr) -> Vec<Vec<Vec<f64>>> {
         .iter()
         .map(|set| set.channels.iter().map(|c| c.initial.clone()).collect())
         .collect()
+}
+
+/// Materializes per-actor positions, indexed `[set][actor]` as row-major cell
+/// indices, from each actor set's declared positions.
+pub(crate) fn materialize_actor_positions(ir: &SimIr) -> Vec<Vec<usize>> {
+    ir.actors.iter().map(|set| set.positions.clone()).collect()
+}
+
+/// Applies every actor movement firing on `tick`, shifting actor positions by the
+/// movement's fixed offset under its edge policy. An off-grid `Reject` move leaves
+/// the actor in place and is reported (never clamped). Returns a report per movement.
+pub(crate) fn step_actor_movements(
+    ir: &SimIr,
+    tick: u64,
+    actor_positions: &mut [Vec<usize>],
+) -> Vec<ActorMovementReport> {
+    let mut reports = Vec::new();
+    for movement in &ir.actor_movements {
+        if tick % movement.cadence.period != 0 {
+            continue;
+        }
+
+        let s = movement.actor_set;
+        let set = &ir.actors[s];
+        let grid = ir.fields[set.field].grid;
+
+        let mut moves = Vec::with_capacity(set.count);
+        for (actor, slot) in actor_positions[s].iter_mut().enumerate() {
+            let (x, y) = (*slot % grid.width, *slot / grid.width);
+            let proposed = (x as i64 + movement.dx as i64, y as i64 + movement.dy as i64);
+            let outcome =
+                match resolve_neighbor(x, y, movement.dx, movement.dy, grid, movement.edge) {
+                    Some((nx, ny)) => {
+                        *slot = grid.index(nx, ny);
+                        ActorMoveOutcome {
+                            actor,
+                            old: (x, y),
+                            proposed,
+                            used: (nx, ny),
+                            rejected: false,
+                        }
+                    }
+                    None => ActorMoveOutcome {
+                        actor,
+                        old: (x, y),
+                        proposed,
+                        used: (x, y),
+                        rejected: true,
+                    },
+                };
+            moves.push(outcome);
+        }
+
+        reports.push(ActorMovementReport {
+            movement: movement.name.clone(),
+            actor_set: set.name.clone(),
+            moves,
+        });
+    }
+    reports
 }
 
 /// Steps every actor rule firing on `tick`, committing accepted proposals into

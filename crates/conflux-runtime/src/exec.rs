@@ -33,6 +33,8 @@ pub struct Simulation {
     field_data: Vec<Vec<Vec<f64>>>,
     /// Actor channel data indexed `actor_data[set][channel][actor]`.
     actor_data: Vec<Vec<Vec<f64>>>,
+    /// Actor positions indexed `actor_positions[set][actor]` (row-major cell index).
+    actor_positions: Vec<Vec<usize>>,
     /// The caller-declared execution mode (default [`ExecutionMode::ReferenceOnly`]).
     mode: ExecutionMode,
     /// Accepted CPU kernels by rule name, used to run the selected kernel path.
@@ -69,6 +71,7 @@ impl Simulation {
         recompute_derived(&ir, &plan, &mut data, &params);
         let field_data = field_exec::materialize_fields(&ir, &params);
         let actor_data = actor_exec::materialize_actors(&ir);
+        let actor_positions = actor_exec::materialize_actor_positions(&ir);
 
         let kernels = if mode.requests_kernel() {
             extract(&ir)
@@ -87,6 +90,7 @@ impl Simulation {
             data,
             field_data,
             actor_data,
+            actor_positions,
             mode,
             kernels,
         }
@@ -133,6 +137,13 @@ impl Simulation {
             .iter()
             .position(|ch| ch.name == channel)?;
         Some(&self.actor_data[s][c])
+    }
+
+    /// Reads the current per-actor positions of an actor set as row-major cell
+    /// indices, if the set exists.
+    pub fn actor_positions(&self, actor_set: &str) -> Option<&[usize]> {
+        let s = self.ir.actor_index(actor_set)?;
+        Some(&self.actor_positions[s])
     }
 
     /// Evaluates every declared region aggregate against the current materialized
@@ -292,6 +303,10 @@ impl Simulation {
         // slice, so they do not interact with the other domains within a tick.
         let actor_rules = actor_exec::step_actor_rules(ir, tick, &mut self.actor_data, &params);
 
+        // Movement is its own phase after actor state rules: it shifts actor
+        // positions over the host field.
+        let actor_movements = actor_exec::step_actor_movements(ir, tick, &mut self.actor_positions);
+
         StepReport {
             tick,
             rules: rule_reports,
@@ -299,6 +314,7 @@ impl Simulation {
             bridges,
             flows,
             actor_rules,
+            actor_movements,
         }
     }
 }

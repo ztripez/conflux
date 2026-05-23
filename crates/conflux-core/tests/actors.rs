@@ -1,7 +1,8 @@
 //! Actor-set authoring API and lowering.
 
 use conflux_core::{
-    col, lit, lower, ActorRule, ActorSet, Field, Grid2, LowerError, Model, Rule, Table,
+    col, lit, lower, ActorMovement, ActorRule, ActorSet, EdgePolicy, Field, Grid2, LowerError,
+    Model, Rule, Table,
 };
 
 /// A `Terrain` field hosting a 2-actor `Herd` (stock `energy`, signal `speed`)
@@ -349,5 +350,114 @@ fn rejects_actor_rule_name_colliding_with_a_table_rule() {
     match lower(&model) {
         Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "dup"),
         other => panic!("expected DuplicateRule (actor vs table rule), got {other:?}"),
+    }
+}
+
+#[test]
+fn lowers_a_valid_actor_movement() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 2));
+    terrain.stock("grass", vec![5.0; 6]);
+    let set = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![10.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(set);
+    model.add_actor_movement(ActorMovement::new("drift").on_actors("Herd").by_offset(
+        1,
+        0,
+        EdgePolicy::Reject,
+    ));
+    let ir = lower(&model).unwrap();
+    assert_eq!(ir.actor_movements.len(), 1);
+    let movement = &ir.actor_movements[0];
+    assert_eq!(movement.name, "drift");
+    assert_eq!(movement.actor_set, 0);
+    assert_eq!((movement.dx, movement.dy), (1, 0));
+    assert_eq!(movement.edge, EdgePolicy::Reject);
+}
+
+#[test]
+fn rejects_movement_on_unknown_actor_set() {
+    let movement =
+        ActorMovement::new("drift")
+            .on_actors("Nope")
+            .by_offset(1, 0, EdgePolicy::Reject);
+    let mut model = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_movement(movement);
+    match lower(&model) {
+        Err(LowerError::ActorMovementUnknownActorSet { actors, .. }) => assert_eq!(actors, "Nope"),
+        other => panic!("expected ActorMovementUnknownActorSet, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_movement_with_zero_offset() {
+    let movement =
+        ActorMovement::new("drift")
+            .on_actors("Herd")
+            .by_offset(0, 0, EdgePolicy::Reject);
+    let mut model = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_movement(movement);
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::ActorMovementZeroOffset { .. })
+    ));
+}
+
+#[test]
+fn rejects_movement_missing_actor_set_or_offset() {
+    let mut model = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_movement(ActorMovement::new("drift").by_offset(1, 0, EdgePolicy::Reject));
+    assert!(matches!(
+        lower(&model),
+        Err(LowerError::ActorMovementMissingActorSet(_))
+    ));
+
+    let mut model2 = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model2.add_actor_movement(ActorMovement::new("drift").on_actors("Herd"));
+    assert!(matches!(
+        lower(&model2),
+        Err(LowerError::ActorMovementMissingOffset(_))
+    ));
+}
+
+#[test]
+fn rejects_duplicate_movement_names() {
+    let mut model = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_movement(ActorMovement::new("drift").on_actors("Herd").by_offset(
+        1,
+        0,
+        EdgePolicy::Reject,
+    ));
+    model.add_actor_movement(ActorMovement::new("drift").on_actors("Herd").by_offset(
+        0,
+        1,
+        EdgePolicy::Reject,
+    ));
+    match lower(&model) {
+        Err(LowerError::DuplicateActorMovement(name)) => assert_eq!(name, "drift"),
+        other => panic!("expected DuplicateActorMovement, got {other:?}"),
     }
 }

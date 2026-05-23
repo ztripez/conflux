@@ -8,11 +8,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use conflux_ir::{ActorChannelIr, ActorRuleIr, ActorSetIr, SimIr, ValueKind};
+use conflux_ir::{ActorChannelIr, ActorMovementIr, ActorRuleIr, ActorSetIr, SimIr, ValueKind};
 
 use super::{validate_assessments, LowerError, RESERVED_DT};
 use crate::actor::ActorSet;
-use crate::model::{ActorRule, Model};
+use crate::model::{ActorMovement, ActorRule, Model};
 
 /// Lowers every actor set, resolving and validating against the already-lowered
 /// fields in `ir`.
@@ -213,5 +213,64 @@ fn lower_actor_rule(
         cadence: rule.cadence,
         expr: expr.clone(),
         assessments: rule.assessments.clone(),
+    })
+}
+
+/// Lowers every actor movement against the already-lowered actor sets in `ir`.
+/// Movement names are unique among movements (a distinct report identity space).
+pub(super) fn lower_actor_movements(
+    model: &Model,
+    ir: &SimIr,
+) -> Result<Vec<ActorMovementIr>, LowerError> {
+    let mut names: HashSet<&str> = HashSet::new();
+    let mut movements = Vec::with_capacity(model.actor_movements.len());
+    for movement in &model.actor_movements {
+        if !names.insert(movement.name.as_str()) {
+            return Err(LowerError::DuplicateActorMovement(movement.name.clone()));
+        }
+        movements.push(lower_actor_movement(movement, ir)?);
+    }
+    Ok(movements)
+}
+
+fn lower_actor_movement(
+    movement: &ActorMovement,
+    ir: &SimIr,
+) -> Result<ActorMovementIr, LowerError> {
+    let name = movement.name.as_str();
+    let set_name = movement
+        .actors
+        .as_ref()
+        .ok_or_else(|| LowerError::ActorMovementMissingActorSet(name.to_string()))?;
+    let (dx, dy, edge) = movement
+        .offset
+        .ok_or_else(|| LowerError::ActorMovementMissingOffset(name.to_string()))?;
+
+    if movement.cadence.period < 1 {
+        return Err(LowerError::BadCadence {
+            rule: name.to_string(),
+        });
+    }
+
+    let actor_set =
+        ir.actor_index(set_name)
+            .ok_or_else(|| LowerError::ActorMovementUnknownActorSet {
+                movement: name.to_string(),
+                actors: set_name.clone(),
+            })?;
+
+    if dx == 0 && dy == 0 {
+        return Err(LowerError::ActorMovementZeroOffset {
+            movement: name.to_string(),
+        });
+    }
+
+    Ok(ActorMovementIr {
+        name: name.to_string(),
+        actor_set,
+        dx,
+        dy,
+        edge,
+        cadence: movement.cadence,
     })
 }

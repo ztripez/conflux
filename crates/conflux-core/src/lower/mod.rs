@@ -324,6 +324,16 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error("duplicate actor movement `{0}`")]
+    DuplicateActorMovement(String),
+    #[error("actor movement `{0}` does not declare an actor set (use `.on_actors(..)`)")]
+    ActorMovementMissingActorSet(String),
+    #[error("actor movement `{0}` does not declare an offset (use `.by_offset(..)`)")]
+    ActorMovementMissingOffset(String),
+    #[error("actor movement `{movement}` targets unknown actor set `{actors}`")]
+    ActorMovementUnknownActorSet { movement: String, actors: String },
+    #[error("actor movement `{movement}` has a zero offset; a movement must change position")]
+    ActorMovementZeroOffset { movement: String },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -347,6 +357,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         flows: Vec::new(),
         actors: Vec::new(),
         actor_rules: Vec::new(),
+        actor_movements: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -363,6 +374,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.actors = actors;
     let actor_rules = actors::lower_actor_rules(model, &ir)?;
     ir.actor_rules = actor_rules;
+    let actor_movements = actors::lower_actor_movements(model, &ir)?;
+    ir.actor_movements = actor_movements;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
