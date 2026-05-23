@@ -93,6 +93,75 @@ fn state_rule_and_movement_both_apply_in_one_tick() {
 }
 
 #[test]
+fn movement_resolves_rows_on_the_y_axis() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 3));
+    terrain.stock("grass", vec![5.0; 6]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (0, 2)])
+        .stock("energy", vec![10.0, 10.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_movement(ActorMovement::new("south").on_actors("Herd").by_offset(
+        0,
+        1,
+        EdgePolicy::Reject,
+    ));
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    // actor 0 (0,0) -> (0,1) = cell 2; actor 1 (0,2) -> off-grid (y=3) -> rejected,
+    // stays at cell 4.
+    assert_eq!(sim.actor_positions("Herd"), Some(&[2, 4][..]));
+    let m1 = &step.actor_movements[0].moves[1];
+    assert!(m1.rejected);
+    assert_eq!(m1.proposed, (0, 3));
+}
+
+#[test]
+fn movement_wraps_on_the_y_axis() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 3));
+    terrain.stock("grass", vec![5.0; 6]);
+    let herd = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 2)])
+        .stock("energy", vec![10.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_movement(ActorMovement::new("south").on_actors("Herd").by_offset(
+        0,
+        1,
+        EdgePolicy::Wrap,
+    ));
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    sim.step();
+    // (0,2) + (0,1) wraps to (0,0) = cell 0.
+    assert_eq!(sim.actor_positions("Herd"), Some(&[0][..]));
+}
+
+#[test]
+fn movement_respects_cadence() {
+    let model = herd_movement_model(
+        ActorMovement::new("drift")
+            .on_actors("Herd")
+            .by_offset(1, 0, EdgePolicy::Reject)
+            .every(2),
+        vec![(0, 0)],
+    );
+    let mut sim = Simulation::new(lower(&model).unwrap());
+
+    let step1 = sim.step();
+    assert!(step1.actor_movements.is_empty(), "no movement on tick 1");
+    assert_eq!(sim.actor_positions("Herd"), Some(&[0][..]));
+
+    sim.step(); // tick 2: fires
+    assert_eq!(sim.actor_positions("Herd"), Some(&[1][..]));
+}
+
+#[test]
 fn models_without_movement_report_none() {
     let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
     terrain.stock("grass", vec![5.0, 5.0]);

@@ -440,6 +440,22 @@ fn rejects_movement_missing_actor_set_or_offset() {
 }
 
 #[test]
+fn rejects_movement_with_zero_cadence() {
+    let mut model = herd_with_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy")),
+    );
+    model.add_actor_movement(
+        ActorMovement::new("drift")
+            .on_actors("Herd")
+            .by_offset(1, 0, EdgePolicy::Reject)
+            .every(0),
+    );
+    assert!(matches!(lower(&model), Err(LowerError::BadCadence { .. })));
+}
+
+#[test]
 fn rejects_duplicate_movement_names() {
     let mut model = herd_with_rule(
         ActorRule::new("graze")
