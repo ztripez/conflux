@@ -10,6 +10,7 @@ use crate::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, Grid2, ValueKind};
 #[derive(Clone, Debug)]
 pub struct SimIr {
     pub name: String,
+    pub units: Vec<UnitIr>,
     pub params: Vec<ParamIr>,
     pub tables: Vec<TableIr>,
     pub fields: Vec<FieldIr>,
@@ -26,6 +27,102 @@ pub struct SimIr {
     pub scale_links: Vec<ScaleLinkIr>,
     pub projections: Vec<ProjectionIr>,
     pub projection_bridges: Vec<ProjectionBridgeIr>,
+}
+
+/// A physical dimension as integer exponents over named base dimensions. The empty
+/// dimension is dimensionless. Used only for lowering-time dimensional checks and
+/// report provenance — it never reaches the numeric runtime.
+///
+/// Always normalized: factors are sorted by base name with no zero exponents, so
+/// `PartialEq` is exact dimensional equality.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Dimension {
+    factors: Vec<(String, i32)>,
+}
+
+impl Dimension {
+    /// The dimensionless dimension (an explicit unitless quantity).
+    pub fn dimensionless() -> Self {
+        Dimension {
+            factors: Vec::new(),
+        }
+    }
+
+    /// A single base dimension with exponent 1 (e.g. `length`, `people`).
+    pub fn base(name: impl Into<String>) -> Self {
+        Dimension {
+            factors: vec![(name.into(), 1)],
+        }
+    }
+
+    /// True for the dimensionless dimension.
+    pub fn is_dimensionless(&self) -> bool {
+        self.factors.is_empty()
+    }
+
+    /// The normalized `(base, exponent)` factors, sorted by base name.
+    pub fn factors(&self) -> &[(String, i32)] {
+        &self.factors
+    }
+
+    /// The product of two dimensions: exponents add (e.g. `grain/year * year =
+    /// grain`).
+    pub fn multiply(&self, other: &Dimension) -> Dimension {
+        self.combine(other, 1)
+    }
+
+    /// The quotient of two dimensions: exponents subtract.
+    pub fn divide(&self, other: &Dimension) -> Dimension {
+        self.combine(other, -1)
+    }
+
+    /// Combines `self` with `other`'s exponents scaled by `sign` (+1 multiply, -1
+    /// divide), normalizing the result (sorted, zero exponents dropped).
+    fn combine(&self, other: &Dimension, sign: i32) -> Dimension {
+        let mut factors: std::collections::BTreeMap<String, i32> = self
+            .factors
+            .iter()
+            .map(|(base, exp)| (base.clone(), *exp))
+            .collect();
+        for (base, exp) in &other.factors {
+            let entry = factors.entry(base.clone()).or_insert(0);
+            *entry += sign * exp;
+            if *entry == 0 {
+                factors.remove(base);
+            }
+        }
+        Dimension {
+            factors: factors.into_iter().collect(),
+        }
+    }
+
+    /// A short, stable label for diagnostics: `dimensionless`, a single base name,
+    /// or a `num/den` style product of base^exponent terms.
+    pub fn label(&self) -> String {
+        if self.factors.is_empty() {
+            return "dimensionless".to_string();
+        }
+        self.factors
+            .iter()
+            .map(|(base, exp)| {
+                if *exp == 1 {
+                    base.clone()
+                } else {
+                    format!("{base}^{exp}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("·")
+    }
+}
+
+/// A lowered, validated unit declaration: a name paired with its resolved
+/// [`Dimension`]. Units are validation metadata and report provenance only; the
+/// numeric runtime is unit-erased after lowering.
+#[derive(Clone, Debug)]
+pub struct UnitIr {
+    pub name: String,
+    pub dimension: Dimension,
 }
 
 /// A named scalar parameter shared across rules.
@@ -470,6 +567,11 @@ impl SimIr {
     /// Finds a scale-link index by name.
     pub fn scale_link_index(&self, name: &str) -> Option<usize> {
         self.scale_links.iter().position(|l| l.name == name)
+    }
+
+    /// Finds a unit index by name.
+    pub fn unit_index(&self, name: &str) -> Option<usize> {
+        self.units.iter().position(|u| u.name == name)
     }
 
     /// Finds a projection index by name.

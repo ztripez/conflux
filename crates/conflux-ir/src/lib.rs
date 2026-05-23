@@ -14,10 +14,10 @@ pub use expr::{col, lit, param, Expr};
 pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,
-    AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy,
+    AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy, Dimension,
     FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, ParamIr, ProjectionBridgeIr, ProjectionIr,
     QueryInput, QueryIr, QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask,
-    RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr,
+    RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr, UnitIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
