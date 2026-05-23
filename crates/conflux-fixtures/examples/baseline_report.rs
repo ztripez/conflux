@@ -189,6 +189,43 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         }
     }
 
+    // Multiscale projections: cross-scale values + drift, and any projection bridge
+    // (absent unless declared). The value comes from the declared projection, never
+    // a manual cross-scale write.
+    if !ir.projections.is_empty() {
+        println!(
+            "  projections: {} projection(s), {} bridge(s)",
+            ir.projections.len(),
+            ir.projection_bridges.len()
+        );
+        for projection in sim.projection_report() {
+            let drift = projection
+                .drift
+                .map_or_else(|| "n/a".to_string(), |d| d.to_string());
+            println!(
+                "    projection `{}` [{:?}]: {:?}({}) -> {}.{} = {}, drift {}",
+                projection.projection,
+                projection.authority,
+                projection.operation,
+                projection.source_region,
+                projection.target_table,
+                projection.target_signal,
+                projection.projected_value,
+                drift,
+            );
+        }
+        for bridge in report
+            .steps
+            .first()
+            .map_or(&[][..], |s| &s.projection_bridges)
+        {
+            println!(
+                "    projection bridge `{}` -> {}.{} = {}",
+                bridge.projection, bridge.table, bridge.signal, bridge.value
+            );
+        }
+    }
+
     // Kernel extraction + equivalence.
     let kernels = extract(&ir);
     println!(

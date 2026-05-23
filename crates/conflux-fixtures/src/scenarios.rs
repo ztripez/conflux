@@ -4,8 +4,8 @@
 
 use conflux_core::{
     cell, col, field_lit, lit, param, ActorMovement, ActorRule, ActorSet, Aggregate, Assessment,
-    Bridge, EdgePolicy, Field, Flow, Grid2, Model, ProximityQuery, QueryMetric, Region, Rule,
-    Table,
+    Bridge, EdgePolicy, Field, Flow, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
+    QueryMetric, Region, Rule, ScaleLink, Table,
 };
 
 /// A scenario's stable name paired with its builder.
@@ -26,6 +26,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("runoff_flow", runoff_flow),
     ("herd_grazing", herd_grazing),
     ("herd_proximity", herd_proximity),
+    ("regional_projection", regional_projection),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -353,6 +354,64 @@ pub fn herd_proximity() -> Model {
             .on_actors("Herd")
             .query_count("nearby", "nearby_herd")
             .propose("alertness", col("nearby")),
+    );
+    model
+}
+
+/// The canonical multiscale scenario: a basin's total crop yield is projected up an
+/// explicit scale link into a `Settlement` table signal, bridged into table state,
+/// and consumed by a table rule.
+///
+/// It exercises the whole multiscale track end to end through the public API: a
+/// `basin` region over a `Terrain` field, a `basin_yield` sum aggregate, a
+/// source-authoritative `basin_to_settlement` scale link (region -> table), a
+/// `yield_up` projection of the aggregate onto `Settlement.projected_yield`, an
+/// explicit projection bridge writing that signal, and an `accumulate` rule that
+/// adds the bridged signal into `stores`. The value crosses scales only through the
+/// declared projection — never a manual scan stuffed into the table.
+///
+/// With yield = [10, 20] the basin total is 30, so the bridge writes
+/// `projected_yield = 30` at the start of each tick and `accumulate` grows `stores`
+/// by 30 per tick; the projection report shows zero drift once bridged. The contract
+/// suite asserts the lowered scale-link and projection identities, the projected
+/// value and authority, the (zero) drift, and the bridge feeding table state.
+pub fn regional_projection() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("yield", vec![10.0, 20.0]);
+    let mut settlement = Table::new("Settlement", 1);
+    settlement
+        .stock("stores", vec![0.0])
+        .signal("projected_yield", vec![0.0]);
+
+    let mut model = Model::new("regional_projection");
+    model.add_field(terrain);
+    model.add_table(settlement);
+    model.add_region(
+        Region::new("basin")
+            .on_field("Terrain")
+            .mask(vec![true, true]),
+    );
+    model.add_aggregate(Aggregate::sum("basin_yield", "basin", "yield"));
+    // The basin (child) is source-authoritative over the Settlement (parent) signal.
+    model.add_scale_link(
+        ScaleLink::new("basin_to_settlement")
+            .from_region("basin")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(
+        Projection::new("yield_up")
+            .over_link("basin_to_settlement")
+            .of_aggregate("basin_yield")
+            .to_signal("projected_yield"),
+    );
+    // Explicit bridge: the only place the projection writes table state.
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    // The table consumes the bridged projection.
+    model.add_rule(
+        Rule::new("accumulate")
+            .on("Settlement")
+            .propose("stores", col("stores") + col("projected_yield")),
     );
     model
 }
