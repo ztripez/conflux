@@ -16,15 +16,15 @@ mod region;
 pub use aggregate::Aggregate;
 pub use bridge::Bridge;
 pub use field::Field;
-pub use flow::{ConservationPolicy, Flow};
+pub use flow::Flow;
 pub use lower::{lower, LowerError};
 pub use model::{FieldRule, Model, Rule, Table};
 pub use region::Region;
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{
-    cell, col, field_lit, lit, neighbor, param, AggregateOp, Assessment, Cadence, EdgePolicy, Expr,
-    FieldExpr, Grid2, ValueKind,
+    cell, col, field_lit, lit, neighbor, param, AggregateOp, Assessment, Cadence,
+    ConservationPolicy, EdgePolicy, Expr, FieldExpr, Grid2, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";
