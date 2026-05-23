@@ -1,7 +1,7 @@
-//! Scale-link authoring API.
+//! Scale-link authoring API and lowering.
 //!
-//! This slice declares scale links only — lowering and projection arrive in later
-//! slices, so `add_scale_link` is inert and must not disturb lowering.
+//! Scale links lower into validated `ScaleLinkIr`; projections, drift reports, and
+//! bridging arrive in later slices. A link-free model must lower unchanged.
 
 use conflux_core::{
     col, lit, lower, Aggregate, Authority, Field, Grid2, Model, Region, ScaleLink, Table,
@@ -73,4 +73,124 @@ fn authority_policies_are_explicit() {
     let _ = Authority::SourceAuthoritative;
     let _ = Authority::TargetAuthoritative;
     let _ = Authority::ReportOnly;
+}
+
+/// `multiscale_model` with `link` added.
+fn lower_with(link: ScaleLink) -> Result<conflux_ir::SimIr, conflux_core::LowerError> {
+    let mut model = multiscale_model();
+    model.add_scale_link(link);
+    lower(&model)
+}
+
+#[test]
+fn lowers_a_valid_region_to_table_link() {
+    use conflux_ir::{RelationshipKind, ScaleRef};
+    let ir = lower_with(
+        ScaleLink::new("basin_yield")
+            .from_region("north")
+            .to_table("Settlement")
+            .source_authoritative(),
+    )
+    .expect("a valid region-to-table link lowers");
+    assert_eq!(ir.scale_links.len(), 1);
+    let link = &ir.scale_links[0];
+    assert_eq!(link.name, "basin_yield");
+    assert_eq!(link.source, ScaleRef::Region(0));
+    assert_eq!(link.target, ScaleRef::Table(0));
+    assert_eq!(link.kind, RelationshipKind::RegionToTable);
+    assert_eq!(link.authority, Authority::SourceAuthoritative);
+    assert_eq!(ir.scale_link_index("basin_yield"), Some(0));
+}
+
+#[test]
+fn models_without_scale_links_lower_unchanged() {
+    let ir = lower(&multiscale_model()).expect("a link-free model lowers");
+    assert!(ir.scale_links.is_empty());
+}
+
+#[test]
+fn rejects_duplicate_scale_link_names() {
+    let mut model = multiscale_model();
+    model.add_scale_link(
+        ScaleLink::new("dup")
+            .from_region("north")
+            .to_table("Settlement")
+            .report_only(),
+    );
+    model.add_scale_link(
+        ScaleLink::new("dup")
+            .from_region("north")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    match lower(&model) {
+        Err(conflux_core::LowerError::DuplicateScaleLink(name)) => assert_eq!(name, "dup"),
+        other => panic!("expected DuplicateScaleLink, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_missing_source_target_or_authority() {
+    use conflux_core::LowerError;
+    assert!(matches!(
+        lower_with(ScaleLink::new("a").to_table("Settlement").report_only()),
+        Err(LowerError::ScaleLinkMissingSource(_))
+    ));
+    assert!(matches!(
+        lower_with(ScaleLink::new("a").from_region("north").report_only()),
+        Err(LowerError::ScaleLinkMissingTarget(_))
+    ));
+    assert!(matches!(
+        lower_with(
+            ScaleLink::new("a")
+                .from_region("north")
+                .to_table("Settlement")
+        ),
+        Err(LowerError::ScaleLinkMissingAuthority(_))
+    ));
+}
+
+#[test]
+fn rejects_unknown_domains() {
+    use conflux_core::LowerError;
+    match lower_with(
+        ScaleLink::new("a")
+            .from_region("ghost")
+            .to_table("Settlement")
+            .report_only(),
+    ) {
+        Err(LowerError::ScaleLinkUnknownRegion { region, .. }) => assert_eq!(region, "ghost"),
+        other => panic!("expected ScaleLinkUnknownRegion, got {other:?}"),
+    }
+    match lower_with(
+        ScaleLink::new("a")
+            .from_region("north")
+            .to_table("Nope")
+            .report_only(),
+    ) {
+        Err(LowerError::ScaleLinkUnknownTable { table, .. }) => assert_eq!(table, "Nope"),
+        other => panic!("expected ScaleLinkUnknownTable, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_unsupported_domain_combination() {
+    use conflux_core::LowerError;
+    // region -> region is expressible but unsupported in this slice.
+    match lower_with(
+        ScaleLink::new("a")
+            .from_region("north")
+            .to_region("north")
+            .report_only(),
+    ) {
+        Err(LowerError::UnsupportedScaleLink {
+            source_kind,
+            target_kind,
+            ..
+        }) => {
+            assert_eq!(source_kind, "region");
+            assert_eq!(target_kind, "region");
+        }
+        other => panic!("expected UnsupportedScaleLink, got {other:?}"),
+    }
 }

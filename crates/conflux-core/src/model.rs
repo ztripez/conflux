@@ -170,8 +170,8 @@ impl Model {
     }
 
     /// Adds a scale link (a declared cross-scale relationship + authority policy
-    /// between two domains). Validation and lowering arrive in a later slice (#124);
-    /// declaring one is inert until then, and it never duplicates state.
+    /// between two domains). It is validated and lowered to scale-link IR by
+    /// `lower()`; it caches no parent value and projects nothing.
     pub fn add_scale_link(&mut self, link: ScaleLink) -> &mut Self {
         self.scale_links.push(link);
         self
