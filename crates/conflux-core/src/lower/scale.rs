@@ -13,11 +13,14 @@
 
 use std::collections::HashSet;
 
-use conflux_ir::{ProjectionIr, RelationshipKind, ScaleLinkIr, ScaleRef, SimIr, ValueKind};
+use conflux_ir::{
+    Authority, ProjectionBridgeIr, ProjectionIr, RelationshipKind, ScaleLinkIr, ScaleRef, SimIr,
+    ValueKind,
+};
 
 use super::LowerError;
 use crate::model::Model;
-use crate::scale::{Projection, ScaleEndpoint, ScaleLink};
+use crate::scale::{Projection, ProjectionBridge, ScaleEndpoint, ScaleLink};
 
 /// Lowers every scale link against the already-lowered regions and tables in `ir`.
 /// Scale-link names are their own namespace (a distinct report/identity space, not
@@ -200,5 +203,72 @@ fn lower_projection(projection: &Projection, ir: &SimIr) -> Result<ProjectionIr,
         aggregate: aggregate_idx,
         target_table,
         target_signal,
+    })
+}
+
+/// Lowers every projection bridge against the already-lowered projections in `ir`.
+/// A projection bridge is the only state-writing boundary for projections; it
+/// shares the single-writer rule on table signals with aggregate bridges (already
+/// lowered into `ir.bridges`). Only a source-authoritative projection may be
+/// bridged.
+pub(super) fn lower_projection_bridges(
+    model: &Model,
+    ir: &SimIr,
+) -> Result<Vec<ProjectionBridgeIr>, LowerError> {
+    // Signals already claimed by an aggregate bridge — a projection bridge may not
+    // write the same `(table, signal)`. Projection bridges add to the same set as
+    // they resolve, so two projection bridges cannot collide on one signal either.
+    let mut signal_writers: HashSet<(usize, usize)> =
+        ir.bridges.iter().map(|b| (b.table, b.signal)).collect();
+    let mut seen_projections: HashSet<usize> = HashSet::new();
+    let mut bridges = Vec::with_capacity(model.projection_bridges.len());
+    for bridge in &model.projection_bridges {
+        bridges.push(lower_projection_bridge(
+            bridge,
+            ir,
+            &mut signal_writers,
+            &mut seen_projections,
+        )?);
+    }
+    Ok(bridges)
+}
+
+fn lower_projection_bridge(
+    bridge: &ProjectionBridge,
+    ir: &SimIr,
+    signal_writers: &mut HashSet<(usize, usize)>,
+    seen_projections: &mut HashSet<usize>,
+) -> Result<ProjectionBridgeIr, LowerError> {
+    let projection_idx = ir.projection_index(bridge.projection()).ok_or_else(|| {
+        LowerError::ProjectionBridgeUnknownProjection(bridge.projection().to_string())
+    })?;
+    let projection = &ir.projections[projection_idx];
+
+    if !seen_projections.insert(projection_idx) {
+        return Err(LowerError::DuplicateProjectionBridge(
+            projection.name.clone(),
+        ));
+    }
+
+    // Only a source-authoritative projection writes target state; report-only and
+    // target-authoritative links have no source -> target writeback in this slice.
+    if ir.scale_links[projection.scale_link].authority != Authority::SourceAuthoritative {
+        return Err(LowerError::ProjectionBridgeNotSourceAuthoritative {
+            projection: projection.name.clone(),
+        });
+    }
+
+    // Single writer per table signal, across aggregate and projection bridges.
+    if !signal_writers.insert((projection.target_table, projection.target_signal)) {
+        let table = &ir.tables[projection.target_table];
+        return Err(LowerError::ProjectionBridgeDuplicateTarget {
+            projection: projection.name.clone(),
+            table: table.name.clone(),
+            signal: table.columns[projection.target_signal].name.clone(),
+        });
+    }
+
+    Ok(ProjectionBridgeIr {
+        projection: projection_idx,
     })
 }

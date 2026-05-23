@@ -13,7 +13,7 @@ use crate::field::Field;
 use crate::flow::Flow;
 use crate::query::ProximityQuery;
 use crate::region::Region;
-use crate::scale::{Projection, ScaleLink};
+use crate::scale::{Projection, ProjectionBridge, ScaleLink};
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
@@ -45,6 +45,8 @@ pub struct Model {
     pub(crate) scale_links: Vec<ScaleLink>,
     // Lowered into projection IR by `lower()`.
     pub(crate) projections: Vec<Projection>,
+    // Lowered into projection-bridge IR by `lower()`.
+    pub(crate) projection_bridges: Vec<ProjectionBridge>,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +75,7 @@ impl Model {
             queries: Vec::new(),
             scale_links: Vec::new(),
             projections: Vec::new(),
+            projection_bridges: Vec::new(),
         }
     }
 
@@ -185,6 +188,14 @@ impl Model {
     /// IR by `lower()`; evaluation is report-only and writes nothing.
     pub fn add_projection(&mut self, projection: Projection) -> &mut Self {
         self.projections.push(projection);
+        self
+    }
+
+    /// Adds a projection-to-table bridge: opts a projection out of report-only into
+    /// writing its value to its target signal each tick. Validated and lowered by
+    /// `lower()`; the only state-writing boundary for projections.
+    pub fn add_projection_bridge(&mut self, bridge: ProjectionBridge) -> &mut Self {
+        self.projection_bridges.push(bridge);
         self
     }
 }

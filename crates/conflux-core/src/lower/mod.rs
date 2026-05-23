@@ -463,6 +463,24 @@ pub enum LowerError {
         table: String,
         signal: String,
     },
+    #[error("projection bridge references unknown projection `{0}`")]
+    ProjectionBridgeUnknownProjection(String),
+    #[error("projection `{0}` is bridged more than once")]
+    DuplicateProjectionBridge(String),
+    #[error(
+        "projection `{projection}` cannot be bridged: its scale link is not \
+         source-authoritative, so there is no source -> target writeback"
+    )]
+    ProjectionBridgeNotSourceAuthoritative { projection: String },
+    #[error(
+        "projection bridge for `{projection}` targets `{table}.{signal}`, which is already written \
+         by another bridge"
+    )]
+    ProjectionBridgeDuplicateTarget {
+        projection: String,
+        table: String,
+        signal: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -490,6 +508,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         queries: Vec::new(),
         scale_links: Vec::new(),
         projections: Vec::new(),
+        projection_bridges: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -507,6 +526,10 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     // Projections resolve against the lowered scale links, aggregates, and tables.
     let projections = scale::lower_projections(model, &ir)?;
     ir.projections = projections;
+    // Projection bridges resolve against the lowered projections and share the
+    // single-writer rule on table signals with aggregate bridges (already lowered).
+    let projection_bridges = scale::lower_projection_bridges(model, &ir)?;
+    ir.projection_bridges = projection_bridges;
     let flows = flows::lower_flows(model, &ir)?;
     ir.flows = flows;
     let actors = actors::lower_actors(model, &ir)?;
