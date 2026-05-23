@@ -1,7 +1,8 @@
 //! Field-local flow authoring API and lowering.
 
 use conflux_core::{
-    cell, field_lit, lower, ConservationPolicy, EdgePolicy, Field, Flow, Grid2, LowerError, Model,
+    cell, field_lit, lower, neighbor, Assessment, ConservationPolicy, EdgePolicy, Field, Flow,
+    Grid2, LowerError, Model,
 };
 
 /// A 3x1 `Terrain` field (stock `water`, signal `slope`) with `flow` added, for
@@ -197,5 +198,54 @@ fn rejects_missing_pieces() {
     assert!(matches!(
         lower(&terrain_flow_model(no_destination)),
         Err(LowerError::FlowMissingDestination(_))
+    ));
+}
+
+#[test]
+fn rejects_missing_quantity_channel() {
+    let flow = Flow::new("f")
+        .on_field("Terrain")
+        .amount(cell("water"))
+        .to_neighbor(1, 0, EdgePolicy::Reject)
+        .conserved();
+    assert!(matches!(
+        lower(&terrain_flow_model(flow)),
+        Err(LowerError::FlowMissingChannel(_))
+    ));
+}
+
+#[test]
+fn lowers_named_loss_and_boundary_loss_policies() {
+    let evap = runoff().named_loss("evaporation");
+    let ir = lower(&terrain_flow_model(evap)).unwrap();
+    assert_eq!(
+        ir.flows[0].conservation,
+        ConservationPolicy::NamedLoss("evaporation".to_string())
+    );
+
+    let leaky = runoff().boundary_loss();
+    let ir = lower(&terrain_flow_model(leaky)).unwrap();
+    assert_eq!(ir.flows[0].conservation, ConservationPolicy::BoundaryLoss);
+}
+
+#[test]
+fn lowers_a_neighbor_amount_with_wrap_edge() {
+    // Amount reads a wrapped neighbor channel; destination wraps too.
+    let flow = Flow::new("diffuse")
+        .on_field("Terrain")
+        .move_channel("water")
+        .amount(neighbor("water", -1, 0, EdgePolicy::Wrap) * field_lit(0.25))
+        .to_neighbor(1, 0, EdgePolicy::Wrap)
+        .conserved();
+    let ir = lower(&terrain_flow_model(flow)).unwrap();
+    assert_eq!(ir.flows[0].edge, EdgePolicy::Wrap);
+}
+
+#[test]
+fn rejects_malformed_assessment_on_a_flow() {
+    let flow = runoff().assess(Assessment::range(5.0, 1.0)); // min > max
+    assert!(matches!(
+        lower(&terrain_flow_model(flow)),
+        Err(LowerError::RangeMinExceedsMax { .. })
     ));
 }
