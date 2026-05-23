@@ -5,6 +5,7 @@
 //! assessments. Models declared here lower into [`conflux_ir::SimIr`]. It does
 //! not own GPU residency or transfer; that boundary belongs to Residency.
 
+mod actor;
 mod aggregate;
 mod bridge;
 mod field;
@@ -13,6 +14,7 @@ mod lower;
 mod model;
 mod region;
 
+pub use actor::ActorSet;
 pub use aggregate::Aggregate;
 pub use bridge::Bridge;
 pub use field::Field;
