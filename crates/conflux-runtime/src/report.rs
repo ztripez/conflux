@@ -12,6 +12,15 @@ use conflux_ir::{
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
+/// A ` <unit>` suffix for Display when a unit is known, else empty. Keeps
+/// unannotated values clean while surfacing units as provenance where declared.
+fn unit_suffix(unit: &Option<String>) -> String {
+    match unit {
+        Some(u) => format!(" {u}"),
+        None => String::new(),
+    }
+}
+
 /// The full record of a run.
 #[derive(Clone, Debug, Default)]
 pub struct Report {
@@ -105,6 +114,9 @@ pub struct FlowFireReport {
     pub flow: String,
     pub field: String,
     pub channel: String,
+    /// The moved quantity channel's declared unit, if any (provenance; `None` when
+    /// the channel is unannotated).
+    pub unit: Option<String>,
     pub conservation: ConservationPolicy,
     /// The quantity channel's total across the field before this flow ran.
     pub total_before: f64,
@@ -206,6 +218,9 @@ pub struct ProjectionBridgeReport {
     pub table: String,
     pub signal: String,
     pub value: f64,
+    /// The projected value's declared unit, if any (the source aggregate channel's
+    /// unit; `None` when unannotated).
+    pub unit: Option<String>,
 }
 
 /// One firing of one rule on one tick.
@@ -337,6 +352,9 @@ pub struct AggregateReport {
     pub field: String,
     /// The reduced channel; `None` for a count.
     pub channel: Option<String>,
+    /// The reduced channel's declared unit, if any — the aggregate's output unit
+    /// follows its source channel (`None` for a count or an unannotated channel).
+    pub unit: Option<String>,
     pub operation: AggregateOp,
     pub value: f64,
     /// Number of selected cells.
@@ -416,6 +434,9 @@ pub struct ProjectionReport {
     pub target_table: String,
     /// The target signal column the projection maps to.
     pub target_signal: String,
+    /// The projected value's declared unit, if any — follows the source aggregate's
+    /// channel (`None` when unannotated).
+    pub unit: Option<String>,
     pub authority: Authority,
     /// The value carried up the link (the source aggregate's value).
     pub projected_value: f64,
@@ -473,8 +494,12 @@ impl fmt::Display for Report {
             for bridge in &step.projection_bridges {
                 writeln!(
                     f,
-                    "  projection bridge `{}` -> {}.{} = {}",
-                    bridge.projection, bridge.table, bridge.signal, bridge.value
+                    "  projection bridge `{}` -> {}.{} = {}{}",
+                    bridge.projection,
+                    bridge.table,
+                    bridge.signal,
+                    bridge.value,
+                    unit_suffix(&bridge.unit),
                 )?;
             }
             for rule in &step.rules {
@@ -534,10 +559,11 @@ impl fmt::Display for Report {
                 let summary = flow.summary();
                 writeln!(
                     f,
-                    "  flow `{}` -> {}.{} ({:?}): moved {}, boundary loss {}, delta {}, {} violation(s)",
+                    "  flow `{}` -> {}.{}{} ({:?}): moved {}, boundary loss {}, delta {}, {} violation(s)",
                     flow.flow,
                     flow.field,
                     flow.channel,
+                    unit_suffix(&flow.unit),
                     flow.conservation,
                     summary.total_moved,
                     summary.total_boundary_loss,
@@ -652,7 +678,7 @@ impl fmt::Display for ProjectionReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "projection `{}` over `{}` [{:?}]: {:?}({}) {} -> {}.{} = {}",
+            "projection `{}` over `{}` [{:?}]: {:?}({}) {} -> {}.{} = {}{}",
             self.projection,
             self.scale_link,
             self.authority,
@@ -662,6 +688,7 @@ impl fmt::Display for ProjectionReport {
             self.target_table,
             self.target_signal,
             self.projected_value,
+            unit_suffix(&self.unit),
         )?;
         match (self.target_observed, self.drift) {
             (Some(observed), Some(drift)) => {

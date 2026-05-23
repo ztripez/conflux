@@ -55,6 +55,8 @@ pub(crate) fn evaluate_projections(
                 operation: aggregate.op,
                 target_table: table.name.clone(),
                 target_signal: signal.name.clone(),
+                // The projected unit follows the source aggregate's unit (reused).
+                unit: aggregates[projection.aggregate].unit.clone(),
                 authority: link.authority,
                 projected_value,
                 target_observed,

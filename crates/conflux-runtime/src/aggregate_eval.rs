@@ -57,11 +57,19 @@ pub(crate) fn evaluate_aggregates(
                     .fold(f64::NEG_INFINITY, f64::max),
             };
 
+            // The aggregate's output unit follows its source channel (none for a
+            // count or an unannotated channel).
+            let unit = aggregate
+                .channel
+                .and_then(|c| ir.unit_name(field.channels[c].unit))
+                .map(str::to_string);
+
             AggregateReport {
                 name: aggregate.name.clone(),
                 region: region.name.clone(),
                 field: field.name.clone(),
                 channel: aggregate.channel.map(|c| field.channels[c].name.clone()),
+                unit,
                 operation: aggregate.op,
                 value,
                 cell_count,

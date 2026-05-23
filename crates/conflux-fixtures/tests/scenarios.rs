@@ -381,6 +381,9 @@ fn runoff_flow_moves_water_and_reports_boundary_loss() {
     assert_eq!(summary.total_after, 10.0);
     assert_eq!(summary.total_boundary_loss, 2.0);
     assert_eq!(summary.conservation_delta, 0.0);
+
+    // The flow report carries the moved channel's unit (provenance).
+    assert_eq!(report.unit.as_deref(), Some("tons"));
 }
 
 #[test]
@@ -502,13 +505,21 @@ fn regional_projection_projects_a_basin_total_and_bridges_it() {
     assert_eq!(report.authority, Authority::SourceAuthoritative);
     assert_eq!(report.target_observed, Some(30.0));
     assert_eq!(report.drift, Some(0.0));
+    // The projected value carries the source channel's unit (provenance).
+    assert_eq!(report.unit.as_deref(), Some("grain"));
 
     // The bridge wrote the signal and the table rule consumed it this tick.
     assert_eq!(step.projection_bridges.len(), 1);
     assert_eq!(step.projection_bridges[0].value, 30.0);
+    assert_eq!(step.projection_bridges[0].unit.as_deref(), Some("grain"));
     assert_eq!(
         sim.column("Settlement", "projected_yield"),
         Some(&[30.0][..])
     );
     assert_eq!(sim.column("Settlement", "stores"), Some(&[30.0][..]));
+
+    // The source aggregate report also carries the unit.
+    let aggregates = sim.aggregate_report();
+    let basin = aggregates.iter().find(|a| a.name == "basin_yield").unwrap();
+    assert_eq!(basin.unit.as_deref(), Some("grain"));
 }

@@ -21,6 +21,11 @@ use conflux_runtime::{check_equivalence, Simulation, Tolerance};
 /// shape check, not a benchmark.
 const TICKS: u64 = 1;
 
+/// A ` <unit>` suffix when a unit is known, else empty.
+fn unit_suffix(unit: &Option<String>) -> String {
+    unit.as_ref().map_or_else(String::new, |u| format!(" {u}"))
+}
+
 fn main() {
     println!(
         "baseline report shape for {} canonical scenario(s)",
@@ -89,9 +94,10 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         );
         for aggregate in &aggregates {
             println!(
-                "    aggregate `{}` = {} [{:?} over {}.{}, {} cell(s)]",
+                "    aggregate `{}` = {}{} [{:?} over {}.{}, {} cell(s)]",
                 aggregate.name,
                 aggregate.value,
+                unit_suffix(&aggregate.unit),
                 aggregate.operation,
                 aggregate.region,
                 aggregate.channel.as_deref().unwrap_or("(count)"),
@@ -112,10 +118,11 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         for flow in report.steps.first().map_or(&[][..], |s| &s.flows) {
             let summary = flow.summary();
             println!(
-                "    flow `{}` -> {}.{} [{:?}]: moved {}, boundary loss {}, conservation delta {}",
+                "    flow `{}` -> {}.{}{} [{:?}]: moved {}, boundary loss {}, conservation delta {}",
                 flow.flow,
                 flow.field,
                 flow.channel,
+                unit_suffix(&flow.unit),
                 flow.conservation,
                 summary.total_moved,
                 summary.total_boundary_loss,
@@ -203,7 +210,7 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
                 .drift
                 .map_or_else(|| "n/a".to_string(), |d| d.to_string());
             println!(
-                "    projection `{}` [{:?}]: {:?}({}) -> {}.{} = {}, drift {}",
+                "    projection `{}` [{:?}]: {:?}({}) -> {}.{} = {}{}, drift {}",
                 projection.projection,
                 projection.authority,
                 projection.operation,
@@ -211,6 +218,7 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
                 projection.target_table,
                 projection.target_signal,
                 projection.projected_value,
+                unit_suffix(&projection.unit),
                 drift,
             );
         }
@@ -220,8 +228,12 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
             .map_or(&[][..], |s| &s.projection_bridges)
         {
             println!(
-                "    projection bridge `{}` -> {}.{} = {}",
-                bridge.projection, bridge.table, bridge.signal, bridge.value
+                "    projection bridge `{}` -> {}.{} = {}{}",
+                bridge.projection,
+                bridge.table,
+                bridge.signal,
+                bridge.value,
+                unit_suffix(&bridge.unit)
             );
         }
     }

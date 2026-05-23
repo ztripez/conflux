@@ -93,6 +93,9 @@ pub(crate) fn step_flows(
             flow: flow.name.clone(),
             field: field.name.clone(),
             channel: field.channels[flow.channel].name.clone(),
+            unit: ir
+                .unit_name(field.channels[flow.channel].unit)
+                .map(str::to_string),
             conservation: flow.conservation.clone(),
             total_before,
             total_after,
