@@ -13,9 +13,6 @@
 use conflux_ir::ValueKind;
 
 /// One per-actor scalar channel (stock or signal), one value per actor.
-//
-// Read by actor lowering (#100); inert in this authoring-only slice.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct ActorChannel {
     pub(crate) name: String,
@@ -24,10 +21,6 @@ pub(crate) struct ActorChannel {
 }
 
 /// A named set of sparse actors positioned on a host field.
-//
-// `field`/`positions`/`channels` are authoring data consumed by actor lowering
-// (#100); this slice is authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ActorSet {
     pub(crate) name: String,

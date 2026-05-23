@@ -22,6 +22,8 @@ mod aggregates;
 mod bridges;
 // Field-local flow lowering, its own concern.
 mod flows;
+// Actor-set lowering, its own concern.
+mod actors;
 
 /// The parameter name the executor reserves for the rule cadence.
 const RESERVED_DT: &str = "dt";
@@ -260,6 +262,40 @@ pub enum LowerError {
     },
     #[error("flow `{flow}` has a zero destination offset; a flow must move to a different cell")]
     FlowZeroOffset { flow: String },
+    #[error("duplicate domain name `{0}`: an actor set may not share a name with an actor set, region, field, or table")]
+    DuplicateActorSet(String),
+    #[error("actor set `{0}` does not declare a host field (use `.on_field(..)`)")]
+    ActorMissingField(String),
+    #[error("actor set `{0}` does not declare positions (use `.positions_xy(..)`)")]
+    ActorMissingPositions(String),
+    #[error("actor set `{0}` has zero actors; an actor set must have at least one")]
+    EmptyActorSet(String),
+    #[error("actor set `{actors}` targets unknown host field `{field}`")]
+    ActorUnknownField { actors: String, field: String },
+    #[error("actor set `{actors}` has {got} positions but {count} actors")]
+    ActorPositionCountMismatch {
+        actors: String,
+        count: usize,
+        got: usize,
+    },
+    #[error("actor set `{actors}` position ({x}, {y}) is outside host field `{field}` ({width} x {height})")]
+    ActorPositionOutOfBounds {
+        actors: String,
+        field: String,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    },
+    #[error("duplicate channel `{channel}` in actor set `{actors}`")]
+    DuplicateActorChannel { actors: String, channel: String },
+    #[error("channel `{channel}` in actor set `{actors}` has {got} values but {count} actors")]
+    ActorChannelLengthMismatch {
+        actors: String,
+        channel: String,
+        count: usize,
+        got: usize,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -281,6 +317,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         aggregates: Vec::new(),
         bridges: Vec::new(),
         flows: Vec::new(),
+        actors: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -293,6 +330,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.bridges = bridges;
     let flows = flows::lower_flows(model, &ir)?;
     ir.flows = flows;
+    let actors = actors::lower_actors(model, &ir)?;
+    ir.actors = actors;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

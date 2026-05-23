@@ -15,9 +15,9 @@ The split trigger fired when the field domain (#37) landed: `lower.rs` became a
 `lower/` module. `lower/mod.rs` keeps the `lower()` gate, the `LowerError` enum,
 and the table/rule/param/expr validators; `lower/fields.rs` owns field-domain
 validation, `lower/regions.rs` owns region-domain validation (#64),
-`lower/aggregates.rs` and `lower/bridges.rs` own the aggregate/bridge concerns, and
-`lower/flows.rs` owns field-local flow validation (#90). `lower()` remains the
-single entry point.
+`lower/aggregates.rs` and `lower/bridges.rs` own the aggregate/bridge concerns,
+`lower/flows.rs` owns field-local flow validation (#90), and `lower/actors.rs` owns
+actor-set validation (#100). `lower()` remains the single entry point.
 
 Verdict: **no further action.** The new domain was extracted as its own concern
 rather than growing the gate.
