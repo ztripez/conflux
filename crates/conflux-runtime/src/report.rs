@@ -28,6 +28,30 @@ pub struct StepReport {
     /// Field-local flows applied this tick, in declaration order (empty when no
     /// flows are declared).
     pub flows: Vec<FlowFireReport>,
+    /// Actor rule firings this tick (empty when no actor rules are declared).
+    pub actor_rules: Vec<ActorRuleFireReport>,
+}
+
+/// One firing of one actor rule on one tick, evaluated per actor.
+#[derive(Clone, Debug)]
+pub struct ActorRuleFireReport {
+    pub rule: String,
+    pub actor_set: String,
+    pub target_channel: String,
+    /// The cadence-derived time step exposed to the rule.
+    pub dt: f64,
+    pub actors: Vec<ActorOutcome>,
+}
+
+/// The result of one actor rule firing on one actor.
+#[derive(Clone, Debug)]
+pub struct ActorOutcome {
+    pub actor: usize,
+    pub old_value: f64,
+    /// The raw proposed value, preserved even when an assessment rejects it.
+    pub proposed_value: f64,
+    pub committed: bool,
+    pub assessments: Vec<AssessmentOutcome>,
 }
 
 /// One field-local flow applied on one tick: the per-source-cell transfers it
@@ -388,6 +412,30 @@ impl fmt::Display for Report {
                             "    cell {} -> boundary: {} [boundary loss]",
                             transfer.source, transfer.amount
                         )?,
+                    }
+                }
+            }
+            for rule in &step.actor_rules {
+                writeln!(
+                    f,
+                    "  actor rule `{}` -> {}.{} (dt = {})",
+                    rule.rule, rule.actor_set, rule.target_channel, rule.dt
+                )?;
+                for outcome in &rule.actors {
+                    let status = if outcome.committed {
+                        "COMMIT"
+                    } else {
+                        "REJECT"
+                    };
+                    writeln!(
+                        f,
+                        "    actor {}: {} -> {} [{}]",
+                        outcome.actor, outcome.old_value, outcome.proposed_value, status
+                    )?;
+                    for assessment in &outcome.assessments {
+                        if !assessment.passed {
+                            writeln!(f, "      FAILED: {}", assessment.detail)?;
+                        }
                     }
                 }
             }

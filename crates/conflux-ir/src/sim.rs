@@ -20,6 +20,7 @@ pub struct SimIr {
     pub bridges: Vec<BridgeIr>,
     pub flows: Vec<FlowIr>,
     pub actors: Vec<ActorSetIr>,
+    pub actor_rules: Vec<ActorRuleIr>,
 }
 
 /// A named scalar parameter shared across rules.
@@ -180,6 +181,22 @@ pub struct ActorChannelIr {
     pub name: String,
     pub kind: ValueKind,
     pub initial: Vec<f64>,
+}
+
+/// A rule that proposes a new value for one actor stock channel at a cadence,
+/// evaluated per actor. It reuses the table [`Expr`] — `col` reads the current
+/// actor's channel — but is executed as its own actor concern, not routed through
+/// table execution.
+#[derive(Clone, Debug)]
+pub struct ActorRuleIr {
+    pub name: String,
+    /// Index into [`SimIr::actors`].
+    pub actor_set: usize,
+    /// Index of the proposed stock channel within the actor set.
+    pub target: usize,
+    pub cadence: Cadence,
+    pub expr: Expr,
+    pub assessments: Vec<Assessment>,
 }
 
 /// The explicit bridge from a region aggregate into a table signal: the aggregate

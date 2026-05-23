@@ -4,6 +4,7 @@
 //! execution/stability report. It is the reference path: optimized backends
 //! (later MVPs) must prove equivalence against it within declared tolerances.
 
+mod actor_exec;
 mod aggregate_eval;
 mod equivalence;
 mod eval;
@@ -25,9 +26,9 @@ pub use field_equivalence::{
 };
 pub use plan::ExecutionPlan;
 pub use report::{
-    AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport, ComparisonStatus,
-    FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport, FlowSummary,
-    FlowTransfer, Report, RowOutcome, RuleFireReport, StepReport,
+    ActorOutcome, ActorRuleFireReport, AggregateReport, AssessmentOutcome, AssessmentSummary,
+    BridgeReport, ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, FlowDestination,
+    FlowFireReport, FlowSummary, FlowTransfer, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 

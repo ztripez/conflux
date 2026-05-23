@@ -26,7 +26,7 @@ mod flows;
 mod actors;
 
 /// The parameter name the executor reserves for the rule cadence.
-const RESERVED_DT: &str = "dt";
+pub(super) const RESERVED_DT: &str = "dt";
 
 /// An error found while lowering a [`Model`].
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -296,6 +296,36 @@ pub enum LowerError {
         count: usize,
         got: usize,
     },
+    #[error("actor rule `{0}` does not declare an actor set (use `.on_actors(..)`)")]
+    ActorRuleMissingActorSet(String),
+    #[error("actor rule `{0}` does not declare a proposal (use `.propose(..)`)")]
+    ActorRuleMissingProposal(String),
+    #[error("actor rule `{rule}` targets unknown actor set `{actors}`")]
+    ActorRuleUnknownActorSet { rule: String, actors: String },
+    #[error("actor rule `{rule}`: unknown channel `{channel}` in actor set `{actors}`")]
+    ActorRuleUnknownChannel {
+        rule: String,
+        actors: String,
+        channel: String,
+    },
+    #[error("actor rule `{rule}` targets `{actors}.{channel}`, which is not a stock")]
+    ActorRuleTargetNotStock {
+        rule: String,
+        actors: String,
+        channel: String,
+    },
+    #[error("actor rule `{rule}`: cadence period must be at least 1")]
+    ActorRuleBadCadence { rule: String },
+    #[error(
+        "actor stock `{actors}.{channel}` is written by multiple actor rules (`{first}` and \
+         `{second}`); a single writer per stock is allowed"
+    )]
+    ActorDuplicateWriter {
+        actors: String,
+        channel: String,
+        first: String,
+        second: String,
+    },
 }
 
 /// Validates and lowers a model to simulation IR.
@@ -318,6 +348,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         bridges: Vec::new(),
         flows: Vec::new(),
         actors: Vec::new(),
+        actor_rules: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -332,6 +363,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.flows = flows;
     let actors = actors::lower_actors(model, &ir)?;
     ir.actors = actors;
+    let actor_rules = actors::lower_actor_rules(model, &ir)?;
+    ir.actor_rules = actor_rules;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
@@ -449,17 +482,18 @@ fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, 
     })
 }
 
-/// Rule names are a single global namespace across table *and* field rules: every
-/// report, the planner, the table/field equivalence harnesses, and WGSL module
-/// names key on the rule name as an identity, so a duplicate anywhere —
-/// table/table, field/field, or table/field — is rejected here at the single gate.
+/// Rule names are a single global namespace across table, field, *and* actor rules:
+/// every report, the planner, the equivalence harnesses, and WGSL module names key
+/// on the rule name as an identity, so a duplicate anywhere — across any of the
+/// rule kinds — is rejected here at the single gate.
 fn check_unique_rule_names(model: &Model) -> Result<(), LowerError> {
     let mut names: HashSet<&str> = HashSet::new();
     let all = model
         .rules
         .iter()
         .map(|r| r.name.as_str())
-        .chain(model.field_rules.iter().map(|r| r.name.as_str()));
+        .chain(model.field_rules.iter().map(|r| r.name.as_str()))
+        .chain(model.actor_rules.iter().map(|r| r.name.as_str()));
     for name in all {
         if !names.insert(name) {
             return Err(LowerError::DuplicateRule(name.to_string()));

@@ -31,8 +31,10 @@ pub struct Model {
     pub(crate) bridges: Vec<Bridge>,
     // Lowered into flow IR by `lower()`.
     pub(crate) flows: Vec<Flow>,
-    // Lowered into actor IR by `lower()` in a later slice (#100).
+    // Lowered into actor IR by `lower()`.
     pub(crate) actors: Vec<ActorSet>,
+    // Lowered into actor-rule IR by `lower()`.
+    pub(crate) actor_rules: Vec<ActorRule>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +58,7 @@ impl Model {
             bridges: Vec::new(),
             flows: Vec::new(),
             actors: Vec::new(),
+            actor_rules: Vec::new(),
         }
     }
 
@@ -126,11 +129,17 @@ impl Model {
         self
     }
 
-    /// Adds an actor set (sparse positioned entities on a host field). Validation
-    /// and lowering arrive in a later slice (#100); declaring one is inert until
-    /// then.
+    /// Adds an actor set (sparse positioned entities on a host field). It is
+    /// validated and lowered into actor IR by `lower()`.
     pub fn add_actor_set(&mut self, actors: ActorSet) -> &mut Self {
         self.actors.push(actors);
+        self
+    }
+
+    /// Adds an actor rule (a per-actor proposal to an actor stock channel). It is
+    /// validated and lowered by `lower()`.
+    pub fn add_actor_rule(&mut self, rule: ActorRule) -> &mut Self {
+        self.actor_rules.push(rule);
         self
     }
 }
@@ -287,6 +296,61 @@ impl FieldRule {
 
     /// Declares the proposed stock channel and the field expression producing it.
     pub fn propose(mut self, target: impl Into<String>, expr: FieldExpr) -> Self {
+        self.target = Some(target.into());
+        self.expr = Some(expr);
+        self
+    }
+
+    /// Adds an assessment applied to the proposed value before commit.
+    pub fn assess(mut self, assessment: Assessment) -> Self {
+        self.assessments.push(assessment);
+        self
+    }
+}
+
+/// A rule that proposes a new value for one actor stock channel at a cadence,
+/// evaluated per actor. It uses the table [`Expr`] — `col` reads the current
+/// actor's channel — so per-actor scalar updates reuse the one expression
+/// evaluator; actor execution is its own concern, not table execution.
+#[derive(Clone, Debug)]
+pub struct ActorRule {
+    pub(crate) name: String,
+    pub(crate) actors: Option<String>,
+    pub(crate) target: Option<String>,
+    pub(crate) cadence: Cadence,
+    pub(crate) expr: Option<Expr>,
+    pub(crate) assessments: Vec<Assessment>,
+}
+
+impl ActorRule {
+    /// Starts an actor rule. It fires every tick until [`ActorRule::every`] sets a
+    /// cadence.
+    pub fn new(name: impl Into<String>) -> Self {
+        ActorRule {
+            name: name.into(),
+            actors: None,
+            target: None,
+            cadence: Cadence::every(1),
+            expr: None,
+            assessments: Vec::new(),
+        }
+    }
+
+    /// Binds the rule to an actor set.
+    pub fn on_actors(mut self, actors: impl Into<String>) -> Self {
+        self.actors = Some(actors.into());
+        self
+    }
+
+    /// Sets the cadence period in ticks.
+    pub fn every(mut self, period: u64) -> Self {
+        self.cadence = Cadence::every(period);
+        self
+    }
+
+    /// Declares the proposed actor stock channel and the expression producing it
+    /// (`col` reads the current actor's channels).
+    pub fn propose(mut self, target: impl Into<String>, expr: Expr) -> Self {
         self.target = Some(target.into());
         self.expr = Some(expr);
         self
