@@ -6,7 +6,7 @@
 use std::fmt;
 
 use conflux_ir::{
-    AggregateOp, Assessment, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
+    AggregateOp, Assessment, Authority, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
     QueryOrdering, SelfPolicy,
 };
 
@@ -378,6 +378,40 @@ impl QueryReport {
     }
 }
 
+/// One upward projection's evaluation: the value carried up a scale link, the
+/// target signal currently observed (if comparable), and the drift between them.
+///
+/// This is an *observation*, not a reconciliation. The projected value is the
+/// source aggregate's value (reused, not recomputed); the projection writes nothing
+/// here, so any drift between `projected_value` and `target_observed` is reported,
+/// never silently corrected. State-writing is the separate, explicit projection
+/// bridge. Full provenance is preserved: which link, region, aggregate, operation,
+/// authority, and target signal the value came from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectionReport {
+    pub projection: String,
+    pub scale_link: String,
+    /// The link's source region (where the projected value is reduced).
+    pub source_region: String,
+    /// The source aggregate whose value is projected (reused, not recomputed).
+    pub aggregate: String,
+    /// The operation applied — the source aggregate's operation.
+    pub operation: AggregateOp,
+    /// The link's target table.
+    pub target_table: String,
+    /// The target signal column the projection maps to.
+    pub target_signal: String,
+    pub authority: Authority,
+    /// The value carried up the link (the source aggregate's value).
+    pub projected_value: f64,
+    /// The target signal's currently observed value, when comparable as a scalar
+    /// (the signal column is uniform across rows); `None` when not comparable.
+    pub target_observed: Option<f64>,
+    /// `projected_value - target_observed` when comparable; `None` otherwise.
+    /// Reported drift, never a correction.
+    pub drift: Option<f64>,
+}
+
 /// The result of one assessment against a proposed value.
 #[derive(Clone, Debug)]
 pub struct AssessmentOutcome {
@@ -589,5 +623,29 @@ impl fmt::Display for QueryReport {
             )?;
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for ProjectionReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "projection `{}` over `{}` [{:?}]: {:?}({}) {} -> {}.{} = {}",
+            self.projection,
+            self.scale_link,
+            self.authority,
+            self.operation,
+            self.source_region,
+            self.aggregate,
+            self.target_table,
+            self.target_signal,
+            self.projected_value,
+        )?;
+        match (self.target_observed, self.drift) {
+            (Some(observed), Some(drift)) => {
+                writeln!(f, " (observed {observed}, drift {drift})")
+            }
+            _ => writeln!(f, " (target not comparable)"),
+        }
     }
 }
