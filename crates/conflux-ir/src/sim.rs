@@ -277,7 +277,10 @@ pub struct QueryIr {
     /// `source` for a same-set query.
     pub target: usize,
     pub metric: QueryMetric,
-    /// The neighbor bound; always present (validated at lowering).
+    /// The neighbor bound; always present (validated at lowering). For
+    /// [`QueryLimit::KNearest`], exact evaluation returns *up to* `k` neighbors —
+    /// if fewer than `k` candidates exist (after the self policy), the result is
+    /// the smaller set, never padded.
     pub limit: QueryLimit,
     pub self_policy: SelfPolicy,
     pub ordering: QueryOrdering,
