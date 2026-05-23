@@ -11,6 +11,7 @@ use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
 use crate::field::Field;
 use crate::flow::Flow;
+use crate::query::ProximityQuery;
 use crate::region::Region;
 
 /// A complete simulation declaration, ready to be lowered.
@@ -37,6 +38,8 @@ pub struct Model {
     pub(crate) actor_rules: Vec<ActorRule>,
     // Lowered into actor-movement IR by `lower()`.
     pub(crate) actor_movements: Vec<ActorMovement>,
+    // Lowered into proximity-query IR by `lower()` in a later slice (#112).
+    pub(crate) queries: Vec<ProximityQuery>,
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +65,7 @@ impl Model {
             actors: Vec::new(),
             actor_rules: Vec::new(),
             actor_movements: Vec::new(),
+            queries: Vec::new(),
         }
     }
 
@@ -150,6 +154,14 @@ impl Model {
     /// validated and lowered by `lower()`.
     pub fn add_actor_movement(&mut self, movement: ActorMovement) -> &mut Self {
         self.actor_movements.push(movement);
+        self
+    }
+
+    /// Adds a proximity query (declared sparse-neighbor query over actors).
+    /// Validation and lowering arrive in a later slice (#112); declaring one is
+    /// inert until then.
+    pub fn add_proximity_query(&mut self, query: ProximityQuery) -> &mut Self {
+        self.queries.push(query);
         self
     }
 }

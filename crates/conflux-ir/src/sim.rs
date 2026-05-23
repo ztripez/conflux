@@ -217,6 +217,47 @@ pub struct ActorMovementIr {
     pub cadence: Cadence,
 }
 
+/// The distance metric a proximity query uses over host-field cell positions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryMetric {
+    /// King-move distance: `max(|dx|, |dy|)`.
+    Chebyshev,
+    /// Taxicab distance: `|dx| + |dy|`.
+    Manhattan,
+    /// Straight-line distance: `sqrt(dx^2 + dy^2)`.
+    Euclidean,
+}
+
+/// How a proximity query bounds its neighbors.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum QueryLimit {
+    /// All neighbors within this distance (inclusive), in the query's metric.
+    Within(f64),
+    /// The `k` nearest neighbors.
+    KNearest(usize),
+}
+
+/// Whether a same-set proximity query includes the source actor itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelfPolicy {
+    Include,
+    Exclude,
+}
+
+/// The deterministic order proximity results are returned in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryOrdering {
+    /// Ascending distance, ties broken by ascending target actor index (stable).
+    DistanceThenIndex,
+}
+
+/// Whether a proximity query is evaluated exactly or via an approximate backend.
+/// Only `Exact` exists in this slice; an index/ANN backend is a later option.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApproximationPolicy {
+    Exact,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
