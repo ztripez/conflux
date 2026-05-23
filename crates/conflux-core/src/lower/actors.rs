@@ -101,10 +101,14 @@ fn lower_actor_set(set: &ActorSet, ir: &SimIr) -> Result<ActorSetIr, LowerError>
                 got: channel.initial.len(),
             });
         }
+        let unit = super::units::resolve_unit(channel.unit.as_deref(), &ir.units, || {
+            format!("actor channel `{}.{}`", name, channel.name)
+        })?;
         channels.push(ActorChannelIr {
             name: channel.name.clone(),
             kind: channel.kind,
             initial: channel.initial.clone(),
+            unit,
         });
     }
 

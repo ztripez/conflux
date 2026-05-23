@@ -67,3 +67,25 @@ fn lookup<'a>(
             reference: reference.to_string(),
         })
 }
+
+/// Resolves an optional value-annotation unit name against the lowered units,
+/// returning its index. `None` annotation -> `None` (unannotated/unknown); an
+/// annotation naming an undeclared unit is rejected, with `context` naming the
+/// annotated value for the diagnostic.
+pub(super) fn resolve_unit(
+    annotation: Option<&str>,
+    units: &[UnitIr],
+    context: impl FnOnce() -> String,
+) -> Result<Option<usize>, LowerError> {
+    match annotation {
+        None => Ok(None),
+        Some(name) => units
+            .iter()
+            .position(|u| u.name == name)
+            .map(Some)
+            .ok_or_else(|| LowerError::UnknownUnit {
+                context: context(),
+                unit: name.to_string(),
+            }),
+    }
+}

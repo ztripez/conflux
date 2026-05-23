@@ -4,7 +4,9 @@
 //! annotations and dimensional checks arrive in later slices, so a unit-free model
 //! must lower unchanged and units must not affect runtime behavior.
 
-use conflux_core::{col, lit, lower, Dimension, LowerError, Model, Rule, Table, Unit};
+use conflux_core::{
+    col, lit, lower, ActorSet, Dimension, Field, Grid2, LowerError, Model, Rule, Table, Unit,
+};
 
 /// A minimal table model so lowering produces something non-trivial.
 fn table_model() -> Model {
@@ -139,4 +141,97 @@ fn ratio_must_reference_earlier_declared_units() {
         lower(&model),
         Err(LowerError::UnitUnknownReference { .. })
     ));
+}
+
+// ---- #136: value annotations ----
+
+#[test]
+fn table_columns_carry_their_declared_unit() {
+    let mut store = Table::new("Store", 1);
+    store
+        .stock("grain", vec![0.0])
+        .unit("grain")
+        .signal("rate", vec![1.0])
+        .unit("grain_per_year")
+        .stock("untracked", vec![0.0]);
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("grain"));
+    model.add_unit(Unit::base("year"));
+    model.add_unit(Unit::ratio("grain_per_year", "grain", "year"));
+    model.add_table(store);
+    let ir = lower(&model).expect("annotated columns lower");
+    let table = &ir.tables[0];
+    assert_eq!(table.columns[0].unit, Some(ir.unit_index("grain").unwrap()));
+    assert_eq!(
+        table.columns[1].unit,
+        Some(ir.unit_index("grain_per_year").unwrap())
+    );
+    // Unannotated columns are unknown (None).
+    assert_eq!(table.columns[2].unit, None);
+}
+
+#[test]
+fn field_channels_carry_their_declared_unit() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("water", vec![1.0, 2.0]).unit("tons");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("tons"));
+    model.add_field(terrain);
+    let ir = lower(&model).unwrap();
+    assert_eq!(
+        ir.fields[0].channels[0].unit,
+        Some(ir.unit_index("tons").unwrap())
+    );
+}
+
+#[test]
+fn actor_channels_carry_their_declared_unit() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("grass", vec![0.0, 0.0]);
+    let herd = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![10.0])
+        .unit("joules");
+    let mut model = Model::new("world");
+    model.add_unit(Unit::base("joules"));
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    let ir = lower(&model).unwrap();
+    assert_eq!(
+        ir.actors[0].channels[0].unit,
+        Some(ir.unit_index("joules").unwrap())
+    );
+}
+
+#[test]
+fn rejects_a_column_annotated_with_an_unknown_unit() {
+    let mut store = Table::new("Store", 1);
+    store.stock("grain", vec![0.0]).unit("ghost");
+    let mut model = Model::new("world");
+    model.add_table(store);
+    match lower(&model) {
+        Err(LowerError::UnknownUnit { context, unit }) => {
+            assert!(context.contains("Store"));
+            assert!(context.contains("grain"));
+            assert_eq!(unit, "ghost");
+        }
+        other => panic!("expected UnknownUnit, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_a_field_channel_with_an_unknown_unit() {
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("water", vec![1.0]).unit("ghost");
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    assert!(matches!(lower(&model), Err(LowerError::UnknownUnit { .. })));
+}
+
+#[test]
+fn unannotated_models_carry_no_units() {
+    // A model with no annotations leaves every column/channel unit as None.
+    let ir = lower(&table_model()).unwrap();
+    assert!(ir.tables[0].columns.iter().all(|c| c.unit.is_none()));
 }

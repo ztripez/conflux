@@ -226,6 +226,7 @@ pub(crate) struct Column {
     pub(crate) kind: ValueKind,
     pub(crate) initial: Vec<f64>,
     pub(crate) derive: Option<Expr>,
+    pub(crate) unit: Option<String>,
 }
 
 impl Table {
@@ -245,6 +246,7 @@ impl Table {
             kind: ValueKind::Stock,
             initial,
             derive: None,
+            unit: None,
         });
         self
     }
@@ -256,6 +258,7 @@ impl Table {
             kind: ValueKind::Signal,
             initial: values,
             derive: None,
+            unit: None,
         });
         self
     }
@@ -267,7 +270,19 @@ impl Table {
             kind: ValueKind::Derived,
             initial: Vec::new(),
             derive: Some(expr),
+            unit: None,
         });
+        self
+    }
+
+    /// Annotates the most recently declared column with a declared unit. The unit
+    /// name is resolved and validated at `lower()`; an unannotated column is treated
+    /// as unknown. Call directly after a `stock`/`signal`/`derived`.
+    pub fn unit(&mut self, unit: impl Into<String>) -> &mut Self {
+        self.columns
+            .last_mut()
+            .expect("unit() must follow a column declaration")
+            .unit = Some(unit.into());
         self
     }
 }

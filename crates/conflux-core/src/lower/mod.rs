@@ -41,6 +41,8 @@ pub enum LowerError {
     DuplicateUnit(String),
     #[error("unit `{unit}` references unknown unit `{reference}`; declare it first")]
     UnitUnknownReference { unit: String, reference: String },
+    #[error("{context} is annotated with unknown unit `{unit}`")]
+    UnknownUnit { context: String, unit: String },
     #[error("duplicate parameter `{0}`")]
     DuplicateParam(String),
     #[error("parameter `{0}` is reserved and supplied by the executor")]
@@ -498,8 +500,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
     check_unique_rule_names(model)?;
-    let tables = lower_tables(model, &param_names)?;
-    let fields = fields::lower_fields(model, &param_names)?;
+    let tables = lower_tables(model, &param_names, &units)?;
+    let fields = fields::lower_fields(model, &param_names, &units)?;
     let mut ir = SimIr {
         name: model.name.clone(),
         units,
@@ -580,7 +582,11 @@ fn lower_params(model: &Model) -> Result<Vec<ParamIr>, LowerError> {
     Ok(params)
 }
 
-fn lower_tables(model: &Model, param_names: &HashSet<String>) -> Result<Vec<TableIr>, LowerError> {
+fn lower_tables(
+    model: &Model,
+    param_names: &HashSet<String>,
+    units: &[conflux_ir::UnitIr],
+) -> Result<Vec<TableIr>, LowerError> {
     let mut seen_tables = HashSet::new();
     let mut tables = Vec::with_capacity(model.tables.len());
     for table in &model.tables {
@@ -590,12 +596,16 @@ fn lower_tables(model: &Model, param_names: &HashSet<String>) -> Result<Vec<Tabl
         if table.rows == 0 {
             return Err(LowerError::EmptyTable(table.name.clone()));
         }
-        tables.push(lower_table(table, param_names)?);
+        tables.push(lower_table(table, param_names, units)?);
     }
     Ok(tables)
 }
 
-fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, LowerError> {
+fn lower_table(
+    table: &Table,
+    param_names: &HashSet<String>,
+    units: &[conflux_ir::UnitIr],
+) -> Result<TableIr, LowerError> {
     let column_names: HashSet<&str> = table.columns.iter().map(|c| c.name.as_str()).collect();
     let derived_names: HashSet<&str> = table
         .columns
@@ -655,11 +665,16 @@ fn lower_table(table: &Table, param_names: &HashSet<String>) -> Result<TableIr, 
             });
         }
 
+        let unit = units::resolve_unit(column.unit.as_deref(), units, || {
+            format!("column `{}.{}`", table.name, column.name)
+        })?;
+
         columns.push(ColumnIr {
             name: column.name.clone(),
             kind: column.kind,
             initial: column.initial.clone(),
             derive,
+            unit,
         });
     }
     Ok(TableIr {

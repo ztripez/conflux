@@ -18,6 +18,7 @@ pub(crate) struct ActorChannel {
     pub(crate) name: String,
     pub(crate) kind: ValueKind,
     pub(crate) initial: Vec<f64>,
+    pub(crate) unit: Option<String>,
 }
 
 /// A named set of sparse actors positioned on a host field.
@@ -63,6 +64,7 @@ impl ActorSet {
             name: name.into(),
             kind: ValueKind::Stock,
             initial,
+            unit: None,
         });
         self
     }
@@ -73,7 +75,18 @@ impl ActorSet {
             name: name.into(),
             kind: ValueKind::Signal,
             initial: values,
+            unit: None,
         });
+        self
+    }
+
+    /// Annotates the most recently declared channel with a declared unit. Resolved
+    /// and validated at `lower()`; an unannotated channel is treated as unknown.
+    pub fn unit(mut self, unit: impl Into<String>) -> Self {
+        self.channels
+            .last_mut()
+            .expect("unit() must follow a channel declaration")
+            .unit = Some(unit.into());
         self
     }
 

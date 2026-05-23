@@ -169,6 +169,10 @@ pub struct ColumnIr {
     pub initial: Vec<f64>,
     /// The recompute expression for `Derived` columns; `None` otherwise.
     pub derive: Option<Expr>,
+    /// Index into [`SimIr::units`] for this column's declared unit; `None` when
+    /// unannotated (treated as unknown for dimensional checks). Validation metadata
+    /// only — erased before the numeric runtime.
+    pub unit: Option<usize>,
 }
 
 /// A lowered field domain: a named 2D grid with scalar channels.
@@ -190,6 +194,9 @@ pub struct FieldChannelIr {
     /// The recompute expression for `Derived` channels; `None` otherwise. Reads
     /// other channels at the same cell.
     pub derive: Option<Expr>,
+    /// Index into [`SimIr::units`] for this channel's declared unit; `None` when
+    /// unannotated (unknown). Validation metadata only.
+    pub unit: Option<usize>,
 }
 
 /// A rule that proposes a new value for one stock column at a cadence.
@@ -303,6 +310,9 @@ pub struct ActorChannelIr {
     pub name: String,
     pub kind: ValueKind,
     pub initial: Vec<f64>,
+    /// Index into [`SimIr::units`] for this channel's declared unit; `None` when
+    /// unannotated (unknown). Validation metadata only.
+    pub unit: Option<usize>,
 }
 
 /// A rule that proposes a new value for one actor stock channel at a cadence,
