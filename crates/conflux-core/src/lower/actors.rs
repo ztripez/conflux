@@ -8,7 +8,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use conflux_ir::{ActorChannelIr, ActorMovementIr, ActorRuleIr, ActorSetIr, SimIr, ValueKind};
+use conflux_ir::{
+    ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, SimIr, ValueKind,
+};
 
 use super::{validate_assessments, LowerError, RESERVED_DT};
 use crate::actor::ActorSet;
@@ -201,13 +203,58 @@ fn lower_actor_rule(
         samples.push(idx);
     }
 
-    // The expression may read this set's channels, sampled host-field channels, and
-    // declared params (`dt` is available to rules via the cadence).
+    // Resolve declared proximity-query inputs: each binds a local name to a scalar
+    // reduction of a query whose source actor set is this rule's set. The binding is
+    // injected as a readable column; it may not shadow an actor channel or a sample,
+    // and bindings are unique within the rule. The declared query is the only
+    // neighbor access — there are no ad-hoc actor scans.
+    let mut query_inputs = Vec::with_capacity(rule.query_inputs.len());
+    let mut binding_names: HashSet<&str> = HashSet::new();
+    for decl in &rule.query_inputs {
+        if !binding_names.insert(decl.binding.as_str()) {
+            return Err(LowerError::DuplicateActorQueryBinding {
+                rule: name.to_string(),
+                binding: decl.binding.clone(),
+            });
+        }
+        if channel_index(&decl.binding).is_some() || sample_names.contains(decl.binding.as_str()) {
+            return Err(LowerError::ActorQueryBindingShadows {
+                rule: name.to_string(),
+                binding: decl.binding.clone(),
+            });
+        }
+        let query =
+            ir.query_index(&decl.query)
+                .ok_or_else(|| LowerError::ActorRuleUnknownQuery {
+                    rule: name.to_string(),
+                    query: decl.query.clone(),
+                })?;
+        if ir.queries[query].source != set_idx {
+            return Err(LowerError::ActorRuleQuerySourceMismatch {
+                rule: name.to_string(),
+                query: decl.query.clone(),
+                query_source: ir.actors[ir.queries[query].source].name.clone(),
+                actor_set: set_name.clone(),
+            });
+        }
+        query_inputs.push(ActorQueryInputIr {
+            binding: decl.binding.clone(),
+            query,
+            input: decl.input,
+        });
+    }
+
+    // The expression may read this set's channels, sampled host-field channels,
+    // query-input bindings, and declared params (`dt` is available to rules via the
+    // cadence).
     let mut used_columns = Vec::new();
     let mut used_params = Vec::new();
     expr.referenced(&mut used_columns, &mut used_params);
     for channel in used_columns {
-        if channel_index(&channel).is_none() && !sample_names.contains(channel.as_str()) {
+        if channel_index(&channel).is_none()
+            && !sample_names.contains(channel.as_str())
+            && !binding_names.contains(channel.as_str())
+        {
             return Err(unknown_channel(&channel));
         }
     }
@@ -239,6 +286,7 @@ fn lower_actor_rule(
         expr: expr.clone(),
         assessments: rule.assessments.clone(),
         samples,
+        query_inputs,
     })
 }
 

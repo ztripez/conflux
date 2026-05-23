@@ -4,7 +4,7 @@
 //! parameters, and rules are built with these types and the `col` / `lit` /
 //! `param` expression constructors re-exported from the crate root.
 
-use conflux_ir::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, ValueKind};
+use conflux_ir::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, QueryInput, ValueKind};
 
 use crate::actor::ActorSet;
 use crate::aggregate::Aggregate;
@@ -388,6 +388,18 @@ pub struct ActorRule {
     /// Host-field channels sampled at each actor's current cell; each becomes
     /// readable in the expression via `col(<channel>)`.
     pub(crate) samples: Vec<String>,
+    /// Proximity-query values consumed by the rule; each binds a local name read
+    /// in the expression via `col(<binding>)`.
+    pub(crate) query_inputs: Vec<QueryInputDecl>,
+}
+
+/// One declared proximity-query input on an actor rule (authoring form). Resolved
+/// and validated into [`conflux_ir::ActorQueryInputIr`] at lowering.
+#[derive(Clone, Debug)]
+pub(crate) struct QueryInputDecl {
+    pub(crate) binding: String,
+    pub(crate) query: String,
+    pub(crate) input: QueryInput,
 }
 
 impl ActorRule {
@@ -402,6 +414,7 @@ impl ActorRule {
             expr: None,
             assessments: Vec::new(),
             samples: Vec::new(),
+            query_inputs: Vec::new(),
         }
     }
 
@@ -409,6 +422,35 @@ impl ActorRule {
     pub fn on_actors(mut self, actors: impl Into<String>) -> Self {
         self.actors = Some(actors.into());
         self
+    }
+
+    /// Consumes a scalar reduction of a declared proximity `query` under the local
+    /// name `binding`, readable in the expression via `col(binding)`. The query's
+    /// source actor set must be this rule's actor set. The declared query is the
+    /// only neighbor access a rule has — it never scans actors ad hoc.
+    pub fn consume_query(
+        mut self,
+        binding: impl Into<String>,
+        query: impl Into<String>,
+        input: QueryInput,
+    ) -> Self {
+        self.query_inputs.push(QueryInputDecl {
+            binding: binding.into(),
+            query: query.into(),
+            input,
+        });
+        self
+    }
+
+    /// Consumes a query's neighbor count for the current actor, bound to `binding`.
+    pub fn query_count(self, binding: impl Into<String>, query: impl Into<String>) -> Self {
+        self.consume_query(binding, query, QueryInput::Count)
+    }
+
+    /// Consumes a query's nearest-neighbor distance for the current actor, bound to
+    /// `binding` (`+inf` when the actor has no neighbors).
+    pub fn nearest_distance(self, binding: impl Into<String>, query: impl Into<String>) -> Self {
+        self.consume_query(binding, query, QueryInput::NearestDistance)
     }
 
     /// Samples the host field's `channel` at each actor's current cell, making it

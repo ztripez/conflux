@@ -6,7 +6,8 @@
 use std::fmt;
 
 use conflux_ir::{
-    AggregateOp, Assessment, ConservationPolicy, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy,
+    AggregateOp, Assessment, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
+    QueryOrdering, SelfPolicy,
 };
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
@@ -66,7 +67,20 @@ pub struct ActorRuleFireReport {
     pub dt: f64,
     /// Host-field channels this rule sampled at each actor's cell (provenance).
     pub sampled: Vec<String>,
+    /// Proximity-query values this rule consumed (provenance): which query and
+    /// reduction each binding came from.
+    pub query_inputs: Vec<ActorQueryInputBinding>,
     pub actors: Vec<ActorOutcome>,
+}
+
+/// One proximity-query value an actor rule consumed: the local binding name, the
+/// source query, and the reduction applied. Provenance explaining the query input
+/// the rule read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorQueryInputBinding {
+    pub binding: String,
+    pub query: String,
+    pub input: QueryInput,
 }
 
 /// The result of one actor rule firing on one actor.
@@ -495,6 +509,13 @@ impl fmt::Display for Report {
                     "  actor rule `{}` -> {}.{} (dt = {})",
                     rule.rule, rule.actor_set, rule.target_channel, rule.dt
                 )?;
+                for input in &rule.query_inputs {
+                    writeln!(
+                        f,
+                        "    consumes {} = {:?}(`{}`)",
+                        input.binding, input.input, input.query
+                    )?;
+                }
                 for outcome in &rule.actors {
                     let status = if outcome.committed {
                         "COMMIT"

@@ -28,8 +28,8 @@ pub use region::Region;
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{
     cell, col, field_lit, lit, neighbor, param, AggregateOp, ApproximationPolicy, Assessment,
-    Cadence, ConservationPolicy, EdgePolicy, Expr, FieldExpr, Grid2, QueryLimit, QueryMetric,
-    QueryOrdering, SelfPolicy, ValueKind,
+    Cadence, ConservationPolicy, EdgePolicy, Expr, FieldExpr, Grid2, QueryInput, QueryLimit,
+    QueryMetric, QueryOrdering, SelfPolicy, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";
