@@ -91,6 +91,8 @@ pub(crate) fn step_actor_rules(
     ir: &SimIr,
     tick: u64,
     actor_data: &mut [Vec<Vec<f64>>],
+    field_data: &[Vec<Vec<f64>>],
+    actor_positions: &[Vec<usize>],
     params: &HashMap<&str, f64>,
 ) -> Vec<ActorRuleFireReport> {
     if ir.actor_rules.is_empty() {
@@ -113,13 +115,32 @@ pub(crate) fn step_actor_rules(
         let set = &ir.actors[s];
         let target = rule.target;
         let dt = rule.cadence.period as f64;
-        let names = channel_map(set);
+
+        // The expression reads actor channels plus any sampled host-field channels.
+        // Build a combined column set per rule: actor channels first, then one
+        // column per sample whose value at actor `a` is the host-field channel at
+        // that actor's current cell.
+        let mut names = channel_map(set);
+        let mut columns = snapshot[s].clone();
+        for &sample in &rule.samples {
+            let host_channel = &ir.fields[set.field].channels[sample];
+            let column: Vec<f64> = (0..set.count)
+                .map(|a| field_data[set.field][sample][actor_positions[s][a]])
+                .collect();
+            names.insert(host_channel.name.as_str(), columns.len());
+            columns.push(column);
+        }
+        let sampled: Vec<String> = rule
+            .samples
+            .iter()
+            .map(|&c| ir.fields[set.field].channels[c].name.clone())
+            .collect();
 
         let mut outcomes = Vec::with_capacity(set.count);
         for actor in 0..set.count {
             let ctx = EvalCtx {
                 columns_by_name: &names,
-                columns: &snapshot[s],
+                columns: &columns,
                 params,
                 dt,
                 row: actor,
@@ -145,6 +166,7 @@ pub(crate) fn step_actor_rules(
             actor_set: set.name.clone(),
             target_channel: set.channels[target].name.clone(),
             dt,
+            sampled,
             actors: outcomes,
         });
     }

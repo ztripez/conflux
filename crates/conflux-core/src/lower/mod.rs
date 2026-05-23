@@ -324,6 +324,21 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error("actor rule `{rule}` samples unknown channel `{channel}` from host field `{field}`")]
+    ActorSampleUnknownChannel {
+        rule: String,
+        field: String,
+        channel: String,
+    },
+    #[error(
+        "actor rule `{rule}` samples host-field channel `{channel}`, which shadows an actor \
+         channel of the same name on `{actors}`"
+    )]
+    ActorSampleShadowsChannel {
+        rule: String,
+        actors: String,
+        channel: String,
+    },
     #[error("duplicate actor movement `{0}`")]
     DuplicateActorMovement(String),
     #[error("actor movement `{0}` does not declare an actor set (use `.on_actors(..)`)")]

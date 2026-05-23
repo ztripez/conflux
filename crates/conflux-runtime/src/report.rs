@@ -62,6 +62,8 @@ pub struct ActorRuleFireReport {
     pub target_channel: String,
     /// The cadence-derived time step exposed to the rule.
     pub dt: f64,
+    /// Host-field channels this rule sampled at each actor's cell (provenance).
+    pub sampled: Vec<String>,
     pub actors: Vec<ActorOutcome>,
 }
 

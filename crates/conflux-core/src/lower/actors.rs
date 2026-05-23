@@ -176,13 +176,38 @@ fn lower_actor_rule(
         });
     }
 
-    // The expression may only read this set's channels and declared params (`dt`
-    // is available to rules via the cadence).
+    // Resolve host-field samples: each names a channel on the actor set's host
+    // field, read at the actor's current cell and exposed in the expression under
+    // the same name. A sample may not shadow an actor channel (ambiguous `col`).
+    let host = &ir.fields[set.field];
+    let mut samples = Vec::with_capacity(rule.samples.len());
+    let mut sample_names: HashSet<&str> = HashSet::new();
+    for channel in &rule.samples {
+        let idx =
+            host.channel_index(channel)
+                .ok_or_else(|| LowerError::ActorSampleUnknownChannel {
+                    rule: name.to_string(),
+                    field: host.name.clone(),
+                    channel: channel.clone(),
+                })?;
+        if channel_index(channel).is_some() {
+            return Err(LowerError::ActorSampleShadowsChannel {
+                rule: name.to_string(),
+                actors: set_name.clone(),
+                channel: channel.clone(),
+            });
+        }
+        sample_names.insert(channel.as_str());
+        samples.push(idx);
+    }
+
+    // The expression may read this set's channels, sampled host-field channels, and
+    // declared params (`dt` is available to rules via the cadence).
     let mut used_columns = Vec::new();
     let mut used_params = Vec::new();
     expr.referenced(&mut used_columns, &mut used_params);
     for channel in used_columns {
-        if channel_index(&channel).is_none() {
+        if channel_index(&channel).is_none() && !sample_names.contains(channel.as_str()) {
             return Err(unknown_channel(&channel));
         }
     }
@@ -213,6 +238,7 @@ fn lower_actor_rule(
         cadence: rule.cadence,
         expr: expr.clone(),
         assessments: rule.assessments.clone(),
+        samples,
     })
 }
 

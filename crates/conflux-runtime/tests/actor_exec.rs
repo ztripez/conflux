@@ -113,3 +113,54 @@ fn models_without_actor_rules_report_none() {
     let mut sim = Simulation::new(lower(&model).unwrap());
     assert!(sim.step().actor_rules.is_empty());
 }
+
+#[test]
+fn actor_rule_samples_host_field_at_actor_position() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("grass", vec![5.0, 10.0, 20.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (2, 0)])
+        .stock("energy", vec![0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("grass")
+            .propose("energy", col("energy") + col("grass")),
+    );
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    // actor 0 at cell 0 (grass 5); actor 1 at cell 2 (grass 20).
+    assert_eq!(sim.actor_channel("Herd", "energy"), Some(&[5.0, 20.0][..]));
+    assert_eq!(step.actor_rules[0].sampled, vec!["grass".to_string()]);
+}
+
+#[test]
+fn actor_rule_samples_a_derived_field_channel() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain
+        .stock("rain", vec![1.0, 2.0, 3.0])
+        .derived("lush", col("rain") * lit(10.0));
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (2, 0)])
+        .stock("energy", vec![0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("lush")
+            .propose("energy", col("energy") + col("lush")),
+    );
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    sim.step();
+    // lush = rain * 10 = [10, 20, 30]; actor 0 cell 0 -> 10, actor 1 cell 2 -> 30.
+    assert_eq!(sim.actor_channel("Herd", "energy"), Some(&[10.0, 30.0][..]));
+}
