@@ -11,6 +11,7 @@ use crate::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, Grid2, ValueKind};
 pub struct SimIr {
     pub name: String,
     pub units: Vec<UnitIr>,
+    pub conversions: Vec<ConversionIr>,
     pub params: Vec<ParamIr>,
     pub tables: Vec<TableIr>,
     pub fields: Vec<FieldIr>,
@@ -143,6 +144,22 @@ impl Dimension {
 pub struct UnitIr {
     pub name: String,
     pub dimension: Dimension,
+}
+
+/// A lowered, validated explicit unit conversion: a named, multiplicative,
+/// same-dimension relationship between two units. Conversions are **declared and
+/// validated only** — they are never applied automatically. No expression silently
+/// converts; an invocation surface is a later, narrow slice. The factor is carried
+/// as metadata for that future use and for reports.
+#[derive(Clone, Debug)]
+pub struct ConversionIr {
+    pub name: String,
+    /// Index into [`SimIr::units`] — the source unit.
+    pub source: usize,
+    /// Index into [`SimIr::units`] — the target unit (same dimension as `source`).
+    pub target: usize,
+    /// The multiplicative factor: `target_value = source_value * factor`.
+    pub factor: f64,
 }
 
 /// A named scalar parameter shared across rules.
@@ -609,6 +626,11 @@ impl SimIr {
     /// channel's `unit` field directly.
     pub fn unit_name(&self, unit: Option<usize>) -> Option<&str> {
         unit.map(|u| self.units[u].name.as_str())
+    }
+
+    /// Finds a conversion index by name.
+    pub fn conversion_index(&self, name: &str) -> Option<usize> {
+        self.conversions.iter().position(|c| c.name == name)
     }
 
     /// Finds a projection index by name.

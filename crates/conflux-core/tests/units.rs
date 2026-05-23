@@ -5,7 +5,8 @@
 //! must lower unchanged and units must not affect runtime behavior.
 
 use conflux_core::{
-    col, lit, lower, ActorSet, Dimension, Field, Grid2, LowerError, Model, Rule, Table, Unit,
+    col, lit, lower, ActorSet, Conversion, Dimension, Field, Grid2, LowerError, Model, Rule, Table,
+    Unit,
 };
 
 /// A minimal table model so lowering produces something non-trivial.
@@ -476,4 +477,125 @@ fn query_bindings_are_dimensionally_unknown() {
             .propose("energy", col("energy") + col("n")),
     );
     assert!(lower(&model).is_ok());
+}
+
+// ---- #139: explicit conversions ----
+
+/// A model with `meter` and an alias `kilometer` sharing the length dimension.
+fn length_units() -> Model {
+    let mut model = table_model();
+    model.add_unit(Unit::base("meter"));
+    model.add_unit(Unit::alias("kilometer", "meter"));
+    model
+}
+
+#[test]
+fn alias_shares_the_aliased_units_dimension() {
+    let ir = lower(&length_units()).unwrap();
+    let meter = ir.unit_index("meter").unwrap();
+    let km = ir.unit_index("kilometer").unwrap();
+    assert_eq!(ir.units[meter].dimension, ir.units[km].dimension);
+}
+
+#[test]
+fn declares_a_same_dimension_conversion() {
+    let mut model = length_units();
+    model.add_conversion(Conversion::new("km_to_m", "kilometer", "meter", 1000.0));
+    let ir = lower(&model).expect("a same-dimension conversion lowers");
+    assert_eq!(ir.conversions.len(), 1);
+    let c = &ir.conversions[0];
+    assert_eq!(c.name, "km_to_m");
+    assert_eq!(c.source, ir.unit_index("kilometer").unwrap());
+    assert_eq!(c.target, ir.unit_index("meter").unwrap());
+    assert_eq!(c.factor, 1000.0);
+    assert_eq!(ir.conversion_index("km_to_m"), Some(0));
+}
+
+#[test]
+fn rejects_a_cross_dimension_conversion() {
+    let mut model = length_units();
+    model.add_unit(Unit::base("second"));
+    model.add_conversion(Conversion::new("bad", "meter", "second", 2.0));
+    match lower(&model) {
+        Err(LowerError::ConversionIncompatibleDimensions { conversion, .. }) => {
+            assert_eq!(conversion, "bad");
+        }
+        other => panic!("expected ConversionIncompatibleDimensions, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_a_conversion_referencing_an_unknown_unit() {
+    let mut model = length_units();
+    model.add_conversion(Conversion::new("c", "kilometer", "ghost", 1000.0));
+    match lower(&model) {
+        Err(LowerError::ConversionUnknownUnit { unit, .. }) => assert_eq!(unit, "ghost"),
+        other => panic!("expected ConversionUnknownUnit, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_duplicate_conversion_names() {
+    let mut model = length_units();
+    model.add_conversion(Conversion::new("dup", "kilometer", "meter", 1000.0));
+    model.add_conversion(Conversion::new("dup", "meter", "kilometer", 0.001));
+    match lower(&model) {
+        Err(LowerError::DuplicateConversion(name)) => assert_eq!(name, "dup"),
+        other => panic!("expected DuplicateConversion, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_a_nonpositive_or_nonfinite_factor() {
+    let mut zero = length_units();
+    zero.add_conversion(Conversion::new("c", "kilometer", "meter", 0.0));
+    assert!(matches!(
+        lower(&zero),
+        Err(LowerError::ConversionInvalidFactor { .. })
+    ));
+
+    let mut negative = length_units();
+    negative.add_conversion(Conversion::new("c", "kilometer", "meter", -1000.0));
+    assert!(matches!(
+        lower(&negative),
+        Err(LowerError::ConversionInvalidFactor { .. })
+    ));
+}
+
+#[test]
+fn a_conversion_never_silently_converts_an_expression() {
+    // Two same-dimension columns (meter, kilometer) added together: this lowers
+    // because the dimensions match — NOT because of any conversion. Declaring a
+    // conversion between them changes nothing about lowering: the factor is never
+    // applied to an expression.
+    let build = |with_conversion: bool| {
+        let mut store = Table::new("Store", 1);
+        store
+            .stock("dist_m", vec![0.0])
+            .unit("meter")
+            .signal("dist_km", vec![1.0])
+            .unit("kilometer");
+        let mut model = Model::new("world");
+        model.add_unit(Unit::base("meter"));
+        model.add_unit(Unit::alias("kilometer", "meter"));
+        if with_conversion {
+            model.add_conversion(Conversion::new("km_to_m", "kilometer", "meter", 1000.0));
+        }
+        model.add_table(store);
+        model.add_rule(
+            Rule::new("sum")
+                .on("Store")
+                .propose("dist_m", col("dist_m") + col("dist_km")),
+        );
+        model
+    };
+    // Both lower identically; the conversion is inert (never invoked).
+    assert!(lower(&build(false)).is_ok());
+    assert!(lower(&build(true)).is_ok());
+}
+
+#[test]
+fn models_without_conversions_lower_unchanged() {
+    let ir = lower(&table_model()).unwrap();
+    assert!(ir.conversions.is_empty());
 }

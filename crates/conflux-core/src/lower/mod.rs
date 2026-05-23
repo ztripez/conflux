@@ -43,6 +43,21 @@ pub enum LowerError {
     DuplicateUnit(String),
     #[error("unit `{unit}` references unknown unit `{reference}`; declare it first")]
     UnitUnknownReference { unit: String, reference: String },
+    #[error("duplicate conversion `{0}`")]
+    DuplicateConversion(String),
+    #[error("conversion `{conversion}` references unknown unit `{unit}`")]
+    ConversionUnknownUnit { conversion: String, unit: String },
+    #[error(
+        "conversion `{conversion}` relates units of different dimensions ({source_dim} and \
+         {target_dim}); conversions are same-dimension only"
+    )]
+    ConversionIncompatibleDimensions {
+        conversion: String,
+        source_dim: String,
+        target_dim: String,
+    },
+    #[error("conversion `{conversion}` has an invalid factor ({factor}); it must be finite and greater than zero")]
+    ConversionInvalidFactor { conversion: String, factor: f64 },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
     #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
@@ -510,6 +525,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     // Units are foundational validation metadata: lower them first so later value
     // annotations and dimensional checks resolve against a stable vocabulary.
     let units = units::lower_units(model)?;
+    // Conversions resolve against the lowered units (same-dimension only).
+    let conversions = units::lower_conversions(model, &units)?;
     let params = lower_params(model)?;
     let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
@@ -519,6 +536,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     let mut ir = SimIr {
         name: model.name.clone(),
         units,
+        conversions,
         params,
         tables,
         fields,
