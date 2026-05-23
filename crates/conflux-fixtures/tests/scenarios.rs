@@ -2,7 +2,7 @@
 //! failure modes* across the stack, so future backends / planner changes /
 //! agent-written code have stable, named scenarios to check against.
 
-use conflux_core::{lower, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
+use conflux_core::{lower, Authority, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
 use conflux_planner::{plan, transfer_advisory, BackendChoice};
@@ -457,4 +457,58 @@ fn herd_proximity_consumes_an_exact_declared_query() {
     let rule = &step.actor_rules[0];
     assert_eq!(rule.query_inputs.len(), 1);
     assert_eq!(rule.query_inputs[0].query, "nearby_herd");
+}
+
+#[test]
+fn regional_projection_projects_a_basin_total_and_bridges_it() {
+    use conflux_core::{RelationshipKind, ScaleRef};
+    let ir = lower(&regional_projection()).unwrap();
+
+    // Lowered scale-link identity + authority.
+    assert_eq!(ir.scale_links.len(), 1);
+    let link = &ir.scale_links[0];
+    assert_eq!(link.name, "basin_to_settlement");
+    assert_eq!(
+        link.source,
+        ScaleRef::Region(ir.region_index("basin").unwrap())
+    );
+    assert_eq!(
+        link.target,
+        ScaleRef::Table(ir.table_index("Settlement").unwrap())
+    );
+    assert_eq!(link.kind, RelationshipKind::RegionToTable);
+    assert_eq!(link.authority, Authority::SourceAuthoritative);
+
+    // Lowered projection identity (reuses the basin_yield aggregate).
+    assert_eq!(ir.projections.len(), 1);
+    let projection = &ir.projections[0];
+    assert_eq!(projection.name, "yield_up");
+    assert_eq!(projection.scale_link, 0);
+    assert_eq!(
+        projection.aggregate,
+        ir.aggregate_index("basin_yield").unwrap()
+    );
+    assert_eq!(ir.projection_bridges.len(), 1);
+    assert_eq!(ir.projection_bridges[0].projection, 0);
+
+    let mut sim = Simulation::new(ir);
+
+    // Projection report: the basin total (10 + 20 = 30), source-authoritative, and —
+    // because the bridge will have written the signal — zero drift after a step.
+    let step = sim.step();
+    let report = &sim.projection_report()[0];
+    assert_eq!(report.projection, "yield_up");
+    assert_eq!(report.projected_value, 30.0);
+    assert_eq!(report.authority, Authority::SourceAuthoritative);
+    assert_eq!(report.target_observed, Some(30.0));
+    assert_eq!(report.drift, Some(0.0));
+
+    // The bridge wrote the signal and the table rule consumed it this tick.
+    assert_eq!(step.projection_bridges.len(), 1);
+    assert_eq!(step.projection_bridges[0].value, 30.0);
+    assert_eq!(
+        sim.column("Settlement", "projected_yield"),
+        Some(&[30.0][..])
+    );
+    assert_eq!(sim.column("Settlement", "stores"), Some(&[30.0][..]));
 }

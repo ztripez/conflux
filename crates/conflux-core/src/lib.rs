@@ -31,7 +31,7 @@ pub use scale::{Projection, ProjectionBridge, ScaleLink};
 pub use conflux_ir::{
     cell, col, field_lit, lit, neighbor, param, AggregateOp, ApproximationPolicy, Assessment,
     Authority, Cadence, ConservationPolicy, EdgePolicy, Expr, FieldExpr, Grid2, QueryInput,
-    QueryLimit, QueryMetric, QueryOrdering, SelfPolicy, ValueKind,
+    QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";
