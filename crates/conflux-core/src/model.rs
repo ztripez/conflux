@@ -13,6 +13,7 @@ use crate::field::Field;
 use crate::flow::Flow;
 use crate::query::ProximityQuery;
 use crate::region::Region;
+use crate::scale::ScaleLink;
 
 /// A complete simulation declaration, ready to be lowered.
 #[derive(Clone, Debug)]
@@ -40,6 +41,8 @@ pub struct Model {
     pub(crate) actor_movements: Vec<ActorMovement>,
     // Lowered into proximity-query IR by `lower()` in a later slice (#112).
     pub(crate) queries: Vec<ProximityQuery>,
+    // Lowered into scale-link IR by `lower()` in a later slice (#124).
+    pub(crate) scale_links: Vec<ScaleLink>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +69,7 @@ impl Model {
             actor_rules: Vec::new(),
             actor_movements: Vec::new(),
             queries: Vec::new(),
+            scale_links: Vec::new(),
         }
     }
 
@@ -162,6 +166,14 @@ impl Model {
     /// later slice.
     pub fn add_proximity_query(&mut self, query: ProximityQuery) -> &mut Self {
         self.queries.push(query);
+        self
+    }
+
+    /// Adds a scale link (a declared cross-scale relationship + authority policy
+    /// between two domains). Validation and lowering arrive in a later slice (#124);
+    /// declaring one is inert until then, and it never duplicates state.
+    pub fn add_scale_link(&mut self, link: ScaleLink) -> &mut Self {
+        self.scale_links.push(link);
         self
     }
 }

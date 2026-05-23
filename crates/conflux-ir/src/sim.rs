@@ -315,6 +315,24 @@ pub struct QueryIr {
     pub approximation: ApproximationPolicy,
 }
 
+/// Which side of a scale link owns the concept that crosses it. Always explicit: a
+/// scale link names a relationship and an authority boundary, and never silently
+/// reconciles state across scales.
+///
+/// This is the *simulation-scale* authority (which domain owns a cross-scale
+/// concept); it is unrelated to Residency's buffer-residency authority, which lives
+/// behind the `conflux-residency` bridge and concerns where data physically lives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Authority {
+    /// The source/child domain is authoritative; values flow source -> target.
+    SourceAuthoritative,
+    /// The target/parent domain is authoritative. There is no source -> target
+    /// writeback in the first multiscale slice — this only declares the boundary.
+    TargetAuthoritative,
+    /// Neither side writes the other; the link supports reporting and drift only.
+    ReportOnly,
+}
+
 /// The explicit bridge from a region aggregate into a table signal: the aggregate
 /// value is written to every row of the target signal each tick. This is the only
 /// path from field/region state into table state; it writes signals only, never
