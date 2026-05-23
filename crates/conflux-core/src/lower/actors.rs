@@ -207,7 +207,9 @@ fn lower_actor_rule(
     // reduction of a query whose source actor set is this rule's set. The binding is
     // injected as a readable column; it may not shadow an actor channel or a sample,
     // and bindings are unique within the rule. The declared query is the only
-    // neighbor access — there are no ad-hoc actor scans.
+    // neighbor access — there are no ad-hoc actor scans. A binding lives in the
+    // column namespace (read via `col`), distinct from the param namespace (read via
+    // `param`), so a binding and a param may share a name without ambiguity.
     let mut query_inputs = Vec::with_capacity(rule.query_inputs.len());
     let mut binding_names: HashSet<&str> = HashSet::new();
     for decl in &rule.query_inputs {
