@@ -4,9 +4,10 @@
 //! hidden side effect, an ad-hoc vector, or a runtime queue. It names an origin
 //! domain ([`EventSource`]) and an ordered scalar payload, each field with an
 //! optional unit. In this slice events are graph-origin and report-only, and the
-//! declaration carries no runtime storage: materialization into reports is a later
-//! slice. Construction is permissive — names, source domain, payload field names,
-//! and units are all validated at `lower()`.
+//! declaration carries no runtime storage; a graph event trigger materializes
+//! declared events into the step report (see `GraphEventTrigger`), which never
+//! mutates simulation state. Construction is permissive — names, source domain,
+//! payload field names, and units are all validated at `lower()`.
 
 use conflux_ir::EventSource;
 
