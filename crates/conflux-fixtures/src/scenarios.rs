@@ -4,7 +4,7 @@
 
 use conflux_core::{
     cell, col, field_lit, incident_edge, lit, node, param, ActorMovement, ActorRule, ActorSet,
-    Aggregate, AggregateOp, Assessment, Bridge, EdgePolicy, Event, Field, Flow, Graph,
+    Aggregate, AggregateOp, Assessment, Bridge, EdgePolicy, Event, Field, FieldRule, Flow, Graph,
     GraphEventTrigger, GraphRule, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
     QueryMetric, Region, Rule, ScaleLink, Table, Unit,
 };
@@ -30,6 +30,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("regional_projection", regional_projection),
     ("unit_checked_settlement", unit_checked_settlement),
     ("road_network_pressure", road_network_pressure),
+    ("regional_settlement_ecology", regional_settlement_ecology),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -523,5 +524,197 @@ pub fn road_network_pressure() -> Model {
             .when_above(node("pressure"), 50.0)
             .set("pressure", node("pressure")),
     );
+    model
+}
+
+/// The first real end-to-end scenario: a bounded regional settlement ecology that
+/// combines most existing domains through the **public authoring API only** — no
+/// value is computed by hand outside a declared Conflux API. It is the Alpha 0
+/// product-usage test (epic #179), not a unit fixture for one domain.
+///
+/// The world: a 2x2 `Terrain` field with per-cell `water` (water) and `crop` (grain);
+/// water runs off east with conservation, and crop grows each tick. Two basins
+/// (north / south) aggregate their crop. A `Settlement` table grows its population
+/// and accumulates a grain store fed by **two** cross-scale paths — the north basin's
+/// crop bridged into a `food` signal, and the south basin's crop **projected** up a
+/// source-authoritative scale link into a `projected_yield` signal. A `Herd` of
+/// actors grazes the crop and tracks nearby herd-mates via an exact proximity query,
+/// then drifts east. A `TradeRoutes` graph carries road `congestion` that rises with
+/// incident road `capacity`, and a report-only `trade_congestion` event is
+/// materialized for congested nodes.
+///
+/// All arithmetic is dimensionally consistent (water/grain/people/vehicles), so it
+/// lowers through the single gate. The contract suite asserts the headline outcomes
+/// and report provenance; the baseline report surfaces every domain.
+pub fn regional_settlement_ecology() -> Model {
+    let mut model = Model::new("regional_settlement_ecology");
+    model.param("growth", 0.1);
+    model.add_unit(Unit::base("water"));
+    model.add_unit(Unit::base("grain"));
+    model.add_unit(Unit::base("people"));
+    model.add_unit(Unit::base("vehicles"));
+
+    // --- Terrain field: water (runs off) + crop (grows) -------------------------
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain
+        .stock("water", vec![10.0, 8.0, 6.0, 4.0])
+        .unit("water")
+        .stock("crop", vec![5.0, 5.0, 5.0, 5.0])
+        .unit("grain");
+    model.add_field(terrain);
+    // Crop grows 10% per tick (grain stays grain).
+    model.add_field_rule(
+        FieldRule::new("grow_crop")
+            .on_field("Terrain")
+            .propose("crop", cell("crop") + cell("crop") * field_lit(0.1))
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, f64::INFINITY)),
+    );
+    // Water runs off one cell east, conserved, leaving the grid at the edge.
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+
+    // --- Basins + aggregates ----------------------------------------------------
+    model.add_region(
+        Region::new("north_basin")
+            .on_field("Terrain")
+            .mask(vec![true, true, false, false]),
+    );
+    model.add_region(
+        Region::new("south_basin")
+            .on_field("Terrain")
+            .mask(vec![false, false, true, true]),
+    );
+    model.add_aggregate(Aggregate::sum("north_crop", "north_basin", "crop"));
+    model.add_aggregate(Aggregate::sum("south_crop", "south_basin", "crop"));
+
+    // --- Settlement table -------------------------------------------------------
+    let mut settlement = Table::new("Settlement", 2);
+    settlement
+        .stock("population", vec![100.0, 60.0])
+        .unit("people")
+        .stock("grain_store", vec![0.0, 0.0])
+        .unit("grain")
+        .signal("food", vec![0.0, 0.0])
+        .unit("grain")
+        .signal("projected_yield", vec![0.0, 0.0])
+        .unit("grain");
+    model.add_table(settlement);
+    // North basin crop is bridged into the food signal each tick.
+    model.add_bridge(Bridge::new("north_crop").to_signal("Settlement", "food"));
+    // South basin crop is projected up a source-authoritative scale link, then bridged.
+    model.add_scale_link(
+        ScaleLink::new("south_to_settlement")
+            .from_region("south_basin")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(
+        Projection::new("yield_up")
+            .over_link("south_to_settlement")
+            .of_aggregate("south_crop")
+            .to_signal("projected_yield"),
+    );
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+    // The grain store accumulates both cross-scale inflows (all grain).
+    model.add_rule(
+        Rule::new("store_grain")
+            .on("Settlement")
+            .propose(
+                "grain_store",
+                col("grain_store") + col("food") + col("projected_yield"),
+            )
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, f64::INFINITY)),
+    );
+    // Population grows at a per-tick rate (people stays people).
+    model.add_rule(
+        Rule::new("grow_population")
+            .on("Settlement")
+            .propose(
+                "population",
+                col("population") * (lit(1.0) + param("growth") * param("dt")),
+            )
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, f64::INFINITY)),
+    );
+
+    // --- Herd actors: graze crop, track neighbors, drift ------------------------
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![0.0, 0.0])
+        .unit("grain")
+        .stock("alertness", vec![0.0, 0.0]);
+    model.add_actor_set(herd);
+    model.add_proximity_query(
+        ProximityQuery::new("nearby_herd")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .metric(QueryMetric::Chebyshev)
+            .within_cells(1)
+            .exclude_self()
+            .ordered_by_distance_then_index(),
+    );
+    // Each actor grazes the crop at its current cell (grain + grain).
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("crop")
+            .propose("energy", col("energy") + col("crop")),
+    );
+    // Alertness becomes the nearby-herd count (dimensionless).
+    model.add_actor_rule(
+        ActorRule::new("alert")
+            .on_actors("Herd")
+            .query_count("nearby", "nearby_herd")
+            .propose("alertness", col("nearby")),
+    );
+    model.add_actor_movement(ActorMovement::new("drift").on_actors("Herd").by_offset(
+        1,
+        0,
+        EdgePolicy::Reject,
+    ));
+
+    // --- Trade-route graph + report-only congestion event -----------------------
+    model.add_graph(
+        Graph::new("TradeRoutes")
+            .nodes(3)
+            .directed()
+            .edges([(0, 1), (1, 2)])
+            .node_stock("congestion", vec![10.0, 0.0, 0.0])
+            .unit("vehicles")
+            .edge_signal("capacity", vec![10.0, 5.0])
+            .unit("vehicles"),
+    );
+    model.add_graph_rule(
+        GraphRule::new("trade_load")
+            .on_graph("TradeRoutes")
+            .propose(
+                "congestion",
+                node("congestion") + incident_edge("capacity", AggregateOp::Sum),
+            )
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, f64::INFINITY)),
+    );
+    model.add_event(
+        Event::new("trade_congestion")
+            .payload("level")
+            .unit("vehicles"),
+    );
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("congested_route")
+            .on_graph("TradeRoutes")
+            .emit("trade_congestion")
+            .when_above(node("congestion"), 8.0)
+            .set("level", node("congestion")),
+    );
+
     model
 }
