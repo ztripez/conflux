@@ -30,6 +30,7 @@ pub struct SimIr {
     pub projection_bridges: Vec<ProjectionBridgeIr>,
     pub graphs: Vec<GraphIr>,
     pub graph_rules: Vec<GraphRuleIr>,
+    pub events: Vec<EventIr>,
 }
 
 /// A physical dimension as integer exponents over named base dimensions. The empty
@@ -562,6 +563,51 @@ pub struct GraphRuleIr {
     pub assessments: Vec<Assessment>,
 }
 
+/// The simulation domain an event originates from. Events are explicit, declared
+/// outputs of simulation logic — never hidden side effects — and an event type is a
+/// *type*, not a queue: it names its origin domain kind, not a specific instance
+/// (the concrete source identity is bound when the event is materialized). Only
+/// `Graph` is accepted at lowering in this slice; the others are reserved and
+/// rejected until a slice produces them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventSource {
+    Graph,
+    ActorSet,
+    Field,
+}
+
+impl EventSource {
+    /// A stable lowercase tag for diagnostics and report provenance.
+    pub fn tag(self) -> &'static str {
+        match self {
+            EventSource::Graph => "graph",
+            EventSource::ActorSet => "actor set",
+            EventSource::Field => "field",
+        }
+    }
+}
+
+/// One scalar field of an event payload: a name and an optional resolved unit. All
+/// payload values are scalars in this slice.
+#[derive(Clone, Debug)]
+pub struct EventFieldIr {
+    pub name: String,
+    /// Index into [`SimIr::units`], or `None` when unannotated.
+    pub unit: Option<usize>,
+}
+
+/// A lowered, validated event *type* declaration: a globally-unique name, an origin
+/// domain kind, and an ordered scalar payload. It is report-only and carries no
+/// runtime storage — declarations are deliberately separate from graph state and
+/// graph rules. Materialization into reports is a later slice; this type does not
+/// execute.
+#[derive(Clone, Debug)]
+pub struct EventIr {
+    pub name: String,
+    pub source: EventSource,
+    pub payload: Vec<EventFieldIr>,
+}
+
 /// A resolved reference to one end of a scale link: a domain kind paired with its
 /// index into the matching `SimIr` collection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -718,6 +764,11 @@ impl SimIr {
     /// Finds a graph index by name.
     pub fn graph_index(&self, name: &str) -> Option<usize> {
         self.graphs.iter().position(|g| g.name == name)
+    }
+
+    /// Finds an event index by name.
+    pub fn event_index(&self, name: &str) -> Option<usize> {
+        self.events.iter().position(|e| e.name == name)
     }
 
     /// Finds a projection index by name.

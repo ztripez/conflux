@@ -32,6 +32,8 @@ mod scale;
 mod units;
 // Static graph lowering and validation, its own concern.
 mod graphs;
+// Event declaration lowering and validation, its own concern.
+mod events;
 // Dimensional checking over the lowered IR (the units-validation pass).
 mod dimension;
 
@@ -147,6 +149,12 @@ pub enum LowerError {
         first: String,
         second: String,
     },
+    #[error("duplicate event `{0}`")]
+    DuplicateEvent(String),
+    #[error("event `{event}` has unsupported source domain `{domain}`; only graph-origin events are supported in this slice")]
+    EventUnsupportedSource { event: String, domain: &'static str },
+    #[error("duplicate payload field `{field}` in event `{event}`")]
+    DuplicateEventField { event: String, field: String },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
     #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
@@ -644,6 +652,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         projection_bridges: Vec::new(),
         graphs: Vec::new(),
         graph_rules: Vec::new(),
+        events: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -683,6 +692,11 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.graphs = graphs;
     let graph_rules = graphs::lower_graph_rules(model, &ir)?;
     ir.graph_rules = graph_rules;
+    // Events are declared types, not graph state; they resolve only against the
+    // lowered units (graph-origin is a domain kind, bound to an instance at
+    // materialization in a later slice). Their own lowering concern.
+    let events = events::lower_events(model, &ir.units)?;
+    ir.events = events;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

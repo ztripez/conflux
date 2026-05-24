@@ -25,6 +25,19 @@ and `lower()` rejects any duplicate (table/table, field/field, or table/field) w
 equivalence harnesses, and WGSL module names key on the rule name as an identity,
 so a collision would silently merge unrelated rules.
 
+Other names live in **narrower namespaces**, scoped to what actually keys on them:
+
+- **Domain names** (tables, fields, regions, actor sets, graphs) share one
+  top-level domain namespace, so a graph may not reuse a table/field/region/
+  actor-set name (`DuplicateGraph`). They name data-bearing domains that reports
+  and cross-domain references resolve by name.
+- **Event names** are their own namespace: an event may collide only with another
+  event (`DuplicateEvent`), not with a domain. An event is a declared *output
+  type*, not a data-bearing domain, and the IR keeps events fully separate
+  (`SimIr.events`, `event_index`); nothing currently keys across both. Payload
+  field names are unique **per event**, not globally — the same field name may
+  recur in different events.
+
 `Rule` keeps its `Option`-based builder (`on` / `propose` / `every` / `assess`)
 validated by `lower()`. A type-state builder was considered and rejected for now:
 it is a large rewrite that would move validation out of the single gate without a
