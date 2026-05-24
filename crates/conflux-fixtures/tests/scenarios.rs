@@ -764,6 +764,32 @@ fn regional_settlement_ecology_selected_execution_explains_each_choice() {
         rendered.contains("fell back to reference: reads parameter `growth`"),
         "{rendered}"
     );
+
+    // Under RequireCpuKernel the ineligible rule is *refused* (never silently run on
+    // the reference), still with the specific typed reason and a clear Display.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut require = Simulation::with_mode(ir, ExecutionMode::RequireCpuKernel);
+    let require_report = require.run(1);
+    let refused = require_report.steps[0]
+        .rules
+        .iter()
+        .find(|r| r.rule == "grow_population")
+        .unwrap();
+    assert_eq!(refused.used_path, None);
+    assert_eq!(
+        refused.fallback_reason,
+        Some(FallbackReason::RequiredKernelUnavailable)
+    );
+    assert_eq!(refused.comparison_status, ComparisonStatus::NotRun);
+    match &refused.kernel_rejection {
+        Some(RejectionReason::ReadsParameter { name }) => assert_eq!(name, "growth"),
+        other => panic!("expected typed ReadsParameter reason, got {other:?}"),
+    }
+    let rendered = format!("{require_report}");
+    assert!(
+        rendered.contains("REFUSED: required kernel unavailable — reads parameter `growth`"),
+        "{rendered}"
+    );
 }
 
 #[test]
