@@ -11,6 +11,7 @@ use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
 use crate::field::Field;
 use crate::flow::Flow;
+use crate::graph::Graph;
 use crate::query::ProximityQuery;
 use crate::region::Region;
 use crate::scale::{Projection, ProjectionBridge, ScaleLink};
@@ -24,6 +25,8 @@ pub struct Model {
     pub(crate) units: Vec<Unit>,
     // Lowered into conversion IR by `lower()`; declared, never auto-applied.
     pub(crate) conversions: Vec<Conversion>,
+    // Lowered into graph IR by `lower()` in a later slice (#166).
+    pub(crate) graphs: Vec<Graph>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -67,6 +70,7 @@ impl Model {
             name: name.into(),
             units: Vec::new(),
             conversions: Vec::new(),
+            graphs: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -99,6 +103,14 @@ impl Model {
     /// changes no value and no expression silently converts.
     pub fn add_conversion(&mut self, conversion: Conversion) -> &mut Self {
         self.conversions.push(conversion);
+        self
+    }
+
+    /// Adds a static graph domain (topology + node/edge channels). Validation and
+    /// lowering arrive in a later slice (#166); declaring one is inert until then,
+    /// and a graph is its own domain — never duplicate table/field/actor state.
+    pub fn add_graph(&mut self, graph: Graph) -> &mut Self {
+        self.graphs.push(graph);
         self
     }
 

@@ -18,7 +18,7 @@ pub use sim::{
     ConversionIr, Dimension, FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, ParamIr,
     ProjectionBridgeIr, ProjectionIr, QueryInput, QueryIr, QueryLimit, QueryMetric, QueryOrdering,
     RegionIr, RegionMask, RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr,
-    TableIr, UnitIr,
+    TableIr, TopologyKind, UnitIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
