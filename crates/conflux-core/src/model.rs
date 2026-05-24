@@ -9,6 +9,7 @@ use conflux_ir::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, QueryInput, V
 use crate::actor::ActorSet;
 use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
+use crate::event::Event;
 use crate::field::Field;
 use crate::flow::Flow;
 use crate::graph::{Graph, GraphRule};
@@ -29,6 +30,8 @@ pub struct Model {
     pub(crate) graphs: Vec<Graph>,
     // Lowered into graph-rule IR by `lower()`.
     pub(crate) graph_rules: Vec<GraphRule>,
+    // Lowered into event IR by `lower()`; declarations only, no materialization yet.
+    pub(crate) events: Vec<Event>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -74,6 +77,7 @@ impl Model {
             conversions: Vec::new(),
             graphs: Vec::new(),
             graph_rules: Vec::new(),
+            events: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -122,6 +126,15 @@ impl Model {
     /// reference path.
     pub fn add_graph_rule(&mut self, rule: GraphRule) -> &mut Self {
         self.graph_rules.push(rule);
+        self
+    }
+
+    /// Declares an event type (an explicit, report-only simulation output). It is
+    /// validated and lowered into event IR by `lower()`; an event type is a
+    /// declaration, not a queue — it carries no runtime storage and is not
+    /// materialized in this slice.
+    pub fn add_event(&mut self, event: Event) -> &mut Self {
+        self.events.push(event);
         self
     }
 
