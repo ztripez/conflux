@@ -1,6 +1,7 @@
 [package]
 name = "conflux-residency"
 version = "0.1.0"
+description = "Bridge between Conflux numeric resources and the Residency buffer-movement layer."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "conflux-wgsl"
 version = "0.1.0"
+description = "WGSL compute backend for Conflux bounded numeric kernels (optional wgpu execution)."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "conflux-ir"
 version = "0.1.0"
+description = "Lowered, validated simulation IR and shared vocabulary for Conflux."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
