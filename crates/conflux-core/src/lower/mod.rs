@@ -155,6 +155,41 @@ pub enum LowerError {
     EventUnsupportedSource { event: String, domain: &'static str },
     #[error("duplicate payload field `{field}` in event `{event}`")]
     DuplicateEventField { event: String, field: String },
+    #[error("duplicate graph event trigger `{0}`")]
+    DuplicateGraphEventTrigger(String),
+    #[error("graph event trigger `{0}` does not declare a graph (use `.on_graph(..)`)")]
+    GraphTriggerMissingGraph(String),
+    #[error("graph event trigger `{0}` does not declare an event (use `.emit(..)`)")]
+    GraphTriggerMissingEvent(String),
+    #[error("graph event trigger `{trigger}` targets unknown graph `{graph}`")]
+    GraphTriggerUnknownGraph { trigger: String, graph: String },
+    #[error("graph event trigger `{trigger}` emits unknown event `{event}`")]
+    GraphTriggerUnknownEvent { trigger: String, event: String },
+    #[error(
+        "graph event trigger `{trigger}`: unknown {side} channel `{channel}` in graph `{graph}`"
+    )]
+    GraphTriggerUnknownChannel {
+        trigger: String,
+        graph: String,
+        side: &'static str,
+        channel: String,
+    },
+    #[error(
+        "graph event trigger `{trigger}` binds unknown payload field `{field}` for event `{event}`"
+    )]
+    GraphTriggerUnknownPayloadField {
+        trigger: String,
+        event: String,
+        field: String,
+    },
+    #[error("graph event trigger `{trigger}` does not bind payload field `{field}` declared by event `{event}`")]
+    GraphTriggerMissingPayloadField {
+        trigger: String,
+        event: String,
+        field: String,
+    },
+    #[error("graph event trigger `{trigger}` binds payload field `{field}` more than once")]
+    GraphTriggerDuplicatePayloadField { trigger: String, field: String },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
     #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
@@ -653,6 +688,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         graphs: Vec::new(),
         graph_rules: Vec::new(),
         events: Vec::new(),
+        graph_event_triggers: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -697,6 +733,10 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     // materialization in a later slice). Their own lowering concern.
     let events = events::lower_events(model, &ir.units)?;
     ir.events = events;
+    // Graph event triggers are report-only surfaces resolving against the lowered
+    // graphs and events; they write no state. Their own lowering concern.
+    let graph_event_triggers = graphs::lower_graph_event_triggers(model, &ir)?;
+    ir.graph_event_triggers = graph_event_triggers;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

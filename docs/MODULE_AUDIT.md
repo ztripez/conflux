@@ -35,9 +35,9 @@ Responsibilities (all part of the CPU reference executor): simulation state
 (`write_bridges`), and per-row commit (`commit_row`), plus small lookup helpers.
 New domains have been kept *out* of it — field rules (`field_exec.rs`), flows
 (`flow_exec.rs`), actor rules (`actor_exec.rs`), graph rules (`graph_exec.rs`),
-aggregates (`aggregate_eval.rs`), and selection (`selection.rs`) are siblings —
-but it is still the module most likely to absorb the next responsibility by
-inertia.
+report-only graph events (`graph_event_exec.rs`), aggregates
+(`aggregate_eval.rs`), and selection (`selection.rs`) are siblings — but it is
+still the module most likely to absorb the next responsibility by inertia.
 
 Verdict: **no action now**, top of the watch list.
 

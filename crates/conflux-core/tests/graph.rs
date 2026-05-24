@@ -4,8 +4,8 @@
 //! graph-free model must lower unchanged.
 
 use conflux_core::{
-    col, graph_lit, incident_edge, lit, lower, node, AggregateOp, Graph, GraphRule, LowerError,
-    Model, Rule, Table, Unit,
+    col, graph_lit, incident_edge, lit, lower, node, AggregateOp, Event, Graph, GraphEventTrigger,
+    GraphRule, LowerError, Model, Rule, Table, Unit,
 };
 use conflux_ir::TopologyKind;
 
@@ -397,5 +397,186 @@ fn rejects_graph_rule_with_zero_cadence() {
     ) {
         Err(LowerError::BadCadence { rule }) => assert_eq!(rule, "r"),
         other => panic!("expected BadCadence, got {other:?}"),
+    }
+}
+
+// --- Graph event trigger lowering ------------------------------------------
+
+/// `table_model` plus a 2-node graph `G` (node stock `p`, edge signal `c`) and an
+/// event `E` with one payload field `v`, lowered with `trigger` added.
+fn lower_with_trigger(trigger: GraphEventTrigger) -> Result<conflux_ir::SimIr, LowerError> {
+    let mut model = table_model();
+    model.add_graph(
+        Graph::new("G")
+            .nodes(2)
+            .directed()
+            .edges([(0, 1)])
+            .node_stock("p", vec![0.0, 0.0])
+            .edge_signal("c", vec![5.0]),
+    );
+    model.add_event(Event::new("E").payload("v"));
+    model.add_graph_event_trigger(trigger);
+    lower(&model)
+}
+
+#[test]
+fn lowers_a_valid_graph_event_trigger() {
+    let ir = lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .when_above(node("p"), 1.0)
+            .set("v", node("p")),
+    )
+    .expect("a valid trigger lowers");
+    assert_eq!(ir.graph_event_triggers.len(), 1);
+    let t = &ir.graph_event_triggers[0];
+    assert_eq!(t.name, "t");
+    assert_eq!(t.graph, ir.graph_index("G").unwrap());
+    assert_eq!(t.event, ir.event_index("E").unwrap());
+    assert!(t.condition.is_some());
+    assert_eq!(t.payload.len(), 1);
+}
+
+#[test]
+fn rejects_duplicate_trigger_names() {
+    let mut model = table_model();
+    model.add_graph(Graph::new("G").nodes(1).node_stock("p", vec![0.0]));
+    model.add_event(Event::new("E").payload("v"));
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .set("v", node("p")),
+    );
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .set("v", node("p")),
+    );
+    match lower(&model) {
+        Err(LowerError::DuplicateGraphEventTrigger(name)) => assert_eq!(name, "t"),
+        other => panic!("expected DuplicateGraphEventTrigger, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_without_a_graph() {
+    match lower_with_trigger(GraphEventTrigger::new("t").emit("E").set("v", node("p"))) {
+        Err(LowerError::GraphTriggerMissingGraph(name)) => assert_eq!(name, "t"),
+        other => panic!("expected GraphTriggerMissingGraph, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_without_an_event() {
+    match lower_with_trigger(GraphEventTrigger::new("t").on_graph("G")) {
+        Err(LowerError::GraphTriggerMissingEvent(name)) => assert_eq!(name, "t"),
+        other => panic!("expected GraphTriggerMissingEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_on_unknown_graph() {
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("Ghost")
+            .emit("E")
+            .set("v", node("p")),
+    ) {
+        Err(LowerError::GraphTriggerUnknownGraph { trigger, graph }) => {
+            assert_eq!((trigger.as_str(), graph.as_str()), ("t", "Ghost"));
+        }
+        other => panic!("expected GraphTriggerUnknownGraph, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_emitting_unknown_event() {
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("Ghost")
+            .set("v", node("p")),
+    ) {
+        Err(LowerError::GraphTriggerUnknownEvent { trigger, event }) => {
+            assert_eq!((trigger.as_str(), event.as_str()), ("t", "Ghost"));
+        }
+        other => panic!("expected GraphTriggerUnknownEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_expression_reading_unknown_channel() {
+    // A payload expression naming a channel that does not exist (trigger-context error).
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .set("v", node("ghost")),
+    ) {
+        Err(LowerError::GraphTriggerUnknownChannel { side, channel, .. }) => {
+            assert_eq!((side, channel.as_str()), ("node", "ghost"));
+        }
+        other => panic!("expected GraphTriggerUnknownChannel, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_condition_reading_unknown_channel() {
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .when_above(incident_edge("ghost", AggregateOp::Sum), 1.0)
+            .set("v", node("p")),
+    ) {
+        Err(LowerError::GraphTriggerUnknownChannel { side, channel, .. }) => {
+            assert_eq!((side, channel.as_str()), ("edge", "ghost"));
+        }
+        other => panic!("expected GraphTriggerUnknownChannel (condition), got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_binding_unknown_payload_field() {
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .set("ghost", node("p")),
+    ) {
+        Err(LowerError::GraphTriggerUnknownPayloadField { field, event, .. }) => {
+            assert_eq!((field.as_str(), event.as_str()), ("ghost", "E"));
+        }
+        other => panic!("expected GraphTriggerUnknownPayloadField, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_missing_a_payload_field() {
+    // Event `E` declares field `v`, but the trigger binds nothing.
+    match lower_with_trigger(GraphEventTrigger::new("t").on_graph("G").emit("E")) {
+        Err(LowerError::GraphTriggerMissingPayloadField { field, event, .. }) => {
+            assert_eq!((field.as_str(), event.as_str()), ("v", "E"));
+        }
+        other => panic!("expected GraphTriggerMissingPayloadField, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_trigger_binding_a_payload_field_twice() {
+    match lower_with_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("G")
+            .emit("E")
+            .set("v", node("p"))
+            .set("v", graph_lit(1.0)),
+    ) {
+        Err(LowerError::GraphTriggerDuplicatePayloadField { trigger, field }) => {
+            assert_eq!((trigger.as_str(), field.as_str()), ("t", "v"));
+        }
+        other => panic!("expected GraphTriggerDuplicatePayloadField, got {other:?}"),
     }
 }

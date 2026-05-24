@@ -12,6 +12,7 @@ mod exec;
 mod field_equivalence;
 mod field_exec;
 mod flow_exec;
+mod graph_event_exec;
 mod graph_exec;
 mod plan;
 mod projection_exec;
@@ -32,9 +33,9 @@ pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
     ActorRuleFireReport, AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport,
     ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport,
-    FlowSummary, FlowTransfer, GraphNodeOutcome, GraphRuleFireReport, ProjectionBridgeReport,
-    ProjectionReport, QueryNeighbor, QueryReport, QuerySourceResult, Report, RowOutcome,
-    RuleFireReport, StepReport,
+    FlowSummary, FlowTransfer, GraphEventInstance, GraphEventPayloadValue, GraphEventReport,
+    GraphNodeOutcome, GraphRuleFireReport, ProjectionBridgeReport, ProjectionReport, QueryNeighbor,
+    QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
