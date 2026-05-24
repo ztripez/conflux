@@ -199,6 +199,133 @@ fn events_track_committed_state_across_ticks_with_tick_provenance() {
 }
 
 #[test]
+fn conditions_are_strict_and_exclude_equality() {
+    // p = [1, 2, 3]. `> 2.0` excludes node 1 (p == 2.0) -> only node 2.
+    let mut above = Model::new("world");
+    above.add_graph(roads());
+    above.add_event(Event::new("e").payload("pressure"));
+    above.add_graph_event_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("Roads")
+            .emit("e")
+            .when_above(node("p"), 2.0)
+            .set("pressure", node("p")),
+    );
+    let mut sim = Simulation::new(lower(&above).unwrap());
+    let step = sim.step();
+    let nodes: Vec<usize> = step.graph_events[0]
+        .instances
+        .iter()
+        .map(|i| i.node)
+        .collect();
+    assert_eq!(nodes, vec![2]);
+
+    // `< 2.0` excludes node 1 (p == 2.0) -> only node 0.
+    let mut below = Model::new("world");
+    below.add_graph(roads());
+    below.add_event(Event::new("e").payload("pressure"));
+    below.add_graph_event_trigger(
+        GraphEventTrigger::new("t")
+            .on_graph("Roads")
+            .emit("e")
+            .when_below(node("p"), 2.0)
+            .set("pressure", node("p")),
+    );
+    let mut sim = Simulation::new(lower(&below).unwrap());
+    let step = sim.step();
+    let nodes: Vec<usize> = step.graph_events[0]
+        .instances
+        .iter()
+        .map(|i| i.node)
+        .collect();
+    assert_eq!(nodes, vec![0]);
+}
+
+#[test]
+fn a_condition_can_read_an_incident_edge_reduction() {
+    // Incident edge cap sums = [5, 7, 2]; `> 4.0` selects nodes 0 and 1.
+    let mut model = Model::new("world");
+    model.add_graph(roads());
+    model.add_event(Event::new("e").payload("pressure"));
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("busy")
+            .on_graph("Roads")
+            .emit("e")
+            .when_above(incident_edge("cap", AggregateOp::Sum), 4.0)
+            .set("pressure", node("p")),
+    );
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    let nodes: Vec<usize> = step.graph_events[0]
+        .instances
+        .iter()
+        .map(|i| i.node)
+        .collect();
+    assert_eq!(nodes, vec![0, 1]);
+}
+
+#[test]
+fn multiple_triggers_report_independently() {
+    let mut model = Model::new("world");
+    model.add_graph(roads());
+    model.add_event(Event::new("high").payload("pressure"));
+    model.add_event(Event::new("low").payload("pressure"));
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("high_t")
+            .on_graph("Roads")
+            .emit("high")
+            .when_above(node("p"), 2.5)
+            .set("pressure", node("p")),
+    );
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("low_t")
+            .on_graph("Roads")
+            .emit("low")
+            .when_below(node("p"), 1.5)
+            .set("pressure", node("p")),
+    );
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    assert_eq!(step.graph_events.len(), 2);
+    assert_eq!(step.graph_events[0].trigger, "high_t");
+    assert_eq!(
+        step.graph_events[0]
+            .instances
+            .iter()
+            .map(|i| i.node)
+            .collect::<Vec<_>>(),
+        vec![2]
+    );
+    assert_eq!(step.graph_events[1].trigger, "low_t");
+    assert_eq!(
+        step.graph_events[1]
+            .instances
+            .iter()
+            .map(|i| i.node)
+            .collect::<Vec<_>>(),
+        vec![0]
+    );
+}
+
+#[test]
+fn an_event_with_no_payload_still_materializes_source_identity() {
+    let mut model = Model::new("world");
+    model.add_graph(roads());
+    model.add_event(Event::new("tick")); // no payload fields
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("beat")
+            .on_graph("Roads")
+            .emit("tick"),
+    );
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+    let report = &step.graph_events[0];
+    assert_eq!(report.instances.len(), 3);
+    assert!(report.instances.iter().all(|i| i.payload.is_empty()));
+    assert_eq!(report.instances[2].node, 2);
+}
+
+#[test]
 fn graph_models_without_triggers_have_no_events() {
     let mut model = Model::new("world");
     model.add_graph(roads());
