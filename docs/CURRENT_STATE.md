@@ -109,11 +109,41 @@ planning is optional research. There is no graph-kernel backend — graph rules 
 events run only on the CPU reference path. Enforced mechanically by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
 
+## Checkpoint: `alpha-0`
+
+This tag marks the end of the Alpha 0 phase (epic #179): the reference-grade
+simulation core, proven against one real end-to-end scenario, with the first
+optimization track chosen from measured evidence. Alpha 0 added **no** new
+semantic domain — it is about trust, usability, and measurement. What landed:
+
+- **Contracts frozen** to the graph/event state — `ARCHITECTURE_SNAPSHOT.md`,
+  `API_STABILITY.md`, `AGENTS.md`/`CLAUDE.md`, and this file are current and
+  factual (#180, #181).
+- **One real scenario**, `regional_settlement_ecology`, built only through the
+  public API and combining most domains (fields, flows, regions/aggregates/
+  bridges, table state, actors + proximity queries, multiscale projections,
+  graphs, and report-only events); it runs on the CPU reference path and appears
+  in the baseline report (#182).
+- **A stable baseline measurement** (`cargo run -p conflux-fixtures --example
+  ecology_baseline`): domain sizes, per-tick report counts, a coarse per-domain
+  work proxy, and the likely bottleneck domains — diffable, no timings (#183).
+- **The first optimization target chosen** from that evidence — flows and
+  actor-rule execution — recorded in `docs/ALPHA0_OPTIMIZATION_TARGET.md` and
+  tracked in #192 (#184).
+- **Selected-execution fallback UX hardened**: a fallback now carries the
+  specific, typed reason, with `docs/SELECTED_EXECUTION.md` explaining how to read
+  the report (#185).
+- **A public-API ergonomics audit** from real usage, with follow-up fixes #195–#197
+  (`docs/ALPHA0_API_AUDIT.md`) (#186).
+
+Alpha 0 is a checkpoint, not a public crates.io release; promotion to a release is
+governed by `docs/RELEASE_CHECKLIST.md`.
+
 ## Next
 
-The MVP ladder (MVP0–MVP7) plus the field, region, actor, multiscale, unit,
-graph, and event domains are complete and frozen at this checkpoint. The current
-phase is **Alpha 0** (epic #179): freeze the contracts, prove the public API on
-one real end-to-end scenario, measure it, and choose the first optimized
-execution target from evidence — without adding a new semantic domain. The
-`alpha-0` tag marks the end of that phase.
+The reference-grade core is complete and frozen at `alpha-0`. The next phase is the
+**first optimized execution track** — flows and actor-rule execution (#192) — which
+must keep the CPU reference as the source of truth and explain equivalence or
+fallback for every optimized path. The API ergonomics follow-ups (#195–#197) and
+the deferred optimization candidates (graph-rule kernels, the proximity-query
+index) remain available to pick up as evidence-driven vertical slices.
