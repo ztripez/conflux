@@ -35,3 +35,51 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      # Optional-feature health: the `conflux-trace` serde-free path (default
+      # features off drops `json`) must still compile. The `gpu` feature is checked
+      # in its own job; the default (no-gpu) build is already covered above.
+      - name: Check conflux-trace without default features
+        run: cargo check -p conflux-trace --no-default-features
+
+      # Deterministic, lightweight smoke: run the baseline report over every
+      # canonical scenario. It prints report shapes and changes no behavior.
+      - name: Baseline report smoke
+        run: cargo run -p conflux-fixtures --example baseline_report
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    env:
+      # Fail the docs build on broken intra-doc links and other rustdoc warnings.
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build docs (workspace, no deps)
+        run: cargo doc --workspace --no-deps
+
+  gpu-feature:
+    name: gpu feature (compile only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Compile the optional `gpu` feature (pulls the wgpu tree) so it cannot
+      # bit-rot. This is a compile check only — it never runs GPU work and needs no
+      # GPU hardware. Kept in its own job so the wgpu build does not slow the main
+      # job's PR feedback.
+      - name: Check conflux-wgsl with gpu feature
+        run: cargo check -p conflux-wgsl --features gpu
