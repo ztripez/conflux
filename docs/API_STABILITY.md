@@ -45,6 +45,10 @@ assertions are the authoritative description of report behavior — stronger tha
 hand-written example. When in doubt about a report's shape, trust the contract
 test, not an ad-hoc snippet.
 
+For how to read which execution path each rule ran on and why (modes, typed
+fallback reasons, and the equivalence/comparison status), see
+[`docs/SELECTED_EXECUTION.md`](SELECTED_EXECUTION.md).
+
 ## Not public API
 
 Do not treat these as public surface, even where Rust visibility would allow it:
