@@ -238,6 +238,50 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
         }
     }
 
+    // Graph domains: graph-local rules and report-only event materialization (absent
+    // unless declared). Outcomes and event payloads come from the declared graph/event
+    // APIs, never a manual scan or an ad-hoc event vector.
+    if !ir.graphs.is_empty() {
+        println!(
+            "  graphs: {} graph(s), {} rule(s), {} event(s), {} trigger(s)",
+            ir.graphs.len(),
+            ir.graph_rules.len(),
+            ir.events.len(),
+            ir.graph_event_triggers.len(),
+        );
+        if let Some(step) = report.steps.first() {
+            for rule in &step.graph_rules {
+                let committed = rule.nodes.iter().filter(|n| n.committed).count();
+                println!(
+                    "    graph rule `{}` -> {}.{}: {}/{} node(s) committed",
+                    rule.rule,
+                    rule.graph,
+                    rule.target_channel,
+                    committed,
+                    rule.nodes.len(),
+                );
+            }
+            for event in &step.graph_events {
+                println!(
+                    "    graph event `{}` emits `{}` from {}: {} instance(s)",
+                    event.trigger,
+                    event.event,
+                    event.graph,
+                    event.instances.len(),
+                );
+                for instance in &event.instances {
+                    let payload = instance
+                        .payload
+                        .iter()
+                        .map(|p| format!("{}={}{}", p.field, p.value, unit_suffix(&p.unit)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    println!("      node {}: {payload}", instance.node);
+                }
+            }
+        }
+    }
+
     // Kernel extraction + equivalence.
     let kernels = extract(&ir);
     println!(

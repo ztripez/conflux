@@ -4,6 +4,7 @@
 
 use conflux_core::{
     col, lower, Authority, LowerError, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy,
+    TopologyKind,
 };
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
@@ -524,6 +525,62 @@ fn regional_projection_projects_a_basin_total_and_bridges_it() {
     let aggregates = sim.aggregate_report();
     let basin = aggregates.iter().find(|a| a.name == "basin_yield").unwrap();
     assert_eq!(basin.unit.as_deref(), Some("grain"));
+}
+
+#[test]
+fn road_network_pressure_lowers_the_graph_and_event_model() {
+    let ir = lower(&road_network_pressure()).unwrap();
+
+    // Lowered graph identity, topology, and channels (all through the public API).
+    assert_eq!(ir.graphs.len(), 1);
+    let g = &ir.graphs[0];
+    assert_eq!(g.name, "RoadNetwork");
+    assert_eq!(g.topology, TopologyKind::Directed);
+    assert_eq!(g.node_count, 3);
+    assert_eq!(g.edges.len(), 2);
+    assert!(g.node_channel_index("pressure").is_some());
+    assert!(g.edge_channel_index("capacity").is_some());
+
+    // Graph rule, event declaration, and trigger all lowered.
+    assert_eq!(ir.graph_rules.len(), 1);
+    assert_eq!(ir.graph_rules[0].name, "load");
+    assert_eq!(ir.events.len(), 1);
+    assert_eq!(ir.events[0].name, "congestion");
+    assert_eq!(ir.graph_event_triggers.len(), 1);
+    assert_eq!(ir.graph_event_triggers[0].name, "congested");
+}
+
+#[test]
+fn road_network_pressure_runs_graph_rules_and_emits_report_only_events() {
+    let ir = lower(&road_network_pressure()).unwrap();
+    let mut sim = Simulation::new(ir);
+    let step = sim.step();
+
+    // Graph rule: pressure += incident-edge capacity sum.
+    // Incident sums (direction-agnostic): node 0 -> {e0=10}, node 1 -> {e0,e1}=15,
+    // node 2 -> {e1=5}. Pressure [100,20,5] -> [110,35,10].
+    assert_eq!(
+        sim.graph_node("RoadNetwork", "pressure"),
+        Some(&[110.0, 35.0, 10.0][..])
+    );
+    let rule = &step.graph_rules[0];
+    assert!(rule.nodes.iter().all(|n| n.committed));
+
+    // Report-only congestion event: node 0's start-of-tick pressure (100) exceeds 50,
+    // so exactly one event materializes, carrying the frozen-snapshot value and unit.
+    // Emission changed no state (asserted above: state reflects only the rule).
+    let event = &step.graph_events[0];
+    assert_eq!(event.trigger, "congested");
+    assert_eq!(event.event, "congestion");
+    assert_eq!(event.graph, "RoadNetwork");
+    assert_eq!(event.instances.len(), 1);
+    assert_eq!(event.instances[0].node, 0);
+    assert_eq!(event.instances[0].payload[0].field, "pressure");
+    assert_eq!(event.instances[0].payload[0].value, 100.0);
+    assert_eq!(
+        event.instances[0].payload[0].unit.as_deref(),
+        Some("vehicles")
+    );
 }
 
 #[test]

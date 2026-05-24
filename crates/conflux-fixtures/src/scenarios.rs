@@ -3,8 +3,9 @@
 //! the model name.
 
 use conflux_core::{
-    cell, col, field_lit, lit, param, ActorMovement, ActorRule, ActorSet, Aggregate, Assessment,
-    Bridge, EdgePolicy, Field, Flow, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
+    cell, col, field_lit, incident_edge, lit, node, param, ActorMovement, ActorRule, ActorSet,
+    Aggregate, AggregateOp, Assessment, Bridge, EdgePolicy, Event, Field, Flow, Graph,
+    GraphEventTrigger, GraphRule, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
     QueryMetric, Region, Rule, ScaleLink, Table, Unit,
 };
 
@@ -28,6 +29,7 @@ pub const ALL_SCENARIOS: &[Scenario] = &[
     ("herd_proximity", herd_proximity),
     ("regional_projection", regional_projection),
     ("unit_checked_settlement", unit_checked_settlement),
+    ("road_network_pressure", road_network_pressure),
 ];
 
 /// Baseline stock/signal/derived/rule behavior: a settlement whose population
@@ -468,6 +470,58 @@ pub fn unit_checked_settlement() -> Model {
         Rule::new("harvest_grain")
             .on("Settlement")
             .propose("grain", col("grain") + col("harvest")),
+    );
+    model
+}
+
+/// Graph topology + a graph-local rule + report-only event materialization, all
+/// through the public graph/event API. A 3-node directed road network carries a
+/// per-node traffic `pressure` stock and a per-road `capacity` signal; pressure
+/// rises each tick by the total capacity of a node's incident roads, and a
+/// report-only `congestion` event is materialized for every node whose start-of-tick
+/// pressure crosses a threshold.
+///
+/// This is the canonical graph/event scenario: the contract suite asserts the
+/// lowered graph identity/topology/channels, the graph rule outcomes, and the event
+/// payloads, and the baseline report surfaces both. Nothing here scans graph data or
+/// emits events outside the declared graph/event path.
+pub fn road_network_pressure() -> Model {
+    let mut model = Model::new("road_network_pressure");
+    model.add_unit(Unit::base("vehicles"));
+    model.add_graph(
+        Graph::new("RoadNetwork")
+            .nodes(3)
+            .directed()
+            .edges([(0, 1), (1, 2)])
+            .node_stock("pressure", vec![100.0, 20.0, 5.0])
+            .unit("vehicles")
+            .edge_signal("capacity", vec![10.0, 5.0])
+            .unit("vehicles"),
+    );
+    // Pressure rises by the total capacity of each node's incident roads (same unit,
+    // so the dimensional gate is satisfied).
+    model.add_graph_rule(
+        GraphRule::new("load")
+            .on_graph("RoadNetwork")
+            .propose(
+                "pressure",
+                node("pressure") + incident_edge("capacity", AggregateOp::Sum),
+            )
+            .assess(Assessment::Finite)
+            .assess(Assessment::range(0.0, f64::INFINITY)),
+    );
+    // A report-only congestion event: emitted per node whose pressure exceeds 50.
+    model.add_event(
+        Event::new("congestion")
+            .payload("pressure")
+            .unit("vehicles"),
+    );
+    model.add_graph_event_trigger(
+        GraphEventTrigger::new("congested")
+            .on_graph("RoadNetwork")
+            .emit("congestion")
+            .when_above(node("pressure"), 50.0)
+            .set("pressure", node("pressure")),
     );
     model
 }

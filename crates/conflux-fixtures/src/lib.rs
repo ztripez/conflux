@@ -16,9 +16,9 @@ mod scenarios;
 
 pub use scenarios::{
     derived_kernel_case, gpu_eligible_numeric, herd_grazing, herd_proximity, param_rule_fallback,
-    regional_projection, resource_reserve, runoff_flow, selected_execution, settlement_growth,
-    trace_hotspot_case, transfer_dominated_rule, unit_checked_settlement, unstable_population,
-    watershed_yield, Scenario, ALL_SCENARIOS,
+    regional_projection, resource_reserve, road_network_pressure, runoff_flow, selected_execution,
+    settlement_growth, trace_hotspot_case, transfer_dominated_rule, unit_checked_settlement,
+    unstable_population, watershed_yield, Scenario, ALL_SCENARIOS,
 };
 
 pub const CRATE_BOUNDARY: &str = "canonical scenario fixtures (test support only)";
