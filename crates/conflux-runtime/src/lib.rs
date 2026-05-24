@@ -41,5 +41,8 @@ pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
 pub use conflux_ir::AggregateOp;
+// Re-export the kernel rejection reason so consumers can match on the typed
+// fallback detail in `RuleFireReport::kernel_rejection`.
+pub use conflux_kernel::RejectionReason;
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";

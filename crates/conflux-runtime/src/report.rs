@@ -9,6 +9,7 @@ use conflux_ir::{
     AggregateOp, Assessment, Authority, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
     QueryOrdering, SelfPolicy,
 };
+use conflux_kernel::RejectionReason;
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
@@ -304,6 +305,11 @@ pub struct RuleFireReport {
     pub used_path: Option<ExecutionPath>,
     /// Why the rule did not run on the requested CPU-kernel path, if applicable.
     pub fallback_reason: Option<FallbackReason>,
+    /// The specific, typed extraction reason the rule has no kernel, when a kernel
+    /// path was requested but unavailable (the detail behind a `NotKernelEligible` /
+    /// `RequiredKernelUnavailable` fallback). `None` when a kernel ran or the mode
+    /// did not request one.
+    pub kernel_rejection: Option<RejectionReason>,
     /// How the used path relates to the reference (the source of truth).
     pub comparison_status: ComparisonStatus,
 }
@@ -348,18 +354,24 @@ impl RuleFireReport {
 }
 
 impl RuleFireReport {
-    /// A short Display suffix describing the execution path. Empty for a plain
+    /// A short Display suffix describing the execution path and — for a fallback —
+    /// the specific, typed reason the kernel was unavailable. Empty for a plain
     /// reference run, so reference-only reports do not imply optimization happened.
-    fn execution_note(&self) -> &'static str {
+    fn execution_note(&self) -> String {
+        // The specific extraction reason, if known, else a coarse phrase.
+        let why = || match &self.kernel_rejection {
+            Some(reason) => reason.to_string(),
+            None => "not kernel-eligible".to_string(),
+        };
         match (self.used_path, self.fallback_reason) {
-            (Some(ExecutionPath::CpuKernel), _) => " [cpu-kernel]",
+            (Some(ExecutionPath::CpuKernel), _) => " [cpu-kernel]".to_string(),
             (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
-                " [fell back to reference: not kernel-eligible]"
+                format!(" [fell back to reference: {}]", why())
             }
             (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
-                " [REFUSED: required kernel unavailable]"
+                format!(" [REFUSED: required kernel unavailable — {}]", why())
             }
-            _ => "",
+            _ => String::new(),
         }
     }
 }

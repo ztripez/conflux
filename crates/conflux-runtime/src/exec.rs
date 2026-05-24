@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
-use conflux_kernel::{execute_elementwise, extract, Kernel};
+use conflux_kernel::{execute_elementwise, extract, Kernel, RejectionReason};
 
 use crate::actor_exec;
 use crate::eval::{eval, EvalCtx};
@@ -47,6 +47,10 @@ pub struct Simulation {
     /// Empty unless `mode` requests the kernel path, so reference-only runs are
     /// unaffected.
     kernels: HashMap<String, Kernel>,
+    /// Why each kernel-ineligible rule was rejected by extraction, by rule name.
+    /// Used to explain a fallback with its specific, typed reason. Empty unless
+    /// `mode` requests the kernel path.
+    kernel_rejections: HashMap<String, RejectionReason>,
 }
 
 impl Simulation {
@@ -80,14 +84,23 @@ impl Simulation {
         let actor_positions = actor_exec::materialize_actor_positions(&ir);
         let (graph_node_data, graph_edge_data) = graph_exec::materialize_graphs(&ir);
 
-        let kernels = if mode.requests_kernel() {
-            extract(&ir)
+        // Extract once; keep both the accepted kernels (to run) and the rejection
+        // reasons (to explain a fallback). Both stay empty under reference-only mode.
+        let (kernels, kernel_rejections) = if mode.requests_kernel() {
+            let report = extract(&ir);
+            let kernels = report
                 .accepted
                 .into_iter()
                 .map(|k| (k.name.clone(), k))
-                .collect()
+                .collect();
+            let rejections = report
+                .rejected
+                .into_iter()
+                .map(|r| (r.rule, r.reason))
+                .collect();
+            (kernels, rejections)
         } else {
-            HashMap::new()
+            (HashMap::new(), HashMap::new())
         };
 
         Simulation {
@@ -102,6 +115,7 @@ impl Simulation {
             graph_edge_data,
             mode,
             kernels,
+            kernel_rejections,
         }
     }
 
@@ -229,6 +243,7 @@ impl Simulation {
         let plan = &self.plan;
         let mode = self.mode;
         let kernels = &self.kernels;
+        let kernel_rejections = &self.kernel_rejections;
         let data = &mut self.data;
 
         // Rules read a frozen, internally consistent start-of-tick snapshot, so
@@ -262,6 +277,13 @@ impl Simulation {
                 ExecutionPath::CpuKernel
             } else {
                 ExecutionPath::Reference
+            };
+            // When a kernel path was requested but unavailable, carry the specific,
+            // typed extraction reason so the report self-explains the fallback.
+            let kernel_rejection = if mode.requests_kernel() && kernel.is_none() {
+                kernel_rejections.get(&rule.name).cloned()
+            } else {
+                None
             };
             let comparison_status = match used_path {
                 None => ComparisonStatus::NotRun,
@@ -324,6 +346,7 @@ impl Simulation {
                 selected_path,
                 used_path,
                 fallback_reason,
+                kernel_rejection,
                 comparison_status,
             });
         }

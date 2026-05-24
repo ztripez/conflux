@@ -720,6 +720,79 @@ fn regional_settlement_ecology_runs_on_the_cpu_reference_path() {
 }
 
 #[test]
+fn regional_settlement_ecology_selected_execution_explains_each_choice() {
+    use conflux_runtime::RejectionReason;
+
+    // Under a kernel-requesting mode, the report explains each table rule's choice
+    // on the real scenario: the eligible rule runs on the kernel; the
+    // parameter-reading rule falls back to the reference with its specific reason.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut sim = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let report = sim.run(1);
+    let step = &report.steps[0];
+
+    let store = step.rules.iter().find(|r| r.rule == "store_grain").unwrap();
+    assert_eq!(store.used_path, Some(ExecutionPath::CpuKernel));
+    assert_eq!(store.fallback_reason, None);
+    assert_eq!(store.kernel_rejection, None);
+    assert_eq!(
+        store.comparison_status,
+        ComparisonStatus::DeferredToEquivalenceHarness
+    );
+
+    let grow = step
+        .rules
+        .iter()
+        .find(|r| r.rule == "grow_population")
+        .unwrap();
+    assert_eq!(grow.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        grow.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
+    );
+    // The fallback now carries the specific, typed extraction reason.
+    match &grow.kernel_rejection {
+        Some(RejectionReason::ReadsParameter { name }) => assert_eq!(name, "growth"),
+        other => panic!("expected typed ReadsParameter reason, got {other:?}"),
+    }
+
+    // The rendered report self-explains the choices: the kernel run and the fallback
+    // with its specific reason both appear in Display.
+    let rendered = format!("{report}");
+    assert!(rendered.contains("[cpu-kernel]"), "{rendered}");
+    assert!(
+        rendered.contains("fell back to reference: reads parameter `growth`"),
+        "{rendered}"
+    );
+
+    // Under RequireCpuKernel the ineligible rule is *refused* (never silently run on
+    // the reference), still with the specific typed reason and a clear Display.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut require = Simulation::with_mode(ir, ExecutionMode::RequireCpuKernel);
+    let require_report = require.run(1);
+    let refused = require_report.steps[0]
+        .rules
+        .iter()
+        .find(|r| r.rule == "grow_population")
+        .unwrap();
+    assert_eq!(refused.used_path, None);
+    assert_eq!(
+        refused.fallback_reason,
+        Some(FallbackReason::RequiredKernelUnavailable)
+    );
+    assert_eq!(refused.comparison_status, ComparisonStatus::NotRun);
+    match &refused.kernel_rejection {
+        Some(RejectionReason::ReadsParameter { name }) => assert_eq!(name, "growth"),
+        other => panic!("expected typed ReadsParameter reason, got {other:?}"),
+    }
+    let rendered = format!("{require_report}");
+    assert!(
+        rendered.contains("REFUSED: required kernel unavailable — reads parameter `growth`"),
+        "{rendered}"
+    );
+}
+
+#[test]
 fn unit_checked_settlement_rejects_an_incompatible_expression() {
     // Build the negative case from the canonical fixture through the public API: a
     // rule adding population (people) to harvest (grain). The single lowering gate —
