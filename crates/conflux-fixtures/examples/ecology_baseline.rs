@@ -16,12 +16,15 @@
 
 use conflux_core::lower;
 use conflux_fixtures::regional_settlement_ecology;
-use conflux_kernel::extract;
+use conflux_kernel::{extract, extract_fields};
 use conflux_runtime::Simulation;
 
 fn main() {
     let ir = lower(&regional_settlement_ecology()).expect("scenario lowers");
     let mut sim = Simulation::new(ir.clone());
+    // Region sizes from the start-of-run state (mask cardinality is value-independent),
+    // measured before stepping for consistency with the other domain sizes.
+    let aggregate_cells: usize = sim.aggregate_report().iter().map(|a| a.cell_count).sum();
     let step = sim.step();
 
     println!("regional_settlement_ecology — baseline measurement");
@@ -33,7 +36,6 @@ fn main() {
     let actors: usize = ir.actors.iter().map(|a| a.positions.len()).sum();
     let nodes: usize = ir.graphs.iter().map(|g| g.node_count).sum();
     let edges: usize = ir.graphs.iter().map(|g| g.edges.len()).sum();
-    let aggregate_cells: usize = sim.aggregate_report().iter().map(|a| a.cell_count).sum();
     println!("domain sizes:");
     println!("  tables:      {} ({rows} row(s))", ir.tables.len());
     println!("  fields:      {} ({cells} cell(s))", ir.fields.len());
@@ -105,17 +107,29 @@ fn main() {
     // (`items x elements`). Path: where an optimized backend exists today
     // (table/field elementwise/stencil kernels are opt-in; everything else is
     // reference-only).
-    let kernels = extract(&ir);
-    let kernel_names: Vec<&str> = kernels.accepted.iter().map(|k| k.name.as_str()).collect();
+    // Table and field kernels are extracted by separate passes; classify each
+    // domain's rules against its own kernel report.
+    let table_kernels = extract(&ir);
+    let table_kernel_names: Vec<&str> = table_kernels
+        .accepted
+        .iter()
+        .map(|k| k.name.as_str())
+        .collect();
     let table_kernel = ir
         .rules
         .iter()
-        .filter(|r| kernel_names.contains(&r.name.as_str()))
+        .filter(|r| table_kernel_names.contains(&r.name.as_str()))
         .count();
+    let field_kernels = extract_fields(&ir);
+    let field_kernel_names: Vec<&str> = field_kernels
+        .accepted
+        .iter()
+        .map(|k| k.name.as_str())
+        .collect();
     let field_kernel = ir
         .field_rules
         .iter()
-        .filter(|r| kernel_names.contains(&r.name.as_str()))
+        .filter(|r| field_kernel_names.contains(&r.name.as_str()))
         .count();
     let table_path = kernel_path(table_kernel, ir.rules.len());
     let field_path = kernel_path(field_kernel, ir.field_rules.len());
