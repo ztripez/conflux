@@ -480,6 +480,15 @@ pub enum Authority {
     ReportOnly,
 }
 
+/// The topology policy of a static graph domain. It records edge directionality and
+/// governs edge identity for duplicate detection (a directed graph treats `(a, b)`
+/// and `(b, a)` as distinct edges; an undirected graph treats them as the same).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TopologyKind {
+    Directed,
+    Undirected,
+}
+
 /// A resolved reference to one end of a scale link: a domain kind paired with its
 /// index into the matching `SimIr` collection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

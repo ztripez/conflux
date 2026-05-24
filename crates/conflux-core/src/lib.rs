@@ -10,6 +10,7 @@ mod aggregate;
 mod bridge;
 mod field;
 mod flow;
+mod graph;
 mod lower;
 mod model;
 mod query;
@@ -22,6 +23,7 @@ pub use aggregate::Aggregate;
 pub use bridge::Bridge;
 pub use field::Field;
 pub use flow::Flow;
+pub use graph::Graph;
 pub use lower::{lower, LowerError};
 pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use query::ProximityQuery;
@@ -34,7 +36,7 @@ pub use conflux_ir::{
     cell, col, field_lit, lit, neighbor, param, AggregateOp, ApproximationPolicy, Assessment,
     Authority, Cadence, ConservationPolicy, ConversionIr, Dimension, EdgePolicy, Expr, FieldExpr,
     Grid2, QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef,
-    SelfPolicy, UnitIr, ValueKind,
+    SelfPolicy, TopologyKind, UnitIr, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";
