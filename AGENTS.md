@@ -99,7 +99,9 @@ crates/
 ```
 
 Each crate's `lib.rs` documents its own boundary. Keep code on the correct side
-of these lines.
+of these lines. For a factual snapshot of the current architecture — crate
+responsibilities, all domains, the execution phase order, and report surfaces —
+see [`docs/ARCHITECTURE_SNAPSHOT.md`](docs/ARCHITECTURE_SNAPSHOT.md).
 
 ## Architecture review gate
 

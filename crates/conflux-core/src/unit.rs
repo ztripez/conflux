@@ -6,10 +6,11 @@
 //! behavior; values are not wrapped, and the numeric runtime stays unit-erased
 //! after lowering.
 //!
-//! Three shapes: a base dimension (`Unit::base`), an explicit dimensionless unit
-//! (`Unit::dimensionless`), and a simple ratio of two declared units
-//! (`Unit::ratio`). Construction is permissive; names are resolved and validated at
-//! `lower()`. No implicit conversion and no parser syntax are introduced here.
+//! Four shapes: a base dimension (`Unit::base`), an explicit dimensionless unit
+//! (`Unit::dimensionless`), a simple ratio of two declared units (`Unit::ratio`),
+//! and an alias sharing another unit's dimension (`Unit::alias`). Construction is
+//! permissive; names are resolved and validated at `lower()`. No implicit
+//! conversion and no parser syntax are introduced here.
 
 /// A named unit/dimension declaration.
 #[derive(Clone, Debug)]
