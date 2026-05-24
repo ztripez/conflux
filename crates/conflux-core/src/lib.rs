@@ -23,7 +23,7 @@ pub use aggregate::Aggregate;
 pub use bridge::Bridge;
 pub use field::Field;
 pub use flow::Flow;
-pub use graph::Graph;
+pub use graph::{Graph, GraphRule};
 pub use lower::{lower, LowerError};
 pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use query::ProximityQuery;
@@ -33,10 +33,12 @@ pub use unit::{Conversion, Unit};
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{
-    cell, col, field_lit, lit, neighbor, param, AggregateOp, ApproximationPolicy, Assessment,
+    cell, col, field_lit, graph_lit, incident_edge, incident_edge_count, lit, neighbor,
+    neighbor_node, neighbor_node_count, node, param, AggregateOp, ApproximationPolicy, Assessment,
     Authority, Cadence, ConservationPolicy, ConversionIr, Dimension, EdgePolicy, Expr, FieldExpr,
-    GraphChannelIr, GraphEdgeIr, GraphIr, Grid2, QueryInput, QueryLimit, QueryMetric,
-    QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy, TopologyKind, UnitIr, ValueKind,
+    GraphChannelIr, GraphEdgeIr, GraphExpr, GraphIr, GraphRuleIr, Grid2, QueryInput, QueryLimit,
+    QueryMetric, QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy, TopologyKind, UnitIr,
+    ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";

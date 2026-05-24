@@ -7,18 +7,23 @@
 
 mod expr;
 mod field_expr;
+mod graph_expr;
 mod sim;
 mod types;
 
 pub use expr::{col, lit, param, Expr};
 pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
+pub use graph_expr::{
+    graph_lit, incident_edge, incident_edge_count, neighbor_node, neighbor_node_count, node,
+    GraphExpr,
+};
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,
     AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy,
     ConversionIr, Dimension, FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, GraphChannelIr,
-    GraphEdgeIr, GraphIr, ParamIr, ProjectionBridgeIr, ProjectionIr, QueryInput, QueryIr,
-    QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask, RelationshipKind, RuleIr,
-    ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr, TopologyKind, UnitIr,
+    GraphEdgeIr, GraphIr, GraphRuleIr, ParamIr, ProjectionBridgeIr, ProjectionIr, QueryInput,
+    QueryIr, QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask, RelationshipKind,
+    RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr, TopologyKind, UnitIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 

@@ -10,14 +10,15 @@
 //! Graphs are a distinct top-level domain: a graph name may not collide with a
 //! table, field, region, actor set, or another graph.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use conflux_ir::{
-    Expr, GraphChannelIr, GraphEdgeIr, GraphIr, SimIr, TopologyKind, UnitIr, ValueKind,
+    AggregateOp, Expr, GraphChannelIr, GraphEdgeIr, GraphExpr, GraphIr, GraphRuleIr, SimIr,
+    TopologyKind, UnitIr, ValueKind,
 };
 
-use super::{units, LowerError, RESERVED_DT};
-use crate::graph::{Graph, GraphChannel};
+use super::{units, validate_assessments, LowerError, RESERVED_DT};
+use crate::graph::{Graph, GraphChannel, GraphRule};
 use crate::model::Model;
 
 /// Lowers every graph, validating against the already-lowered domains in `ir` (for
@@ -209,6 +210,159 @@ fn lower_channels(
         });
     }
     Ok(out)
+}
+
+/// Lowers every graph rule against the already-lowered graphs in `ir`. Rule names
+/// are validated globally (see `check_unique_rule_names`); here we check the target
+/// node stock channel, the bounded adjacency expression, cadence, single-writer, and
+/// assessment shape.
+pub(super) fn lower_graph_rules(model: &Model, ir: &SimIr) -> Result<Vec<GraphRuleIr>, LowerError> {
+    // A node stock channel may have at most one writer per graph.
+    let mut writers: HashMap<(usize, usize), String> = HashMap::new();
+    let mut rules = Vec::with_capacity(model.graph_rules.len());
+    for rule in &model.graph_rules {
+        rules.push(lower_graph_rule(rule, ir, &mut writers)?);
+    }
+    Ok(rules)
+}
+
+fn lower_graph_rule(
+    rule: &GraphRule,
+    ir: &SimIr,
+    writers: &mut HashMap<(usize, usize), String>,
+) -> Result<GraphRuleIr, LowerError> {
+    let name = rule.name();
+    let graph_name = rule
+        .graph
+        .as_ref()
+        .ok_or_else(|| LowerError::GraphRuleMissingGraph(name.to_string()))?;
+    let (target_name, expr) = match (&rule.target, &rule.expr) {
+        (Some(target), Some(expr)) => (target, expr),
+        _ => return Err(LowerError::GraphRuleMissingProposal(name.to_string())),
+    };
+    if rule.cadence.period == 0 {
+        return Err(LowerError::BadCadence {
+            rule: name.to_string(),
+        });
+    }
+
+    let graph_idx =
+        ir.graph_index(graph_name)
+            .ok_or_else(|| LowerError::GraphRuleUnknownGraph {
+                rule: name.to_string(),
+                graph: graph_name.clone(),
+            })?;
+    let graph = &ir.graphs[graph_idx];
+
+    // The target must be an existing node stock channel.
+    let target = graph.node_channel_index(target_name).ok_or_else(|| {
+        LowerError::GraphRuleUnknownChannel {
+            rule: name.to_string(),
+            graph: graph_name.clone(),
+            side: "node",
+            channel: target_name.clone(),
+        }
+    })?;
+    if graph.node_channels[target].kind != ValueKind::Stock {
+        return Err(LowerError::GraphRuleTargetNotStock {
+            rule: name.to_string(),
+            graph: graph_name.clone(),
+            channel: target_name.clone(),
+        });
+    }
+
+    validate_graph_expr(name, graph_name, graph, expr)?;
+
+    if let Some(first) = writers.insert((graph_idx, target), name.to_string()) {
+        return Err(LowerError::GraphRuleDuplicateWriter {
+            graph: graph_name.clone(),
+            channel: target_name.clone(),
+            first,
+            second: name.to_string(),
+        });
+    }
+
+    validate_assessments(&rule.assessments, name)?;
+
+    Ok(GraphRuleIr {
+        name: name.to_string(),
+        graph: graph_idx,
+        target,
+        cadence: rule.cadence,
+        expr: expr.clone(),
+        assessments: rule.assessments.clone(),
+    })
+}
+
+/// Validates a graph rule's bounded adjacency expression: node reads name node
+/// channels; incident-edge reductions name edge channels; neighbor-node reductions
+/// name node channels. A reduction channel is required for non-`Count` ops.
+fn validate_graph_expr(
+    rule: &str,
+    graph_name: &str,
+    graph: &GraphIr,
+    expr: &GraphExpr,
+) -> Result<(), LowerError> {
+    match expr {
+        GraphExpr::Literal(_) => Ok(()),
+        GraphExpr::Node(channel) => {
+            if graph.node_channel_index(channel).is_some() {
+                Ok(())
+            } else {
+                Err(LowerError::GraphRuleUnknownChannel {
+                    rule: rule.to_string(),
+                    graph: graph_name.to_string(),
+                    side: "node",
+                    channel: channel.clone(),
+                })
+            }
+        }
+        GraphExpr::IncidentEdge { channel, op } => {
+            validate_reduction(rule, graph_name, "edge", channel, *op, |c| {
+                graph.edge_channel_index(c).is_some()
+            })
+        }
+        GraphExpr::NeighborNode { channel, op } => {
+            validate_reduction(rule, graph_name, "node", channel, *op, |c| {
+                graph.node_channel_index(c).is_some()
+            })
+        }
+        GraphExpr::Neg(inner) => validate_graph_expr(rule, graph_name, graph, inner),
+        GraphExpr::Add(a, b)
+        | GraphExpr::Sub(a, b)
+        | GraphExpr::Mul(a, b)
+        | GraphExpr::Div(a, b) => {
+            validate_graph_expr(rule, graph_name, graph, a)?;
+            validate_graph_expr(rule, graph_name, graph, b)
+        }
+    }
+}
+
+/// Validates one adjacency reduction. `Count` ignores the channel; any other op
+/// needs an existing channel in the relevant namespace (`channel_ok`). A non-`Count`
+/// reduction with no channel is not constructible via the public API and is rejected.
+fn validate_reduction(
+    rule: &str,
+    graph_name: &str,
+    side: &'static str,
+    channel: &Option<String>,
+    op: AggregateOp,
+    channel_ok: impl Fn(&str) -> bool,
+) -> Result<(), LowerError> {
+    if op == AggregateOp::Count {
+        return Ok(());
+    }
+    let unknown = |channel: String| LowerError::GraphRuleUnknownChannel {
+        rule: rule.to_string(),
+        graph: graph_name.to_string(),
+        side,
+        channel,
+    };
+    match channel {
+        Some(c) if channel_ok(c) => Ok(()),
+        Some(c) => Err(unknown(c.clone())),
+        None => Err(unknown("(missing)".to_string())),
+    }
 }
 
 /// Validates a derived channel's same-element expression: every referenced channel

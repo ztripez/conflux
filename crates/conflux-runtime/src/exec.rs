@@ -15,6 +15,7 @@ use crate::actor_exec;
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::flow_exec;
+use crate::graph_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
     AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport, Report, RowOutcome,
@@ -35,6 +36,10 @@ pub struct Simulation {
     actor_data: Vec<Vec<Vec<f64>>>,
     /// Actor positions indexed `actor_positions[set][actor]` (row-major cell index).
     actor_positions: Vec<Vec<usize>>,
+    /// Graph node channel data indexed `graph_node_data[graph][channel][node]`.
+    graph_node_data: Vec<Vec<Vec<f64>>>,
+    /// Graph edge channel data indexed `graph_edge_data[graph][channel][edge]`.
+    graph_edge_data: Vec<Vec<Vec<f64>>>,
     /// The caller-declared execution mode (default [`ExecutionMode::ReferenceOnly`]).
     mode: ExecutionMode,
     /// Accepted CPU kernels by rule name, used to run the selected kernel path.
@@ -72,6 +77,7 @@ impl Simulation {
         let field_data = field_exec::materialize_fields(&ir, &params);
         let actor_data = actor_exec::materialize_actors(&ir);
         let actor_positions = actor_exec::materialize_actor_positions(&ir);
+        let (graph_node_data, graph_edge_data) = graph_exec::materialize_graphs(&ir);
 
         let kernels = if mode.requests_kernel() {
             extract(&ir)
@@ -91,6 +97,8 @@ impl Simulation {
             field_data,
             actor_data,
             actor_positions,
+            graph_node_data,
+            graph_edge_data,
             mode,
             kernels,
         }
@@ -144,6 +152,20 @@ impl Simulation {
     pub fn actor_positions(&self, actor_set: &str) -> Option<&[usize]> {
         let s = self.ir.actor_index(actor_set)?;
         Some(&self.actor_positions[s])
+    }
+
+    /// Reads the current per-node values of a graph's node channel, if it exists.
+    pub fn graph_node(&self, graph: &str, channel: &str) -> Option<&[f64]> {
+        let g = self.ir.graph_index(graph)?;
+        let c = self.ir.graphs[g].node_channel_index(channel)?;
+        Some(&self.graph_node_data[g][c])
+    }
+
+    /// Reads the current per-edge values of a graph's edge channel, if it exists.
+    pub fn graph_edge(&self, graph: &str, channel: &str) -> Option<&[f64]> {
+        let g = self.ir.graph_index(graph)?;
+        let c = self.ir.graphs[g].edge_channel_index(channel)?;
+        Some(&self.graph_edge_data[g][c])
     }
 
     /// Evaluates every declared region aggregate against the current materialized
@@ -333,6 +355,16 @@ impl Simulation {
         // positions over the host field.
         let actor_movements = actor_exec::step_actor_movements(ir, tick, &mut self.actor_positions);
 
+        // Graph rules are their own phase: they propose node-stock writes from a
+        // frozen start-of-tick graph snapshot (current node, incident edges, neighbor
+        // nodes) and touch only graph node state.
+        let graph_rules = graph_exec::step_graph_rules(
+            ir,
+            tick,
+            &mut self.graph_node_data,
+            &self.graph_edge_data,
+        );
+
         StepReport {
             tick,
             rules: rule_reports,
@@ -342,6 +374,7 @@ impl Simulation {
             actor_rules,
             actor_movements,
             projection_bridges,
+            graph_rules,
         }
     }
 }

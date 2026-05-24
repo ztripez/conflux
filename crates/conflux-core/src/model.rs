@@ -11,7 +11,7 @@ use crate::aggregate::Aggregate;
 use crate::bridge::Bridge;
 use crate::field::Field;
 use crate::flow::Flow;
-use crate::graph::Graph;
+use crate::graph::{Graph, GraphRule};
 use crate::query::ProximityQuery;
 use crate::region::Region;
 use crate::scale::{Projection, ProjectionBridge, ScaleLink};
@@ -25,8 +25,10 @@ pub struct Model {
     pub(crate) units: Vec<Unit>,
     // Lowered into conversion IR by `lower()`; declared, never auto-applied.
     pub(crate) conversions: Vec<Conversion>,
-    // Lowered into graph IR by `lower()` in a later slice (#166).
+    // Lowered into graph IR by `lower()`.
     pub(crate) graphs: Vec<Graph>,
+    // Lowered into graph-rule IR by `lower()`.
+    pub(crate) graph_rules: Vec<GraphRule>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -71,6 +73,7 @@ impl Model {
             units: Vec::new(),
             conversions: Vec::new(),
             graphs: Vec::new(),
+            graph_rules: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -111,6 +114,14 @@ impl Model {
     /// duplicate table/field/actor state. Graph rules and events are later slices.
     pub fn add_graph(&mut self, graph: Graph) -> &mut Self {
         self.graphs.push(graph);
+        self
+    }
+
+    /// Adds a graph rule (a per-node proposal to a node stock channel from bounded
+    /// adjacency). It is validated and lowered by `lower()` and runs on the CPU
+    /// reference path.
+    pub fn add_graph_rule(&mut self, rule: GraphRule) -> &mut Self {
+        self.graph_rules.push(rule);
         self
     }
 
