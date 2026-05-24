@@ -86,7 +86,8 @@ field-to-table bridge). For a concise snapshot of what is true now and the
 invariants you can rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md);
 the current checkpoint is tagged `mvp-cpu-snapshot-v0`. For which APIs are stable
 enough to build on versus experimental, see
-[`docs/API_STABILITY.md`](docs/API_STABILITY.md).
+[`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview
+tag or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 The CPU-only vertical slice (MVP1) is in place:
 
