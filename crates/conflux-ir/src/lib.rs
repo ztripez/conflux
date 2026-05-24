@@ -15,10 +15,10 @@ pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,
     AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy,
-    ConversionIr, Dimension, FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, ParamIr,
-    ProjectionBridgeIr, ProjectionIr, QueryInput, QueryIr, QueryLimit, QueryMetric, QueryOrdering,
-    RegionIr, RegionMask, RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr,
-    TableIr, TopologyKind, UnitIr,
+    ConversionIr, Dimension, FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, GraphChannelIr,
+    GraphEdgeIr, GraphIr, ParamIr, ProjectionBridgeIr, ProjectionIr, QueryInput, QueryIr,
+    QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask, RelationshipKind, RuleIr,
+    ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr, TopologyKind, UnitIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 

@@ -28,6 +28,7 @@ pub struct SimIr {
     pub scale_links: Vec<ScaleLinkIr>,
     pub projections: Vec<ProjectionIr>,
     pub projection_bridges: Vec<ProjectionBridgeIr>,
+    pub graphs: Vec<GraphIr>,
 }
 
 /// A physical dimension as integer exponents over named base dimensions. The empty
@@ -489,6 +490,61 @@ pub enum TopologyKind {
     Undirected,
 }
 
+/// A lowered, validated static graph: a fixed topology with node and edge scalar
+/// channels, plus precomputed bounded adjacency. A distinct domain — not a table or
+/// a field. Self-loops and duplicate edges are rejected at lowering, so adjacency is
+/// simple and finite. Direction is recorded but adjacency is direction-agnostic in
+/// this slice (a node's incident edges/neighbors use either endpoint).
+#[derive(Clone, Debug)]
+pub struct GraphIr {
+    pub name: String,
+    pub topology: TopologyKind,
+    pub node_count: usize,
+    pub edges: Vec<GraphEdgeIr>,
+    pub node_channels: Vec<GraphChannelIr>,
+    pub edge_channels: Vec<GraphChannelIr>,
+    /// Per node, the indices of edges incident to it (either endpoint), ascending.
+    pub incident_edges: Vec<Vec<usize>>,
+    /// Per node, the distinct neighbor node indices (the other endpoint of each
+    /// incident edge), ascending.
+    pub neighbors: Vec<Vec<usize>>,
+}
+
+/// A lowered edge: resolved source/target node indices (both in range, guaranteed by
+/// lowering).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphEdgeIr {
+    pub source: usize,
+    pub target: usize,
+}
+
+/// A single graph channel (node or edge namespace), analogous to a table column.
+#[derive(Clone, Debug)]
+pub struct GraphChannelIr {
+    pub name: String,
+    pub kind: ValueKind,
+    /// Initial values, one per node or per edge; empty for `Derived` channels.
+    pub initial: Vec<f64>,
+    /// The recompute expression for a `Derived` channel; `None` otherwise. Reads
+    /// other channels at the same element (same node or same edge).
+    pub derive: Option<Expr>,
+    /// Index into [`SimIr::units`] for this channel's declared unit; `None` when
+    /// unannotated (unknown). Validation metadata only.
+    pub unit: Option<usize>,
+}
+
+impl GraphIr {
+    /// Finds a node channel index by name.
+    pub fn node_channel_index(&self, name: &str) -> Option<usize> {
+        self.node_channels.iter().position(|c| c.name == name)
+    }
+
+    /// Finds an edge channel index by name.
+    pub fn edge_channel_index(&self, name: &str) -> Option<usize> {
+        self.edge_channels.iter().position(|c| c.name == name)
+    }
+}
+
 /// A resolved reference to one end of a scale link: a domain kind paired with its
 /// index into the matching `SimIr` collection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -640,6 +696,11 @@ impl SimIr {
     /// Finds a conversion index by name.
     pub fn conversion_index(&self, name: &str) -> Option<usize> {
         self.conversions.iter().position(|c| c.name == name)
+    }
+
+    /// Finds a graph index by name.
+    pub fn graph_index(&self, name: &str) -> Option<usize> {
+        self.graphs.iter().position(|g| g.name == name)
     }
 
     /// Finds a projection index by name.

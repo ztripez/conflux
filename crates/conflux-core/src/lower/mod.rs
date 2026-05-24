@@ -30,6 +30,8 @@ mod queries;
 mod scale;
 // Unit / dimension lowering, its own concern.
 mod units;
+// Static graph lowering and validation, its own concern.
+mod graphs;
 // Dimensional checking over the lowered IR (the units-validation pass).
 mod dimension;
 
@@ -58,6 +60,64 @@ pub enum LowerError {
     },
     #[error("conversion `{conversion}` has an invalid factor ({factor}); it must be finite and greater than zero")]
     ConversionInvalidFactor { conversion: String, factor: f64 },
+    #[error("duplicate domain name `{0}`: a graph may not share a name with a graph, table, field, region, or actor set")]
+    DuplicateGraph(String),
+    #[error("graph `{0}` has zero nodes; a graph must have at least one node")]
+    EmptyGraph(String),
+    #[error(
+        "graph `{graph}` edge {edge} references node {endpoint}, but the graph has {nodes} nodes"
+    )]
+    GraphEdgeOutOfBounds {
+        graph: String,
+        edge: usize,
+        endpoint: usize,
+        nodes: usize,
+    },
+    #[error(
+        "graph `{graph}` edge {edge} is a self-loop on node {node}; self-loops are not allowed"
+    )]
+    GraphSelfLoop {
+        graph: String,
+        edge: usize,
+        node: usize,
+    },
+    #[error("graph `{graph}` declares the edge ({source_node}, {target_node}) more than once; duplicate edges are not allowed")]
+    GraphDuplicateEdge {
+        graph: String,
+        source_node: usize,
+        target_node: usize,
+    },
+    #[error("duplicate {side} channel `{channel}` in graph `{graph}`")]
+    DuplicateGraphChannel {
+        graph: String,
+        side: &'static str,
+        channel: String,
+    },
+    #[error("{side} channel `{channel}` in graph `{graph}` has {got} initial values but the graph has {expected} {side}s")]
+    GraphChannelLengthMismatch {
+        graph: String,
+        side: &'static str,
+        channel: String,
+        expected: usize,
+        got: usize,
+    },
+    #[error("graph `{graph}` derived {side} channel `{channel}` reads unknown {side} channel `{referenced}`")]
+    GraphUnknownChannel {
+        graph: String,
+        side: &'static str,
+        channel: String,
+        referenced: String,
+    },
+    #[error(
+        "graph `{graph}` derived {side} channel `{channel}` reads derived channel `{referenced}`; \
+         derived channels may only read stocks and signals"
+    )]
+    GraphDerivedReadsDerived {
+        graph: String,
+        side: &'static str,
+        channel: String,
+        referenced: String,
+    },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
     #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
@@ -553,6 +613,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         scale_links: Vec::new(),
         projections: Vec::new(),
         projection_bridges: Vec::new(),
+        graphs: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -586,6 +647,10 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     ir.actor_rules = actor_rules;
     let actor_movements = actors::lower_actor_movements(model, &ir)?;
     ir.actor_movements = actor_movements;
+    // Graphs are their own domain; they resolve against the lowered units and check
+    // their name against the other top-level domains. Their own lowering concern.
+    let graphs = graphs::lower_graphs(model, &ir, &param_names)?;
+    ir.graphs = graphs;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 

@@ -106,9 +106,9 @@ impl Model {
         self
     }
 
-    /// Adds a static graph domain (topology + node/edge channels). Validation and
-    /// lowering arrive in a later slice (#166); declaring one is inert until then,
-    /// and a graph is its own domain — never duplicate table/field/actor state.
+    /// Adds a static graph domain (topology + node/edge channels). It is validated
+    /// and lowered into graph IR by `lower()`; a graph is its own domain — never
+    /// duplicate table/field/actor state. Graph rules and events are later slices.
     pub fn add_graph(&mut self, graph: Graph) -> &mut Self {
         self.graphs.push(graph);
         self
