@@ -14,6 +14,12 @@
 //! could be backed by a spatial index and why — again advisory only: exact CPU
 //! evaluation stays the single execution path and no index is implemented here.
 //!
+//! Likewise it reports *graph-kernel eligibility* for graph rules and event
+//! triggers — which graph rules could be backed by a graph kernel, the candidate
+//! shape, and why others (or any event trigger) cannot — naming candidate shapes
+//! only. No graph kernel is implemented and the CPU reference path stays the single
+//! source of truth.
+//!
 //! Boundary: the planner depends on the backend crates only to *read* their
 //! reports. It contains no shader code, no `wgpu`, and no buffer-movement logic;
 //! Residency still owns all data movement and this crate only reads its transfer
@@ -22,17 +28,19 @@
 mod backend;
 mod cost;
 mod fusion;
+mod graph_eligibility;
 mod index_eligibility;
 mod plan;
 mod report;
 mod transfer;
 
+pub use graph_eligibility::graph_eligibility;
 pub use index_eligibility::index_eligibility;
 pub use plan::plan;
 pub use report::{
-    ApproximationStatus, BackendChoice, CandidateIndex, CostHint, FusionGroup,
-    IndexEligibilityReport, IndexRebuildInputs, OptimizationReport, QueryIndexEligibility,
-    RulePlan, TransferAdvisory,
+    ApproximationStatus, BackendChoice, CandidateIndex, CostHint, FusionGroup, GraphCandidateShape,
+    GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport,
+    IndexRebuildInputs, OptimizationReport, QueryIndexEligibility, RulePlan, TransferAdvisory,
 };
 pub use transfer::transfer_advisory;
 

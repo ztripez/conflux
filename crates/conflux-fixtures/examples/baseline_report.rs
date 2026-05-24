@@ -12,7 +12,7 @@
 use conflux_core::{lower, ValueKind};
 use conflux_fixtures::ALL_SCENARIOS;
 use conflux_kernel::{execute_elementwise, extract};
-use conflux_planner::{index_eligibility, plan, transfer_advisory};
+use conflux_planner::{graph_eligibility, index_eligibility, plan, transfer_advisory};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{check_equivalence, Simulation, Tolerance};
@@ -279,6 +279,30 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
                     println!("      node {}: {payload}", instance.node);
                 }
             }
+        }
+        // Advisory graph-kernel eligibility (names candidate shapes only; no graph
+        // kernel exists — the CPU reference path above is the source of truth).
+        let eligibility = graph_eligibility(&ir);
+        for rule in &eligibility.rules {
+            let verdict = if rule.eligible {
+                "eligible"
+            } else {
+                "rejected"
+            };
+            println!(
+                "    graph-kernel `{}`: {verdict} [candidate {}]",
+                rule.rule,
+                rule.candidate_shape.label(),
+            );
+            for reason in &rule.rejections {
+                println!("        not kernelizable: {reason}");
+            }
+        }
+        for trigger in &eligibility.triggers {
+            println!(
+                "    graph-kernel trigger `{}`: rejected (report-only event)",
+                trigger.trigger,
+            );
         }
     }
 
