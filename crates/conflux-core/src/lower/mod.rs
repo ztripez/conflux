@@ -118,6 +118,35 @@ pub enum LowerError {
         channel: String,
         referenced: String,
     },
+    #[error("graph rule `{0}` does not declare a graph (use `.on_graph(..)`)")]
+    GraphRuleMissingGraph(String),
+    #[error("graph rule `{0}` does not declare a proposal (use `.propose(..)`)")]
+    GraphRuleMissingProposal(String),
+    #[error("graph rule `{rule}` targets unknown graph `{graph}`")]
+    GraphRuleUnknownGraph { rule: String, graph: String },
+    #[error("graph rule `{rule}`: unknown {side} channel `{channel}` in graph `{graph}`")]
+    GraphRuleUnknownChannel {
+        rule: String,
+        graph: String,
+        side: &'static str,
+        channel: String,
+    },
+    #[error("graph rule `{rule}` targets `{graph}.{channel}`, which is not a node stock")]
+    GraphRuleTargetNotStock {
+        rule: String,
+        graph: String,
+        channel: String,
+    },
+    #[error(
+        "graph node stock `{graph}.{channel}` is written by multiple graph rules (`{first}` and \
+         `{second}`); a single writer per stock is allowed"
+    )]
+    GraphRuleDuplicateWriter {
+        graph: String,
+        channel: String,
+        first: String,
+        second: String,
+    },
     #[error("{context} is annotated with unknown unit `{unit}`")]
     UnknownUnit { context: String, unit: String },
     #[error("{context}: cannot add or subtract incompatible dimensions ({left} and {right})")]
@@ -614,6 +643,7 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
         projections: Vec::new(),
         projection_bridges: Vec::new(),
         graphs: Vec::new(),
+        graph_rules: Vec::new(),
     };
     // Regions resolve against the lowered fields; aggregates against the lowered
     // regions; bridges against the lowered aggregates and tables; flows against the
@@ -651,6 +681,8 @@ pub fn lower(model: &Model) -> Result<SimIr, LowerError> {
     // their name against the other top-level domains. Their own lowering concern.
     let graphs = graphs::lower_graphs(model, &ir, &param_names)?;
     ir.graphs = graphs;
+    let graph_rules = graphs::lower_graph_rules(model, &ir)?;
+    ir.graph_rules = graph_rules;
     let rules = lower_rules(model, &ir, &param_names)?;
     let field_rules = fields::lower_field_rules(model, &ir)?;
 
@@ -796,7 +828,8 @@ fn check_unique_rule_names(model: &Model) -> Result<(), LowerError> {
         .iter()
         .map(|r| r.name.as_str())
         .chain(model.field_rules.iter().map(|r| r.name.as_str()))
-        .chain(model.actor_rules.iter().map(|r| r.name.as_str()));
+        .chain(model.actor_rules.iter().map(|r| r.name.as_str()))
+        .chain(model.graph_rules.iter().map(|r| r.name.as_str()));
     for name in all {
         if !names.insert(name) {
             return Err(LowerError::DuplicateRule(name.to_string()));

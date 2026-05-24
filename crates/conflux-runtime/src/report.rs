@@ -47,6 +47,30 @@ pub struct StepReport {
     /// Projection-to-table bridges applied this tick, in declaration order (empty
     /// when none are declared).
     pub projection_bridges: Vec<ProjectionBridgeReport>,
+    /// Graph rule firings this tick (empty when no graph rules are declared).
+    pub graph_rules: Vec<GraphRuleFireReport>,
+}
+
+/// One firing of one graph rule on one tick, evaluated per node.
+#[derive(Clone, Debug)]
+pub struct GraphRuleFireReport {
+    pub rule: String,
+    pub graph: String,
+    pub target_channel: String,
+    /// The cadence-derived time step exposed to the rule.
+    pub dt: f64,
+    pub nodes: Vec<GraphNodeOutcome>,
+}
+
+/// The result of one graph rule firing on one node.
+#[derive(Clone, Debug)]
+pub struct GraphNodeOutcome {
+    pub node: usize,
+    pub old_value: f64,
+    /// The raw proposed value, preserved even when an assessment rejects it.
+    pub proposed_value: f64,
+    pub committed: bool,
+    pub assessments: Vec<AssessmentOutcome>,
 }
 
 /// One actor movement applied on one tick: the per-actor position shifts.
@@ -631,6 +655,30 @@ impl fmt::Display for Report {
                         )?;
                     } else {
                         writeln!(f, "    actor {}: {:?} -> {:?}", m.actor, m.old, m.used)?;
+                    }
+                }
+            }
+            for rule in &step.graph_rules {
+                writeln!(
+                    f,
+                    "  graph rule `{}` -> {}.{} (dt = {})",
+                    rule.rule, rule.graph, rule.target_channel, rule.dt
+                )?;
+                for outcome in &rule.nodes {
+                    let status = if outcome.committed {
+                        "COMMIT"
+                    } else {
+                        "REJECT"
+                    };
+                    writeln!(
+                        f,
+                        "    node {}: {} -> {} [{}]",
+                        outcome.node, outcome.old_value, outcome.proposed_value, status
+                    )?;
+                    for assessment in &outcome.assessments {
+                        if !assessment.passed {
+                            writeln!(f, "      FAILED: {}", assessment.detail)?;
+                        }
                     }
                 }
             }

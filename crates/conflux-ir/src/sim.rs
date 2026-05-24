@@ -4,7 +4,7 @@
 //! references are resolved to indices and all invariants (existing columns,
 //! stock targets, matching row counts) are guaranteed by lowering.
 
-use crate::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, Grid2, ValueKind};
+use crate::{Assessment, Cadence, EdgePolicy, Expr, FieldExpr, GraphExpr, Grid2, ValueKind};
 
 /// A fully lowered simulation.
 #[derive(Clone, Debug)]
@@ -29,6 +29,7 @@ pub struct SimIr {
     pub projections: Vec<ProjectionIr>,
     pub projection_bridges: Vec<ProjectionBridgeIr>,
     pub graphs: Vec<GraphIr>,
+    pub graph_rules: Vec<GraphRuleIr>,
 }
 
 /// A physical dimension as integer exponents over named base dimensions. The empty
@@ -543,6 +544,22 @@ impl GraphIr {
     pub fn edge_channel_index(&self, name: &str) -> Option<usize> {
         self.edge_channels.iter().position(|c| c.name == name)
     }
+}
+
+/// A graph rule that proposes a new value for one node stock channel at a cadence,
+/// evaluated per node. Its expression reads the current node, a reduction over the
+/// node's incident edges, or a reduction over its neighbor nodes — all bounded. A
+/// distinct runtime concern, not routed through table/field/actor execution.
+#[derive(Clone, Debug)]
+pub struct GraphRuleIr {
+    pub name: String,
+    /// Index into [`SimIr::graphs`].
+    pub graph: usize,
+    /// Index of the proposed node stock channel within the graph's node channels.
+    pub target: usize,
+    pub cadence: Cadence,
+    pub expr: GraphExpr,
+    pub assessments: Vec<Assessment>,
 }
 
 /// A resolved reference to one end of a scale link: a domain kind paired with its

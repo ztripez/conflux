@@ -13,7 +13,7 @@
 //! uniqueness are all checked at `lower()`. Self-loops and duplicate edges are
 //! rejected.
 
-use conflux_ir::{Expr, TopologyKind, ValueKind};
+use conflux_ir::{Assessment, Cadence, Expr, GraphExpr, TopologyKind, ValueKind};
 
 /// One scalar channel of a graph, in either the node or the edge namespace.
 #[derive(Clone, Debug)]
@@ -178,6 +178,64 @@ impl Graph {
         });
         self.last = Some(LastChannel::Edge);
         self
+    }
+}
+
+/// A graph-local rule: proposes a new value for one node stock channel at a
+/// cadence, evaluated per node, from a bounded [`GraphExpr`] (current node, incident
+/// edges, or neighbor nodes). It targets node state only in this slice.
+#[derive(Clone, Debug)]
+pub struct GraphRule {
+    pub(crate) name: String,
+    pub(crate) graph: Option<String>,
+    pub(crate) target: Option<String>,
+    pub(crate) cadence: Cadence,
+    pub(crate) expr: Option<GraphExpr>,
+    pub(crate) assessments: Vec<Assessment>,
+}
+
+impl GraphRule {
+    /// Starts a graph rule. It fires every tick until [`GraphRule::every`] sets a
+    /// cadence.
+    pub fn new(name: impl Into<String>) -> Self {
+        GraphRule {
+            name: name.into(),
+            graph: None,
+            target: None,
+            cadence: Cadence::every(1),
+            expr: None,
+            assessments: Vec::new(),
+        }
+    }
+
+    /// Binds the rule to a graph.
+    pub fn on_graph(mut self, graph: impl Into<String>) -> Self {
+        self.graph = Some(graph.into());
+        self
+    }
+
+    /// Sets the cadence period in ticks.
+    pub fn every(mut self, period: u64) -> Self {
+        self.cadence = Cadence::every(period);
+        self
+    }
+
+    /// Declares the proposed node stock channel and the expression producing it.
+    pub fn propose(mut self, target: impl Into<String>, expr: GraphExpr) -> Self {
+        self.target = Some(target.into());
+        self.expr = Some(expr);
+        self
+    }
+
+    /// Adds an assessment applied to the proposed value before commit.
+    pub fn assess(mut self, assessment: Assessment) -> Self {
+        self.assessments.push(assessment);
+        self
+    }
+
+    /// The rule's name.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 
