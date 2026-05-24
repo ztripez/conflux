@@ -13,6 +13,7 @@ use crate::event::Event;
 use crate::field::Field;
 use crate::flow::Flow;
 use crate::graph::{Graph, GraphRule};
+use crate::graph_event::GraphEventTrigger;
 use crate::query::ProximityQuery;
 use crate::region::Region;
 use crate::scale::{Projection, ProjectionBridge, ScaleLink};
@@ -32,6 +33,8 @@ pub struct Model {
     pub(crate) graph_rules: Vec<GraphRule>,
     // Lowered into event IR by `lower()`; declarations only, no materialization yet.
     pub(crate) events: Vec<Event>,
+    // Lowered into graph-event-trigger IR by `lower()`; report-only materialization.
+    pub(crate) graph_event_triggers: Vec<GraphEventTrigger>,
     pub(crate) params: Vec<ParamDef>,
     pub(crate) tables: Vec<Table>,
     // Lowered into field IR by `lower()`; field execution is a later slice.
@@ -78,6 +81,7 @@ impl Model {
             graphs: Vec::new(),
             graph_rules: Vec::new(),
             events: Vec::new(),
+            graph_event_triggers: Vec::new(),
             params: Vec::new(),
             tables: Vec::new(),
             fields: Vec::new(),
@@ -135,6 +139,15 @@ impl Model {
     /// materialized in this slice.
     pub fn add_event(&mut self, event: Event) -> &mut Self {
         self.events.push(event);
+        self
+    }
+
+    /// Adds a graph event trigger (a report-only surface that materializes a declared
+    /// event per node when its condition holds). It is validated and lowered by
+    /// `lower()` and runs on the CPU reference path; it writes no state and is never
+    /// consumed.
+    pub fn add_graph_event_trigger(&mut self, trigger: GraphEventTrigger) -> &mut Self {
+        self.graph_event_triggers.push(trigger);
         self
     }
 

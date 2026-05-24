@@ -31,6 +31,7 @@ pub struct SimIr {
     pub graphs: Vec<GraphIr>,
     pub graph_rules: Vec<GraphRuleIr>,
     pub events: Vec<EventIr>,
+    pub graph_event_triggers: Vec<GraphEventTriggerIr>,
 }
 
 /// A physical dimension as integer exponents over named base dimensions. The empty
@@ -606,6 +607,58 @@ pub struct EventIr {
     pub name: String,
     pub source: EventSource,
     pub payload: Vec<EventFieldIr>,
+}
+
+/// A threshold comparison for a graph event trigger condition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Comparison {
+    Greater,
+    Less,
+}
+
+impl Comparison {
+    /// A stable symbol for diagnostics and report provenance.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Comparison::Greater => ">",
+            Comparison::Less => "<",
+        }
+    }
+
+    /// Applies the comparison of `value` against `threshold`.
+    pub fn test(self, value: f64, threshold: f64) -> bool {
+        match self {
+            Comparison::Greater => value > threshold,
+            Comparison::Less => value < threshold,
+        }
+    }
+}
+
+/// An optional per-node condition gating a graph event trigger: the bounded
+/// expression is compared against a constant threshold on the frozen snapshot.
+#[derive(Clone, Debug)]
+pub struct GraphTriggerConditionIr {
+    pub expr: GraphExpr,
+    pub op: Comparison,
+    pub threshold: f64,
+}
+
+/// A lowered, validated graph event trigger: a **report-only** surface that
+/// materializes a declared event per node when its (optional) condition holds,
+/// with payload values from the same frozen start-of-tick graph snapshot the graph
+/// rules read. It is a distinct runtime concern from graph rules — it writes no
+/// state, has no queue, and is never consumed. Payload expressions are stored in
+/// the referenced event's declared field order.
+#[derive(Clone, Debug)]
+pub struct GraphEventTriggerIr {
+    pub name: String,
+    /// Index into [`SimIr::graphs`].
+    pub graph: usize,
+    /// Index into [`SimIr::events`].
+    pub event: usize,
+    pub condition: Option<GraphTriggerConditionIr>,
+    /// One expression per payload field of the referenced event, in field order.
+    pub payload: Vec<GraphExpr>,
 }
 
 /// A resolved reference to one end of a scale link: a domain kind paired with its

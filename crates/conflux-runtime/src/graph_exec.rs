@@ -82,19 +82,19 @@ fn channel_map(channels: &[GraphChannelIr]) -> HashMap<&str, usize> {
 
 /// Steps every graph rule firing on `tick`, committing accepted node-stock proposals
 /// into `node_data` and returning a per-node report. Edge data is read-only (node
-/// rules never write edges).
+/// rules never write edges). `snapshot` is the frozen start-of-tick node state shared
+/// with the event triggers, so neither node order, rule order, nor event
+/// materialization changes what a rule observes.
 pub(crate) fn step_graph_rules(
     ir: &SimIr,
     tick: u64,
+    snapshot: &[Vec<Vec<f64>>],
     node_data: &mut [Vec<Vec<f64>>],
     edge_data: &[Vec<Vec<f64>>],
 ) -> Vec<GraphRuleFireReport> {
     if ir.graph_rules.is_empty() {
         return Vec::new();
     }
-    // One frozen start-of-tick snapshot of all graph node state, shared by every
-    // graph rule, so neither node order nor rule order changes what a rule observes.
-    let snapshot = node_data.to_vec();
 
     let mut reports = Vec::new();
     for rule in &ir.graph_rules {
@@ -140,8 +140,9 @@ pub(crate) fn step_graph_rules(
 }
 
 /// Evaluates a graph rule's bounded expression for one node against the frozen node
-/// snapshot and the (read-only) edge data.
-fn eval_graph(
+/// snapshot and the (read-only) edge data. Shared by graph rules and graph event
+/// triggers so both read identical values from the same frozen snapshot.
+pub(crate) fn eval_graph(
     expr: &GraphExpr,
     graph: &GraphIr,
     node: usize,

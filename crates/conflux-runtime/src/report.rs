@@ -49,6 +49,9 @@ pub struct StepReport {
     pub projection_bridges: Vec<ProjectionBridgeReport>,
     /// Graph rule firings this tick (empty when no graph rules are declared).
     pub graph_rules: Vec<GraphRuleFireReport>,
+    /// Report-only graph events materialized this tick, one report per trigger
+    /// (empty when no graph event triggers are declared).
+    pub graph_events: Vec<GraphEventReport>,
 }
 
 /// One firing of one graph rule on one tick, evaluated per node.
@@ -72,6 +75,36 @@ pub struct GraphNodeOutcome {
     pub proposed_value: f64,
     pub committed: bool,
     pub assessments: Vec<AssessmentOutcome>,
+}
+
+/// One graph event trigger's materialization on one tick: the events emitted, one
+/// instance per node whose condition held. Report-only — materializing an event
+/// writes no simulation state and is never consumed.
+#[derive(Clone, Debug)]
+pub struct GraphEventReport {
+    pub trigger: String,
+    /// The declared event type materialized.
+    pub event: String,
+    /// The source graph (part of each instance's identity, with its node).
+    pub graph: String,
+    pub instances: Vec<GraphEventInstance>,
+}
+
+/// One materialized event: its source node identity and evaluated scalar payload.
+#[derive(Clone, Debug)]
+pub struct GraphEventInstance {
+    /// Source node index within the trigger's graph.
+    pub node: usize,
+    pub payload: Vec<GraphEventPayloadValue>,
+}
+
+/// One payload field value of a materialized event, with its declared unit name
+/// where known.
+#[derive(Clone, Debug)]
+pub struct GraphEventPayloadValue {
+    pub field: String,
+    pub value: f64,
+    pub unit: Option<String>,
 }
 
 /// One actor movement applied on one tick: the per-actor position shifts.
@@ -681,6 +714,26 @@ impl fmt::Display for Report {
                             writeln!(f, "      FAILED: {}", assessment.detail)?;
                         }
                     }
+                }
+            }
+            for report in &step.graph_events {
+                writeln!(
+                    f,
+                    "  graph event `{}` emits `{}` from {} ({} instance(s))",
+                    report.trigger,
+                    report.event,
+                    report.graph,
+                    report.instances.len()
+                )?;
+                for instance in &report.instances {
+                    write!(f, "    node {}:", instance.node)?;
+                    for value in &instance.payload {
+                        match &value.unit {
+                            Some(unit) => write!(f, " {}={} {}", value.field, value.value, unit)?,
+                            None => write!(f, " {}={}", value.field, value.value)?,
+                        }
+                    }
+                    writeln!(f)?;
                 }
             }
         }

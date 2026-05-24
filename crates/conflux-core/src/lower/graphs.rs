@@ -13,12 +13,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use conflux_ir::{
-    AggregateOp, Expr, GraphChannelIr, GraphEdgeIr, GraphExpr, GraphIr, GraphRuleIr, SimIr,
-    TopologyKind, UnitIr, ValueKind,
+    AggregateOp, Expr, GraphChannelIr, GraphEdgeIr, GraphEventTriggerIr, GraphExpr, GraphIr,
+    GraphRuleIr, GraphTriggerConditionIr, SimIr, TopologyKind, UnitIr, ValueKind,
 };
 
 use super::{units, validate_assessments, LowerError, RESERVED_DT};
 use crate::graph::{Graph, GraphChannel, GraphRule};
+use crate::graph_event::GraphEventTrigger;
 use crate::model::Model;
 
 /// Lowers every graph, validating against the already-lowered domains in `ir` (for
@@ -271,7 +272,14 @@ fn lower_graph_rule(
         });
     }
 
-    validate_graph_expr(name, graph_name, graph, expr)?;
+    validate_graph_expr(graph, expr, &|side, channel| {
+        LowerError::GraphRuleUnknownChannel {
+            rule: name.to_string(),
+            graph: graph_name.clone(),
+            side,
+            channel,
+        }
+    })?;
 
     if let Some(first) = writers.insert((graph_idx, target), name.to_string()) {
         return Err(LowerError::GraphRuleDuplicateWriter {
@@ -294,14 +302,15 @@ fn lower_graph_rule(
     })
 }
 
-/// Validates a graph rule's bounded adjacency expression: node reads name node
-/// channels; incident-edge reductions name edge channels; neighbor-node reductions
-/// name node channels. A reduction channel is required for non-`Count` ops.
+/// Validates a bounded adjacency expression (shared by graph rules and graph event
+/// triggers): node reads name node channels; incident-edge reductions name edge
+/// channels; neighbor-node reductions name node channels. A reduction channel is
+/// required for non-`Count` ops. `unknown(side, channel)` builds the caller's
+/// context-specific unknown-channel error.
 fn validate_graph_expr(
-    rule: &str,
-    graph_name: &str,
     graph: &GraphIr,
     expr: &GraphExpr,
+    unknown: &dyn Fn(&'static str, String) -> LowerError,
 ) -> Result<(), LowerError> {
     match expr {
         GraphExpr::Literal(_) => Ok(()),
@@ -309,31 +318,26 @@ fn validate_graph_expr(
             if graph.node_channel_index(channel).is_some() {
                 Ok(())
             } else {
-                Err(LowerError::GraphRuleUnknownChannel {
-                    rule: rule.to_string(),
-                    graph: graph_name.to_string(),
-                    side: "node",
-                    channel: channel.clone(),
-                })
+                Err(unknown("node", channel.clone()))
             }
         }
         GraphExpr::IncidentEdge { channel, op } => {
-            validate_reduction(rule, graph_name, "edge", channel, *op, |c| {
+            validate_reduction("edge", channel, *op, unknown, |c| {
                 graph.edge_channel_index(c).is_some()
             })
         }
         GraphExpr::NeighborNode { channel, op } => {
-            validate_reduction(rule, graph_name, "node", channel, *op, |c| {
+            validate_reduction("node", channel, *op, unknown, |c| {
                 graph.node_channel_index(c).is_some()
             })
         }
-        GraphExpr::Neg(inner) => validate_graph_expr(rule, graph_name, graph, inner),
+        GraphExpr::Neg(inner) => validate_graph_expr(graph, inner, unknown),
         GraphExpr::Add(a, b)
         | GraphExpr::Sub(a, b)
         | GraphExpr::Mul(a, b)
         | GraphExpr::Div(a, b) => {
-            validate_graph_expr(rule, graph_name, graph, a)?;
-            validate_graph_expr(rule, graph_name, graph, b)
+            validate_graph_expr(graph, a, unknown)?;
+            validate_graph_expr(graph, b, unknown)
         }
     }
 }
@@ -342,27 +346,133 @@ fn validate_graph_expr(
 /// needs an existing channel in the relevant namespace (`channel_ok`). A non-`Count`
 /// reduction with no channel is not constructible via the public API and is rejected.
 fn validate_reduction(
-    rule: &str,
-    graph_name: &str,
     side: &'static str,
     channel: &Option<String>,
     op: AggregateOp,
+    unknown: &dyn Fn(&'static str, String) -> LowerError,
     channel_ok: impl Fn(&str) -> bool,
 ) -> Result<(), LowerError> {
     if op == AggregateOp::Count {
         return Ok(());
     }
-    let unknown = |channel: String| LowerError::GraphRuleUnknownChannel {
-        rule: rule.to_string(),
-        graph: graph_name.to_string(),
+    match channel {
+        Some(c) if channel_ok(c) => Ok(()),
+        Some(c) => Err(unknown(side, c.clone())),
+        None => Err(unknown(side, "(missing)".to_string())),
+    }
+}
+
+/// Lowers every graph event trigger against the already-lowered graphs and events.
+/// Triggers are **report-only**: this validates references, the condition, and the
+/// payload expressions only — nothing here writes state or stores events.
+pub(super) fn lower_graph_event_triggers(
+    model: &Model,
+    ir: &SimIr,
+) -> Result<Vec<GraphEventTriggerIr>, LowerError> {
+    let mut names: HashSet<&str> = HashSet::new();
+    let mut triggers = Vec::with_capacity(model.graph_event_triggers.len());
+    for trigger in &model.graph_event_triggers {
+        if !names.insert(trigger.name()) {
+            return Err(LowerError::DuplicateGraphEventTrigger(
+                trigger.name().to_string(),
+            ));
+        }
+        triggers.push(lower_graph_event_trigger(trigger, ir)?);
+    }
+    Ok(triggers)
+}
+
+fn lower_graph_event_trigger(
+    trigger: &GraphEventTrigger,
+    ir: &SimIr,
+) -> Result<GraphEventTriggerIr, LowerError> {
+    let name = trigger.name();
+    let graph_name = trigger
+        .graph
+        .as_ref()
+        .ok_or_else(|| LowerError::GraphTriggerMissingGraph(name.to_string()))?;
+    let event_name = trigger
+        .event
+        .as_ref()
+        .ok_or_else(|| LowerError::GraphTriggerMissingEvent(name.to_string()))?;
+
+    let graph_idx =
+        ir.graph_index(graph_name)
+            .ok_or_else(|| LowerError::GraphTriggerUnknownGraph {
+                trigger: name.to_string(),
+                graph: graph_name.clone(),
+            })?;
+    let graph = &ir.graphs[graph_idx];
+    let event_idx =
+        ir.event_index(event_name)
+            .ok_or_else(|| LowerError::GraphTriggerUnknownEvent {
+                trigger: name.to_string(),
+                event: event_name.clone(),
+            })?;
+    let event = &ir.events[event_idx];
+
+    let unknown = |side: &'static str, channel: String| LowerError::GraphTriggerUnknownChannel {
+        trigger: name.to_string(),
+        graph: graph_name.clone(),
         side,
         channel,
     };
-    match channel {
-        Some(c) if channel_ok(c) => Ok(()),
-        Some(c) => Err(unknown(c.clone())),
-        None => Err(unknown("(missing)".to_string())),
+
+    // The optional per-node condition expression reads the frozen snapshot.
+    let condition = match &trigger.condition {
+        Some(c) => {
+            validate_graph_expr(graph, &c.expr, &unknown)?;
+            Some(GraphTriggerConditionIr {
+                expr: c.expr.clone(),
+                op: c.op,
+                threshold: c.threshold,
+            })
+        }
+        None => None,
+    };
+
+    // Payload: every declared event field must be bound exactly once, bindings may
+    // name only declared fields, and each binding expression is validated against the
+    // graph. Stored in the event's declared field order.
+    let mut bound: HashMap<&str, &GraphExpr> = HashMap::new();
+    for binding in &trigger.payload {
+        if !event.payload.iter().any(|f| f.name == binding.field) {
+            return Err(LowerError::GraphTriggerUnknownPayloadField {
+                trigger: name.to_string(),
+                event: event_name.clone(),
+                field: binding.field.clone(),
+            });
+        }
+        if bound
+            .insert(binding.field.as_str(), &binding.expr)
+            .is_some()
+        {
+            return Err(LowerError::GraphTriggerDuplicatePayloadField {
+                trigger: name.to_string(),
+                field: binding.field.clone(),
+            });
+        }
     }
+    let mut payload = Vec::with_capacity(event.payload.len());
+    for field in &event.payload {
+        let expr = bound.get(field.name.as_str()).ok_or_else(|| {
+            LowerError::GraphTriggerMissingPayloadField {
+                trigger: name.to_string(),
+                event: event_name.clone(),
+                field: field.name.clone(),
+            }
+        })?;
+        validate_graph_expr(graph, expr, &unknown)?;
+        payload.push((*expr).clone());
+    }
+
+    Ok(GraphEventTriggerIr {
+        name: name.to_string(),
+        graph: graph_idx,
+        event: event_idx,
+        condition,
+        payload,
+    })
 }
 
 /// Validates a derived channel's same-element expression: every referenced channel

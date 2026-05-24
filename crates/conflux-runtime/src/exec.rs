@@ -15,6 +15,7 @@ use crate::actor_exec;
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::flow_exec;
+use crate::graph_event_exec;
 use crate::graph_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
@@ -355,15 +356,26 @@ impl Simulation {
         // positions over the host field.
         let actor_movements = actor_exec::step_actor_movements(ir, tick, &mut self.actor_positions);
 
-        // Graph rules are their own phase: they propose node-stock writes from a
-        // frozen start-of-tick graph snapshot (current node, incident edges, neighbor
-        // nodes) and touch only graph node state.
+        // Graph phase: graph rules (which propose node-stock writes) and the
+        // report-only event triggers both read one shared frozen start-of-tick node
+        // snapshot, so neither rule order nor event materialization changes what is
+        // observed. The clone is skipped when there is no graph work.
+        let graph_snapshot = if ir.graph_rules.is_empty() && ir.graph_event_triggers.is_empty() {
+            Vec::new()
+        } else {
+            self.graph_node_data.clone()
+        };
         let graph_rules = graph_exec::step_graph_rules(
             ir,
             tick,
+            &graph_snapshot,
             &mut self.graph_node_data,
             &self.graph_edge_data,
         );
+        // Event materialization is a report surface, not a state write: it reads the
+        // same snapshot and the (unmodified) edge data and emits report-only events.
+        let graph_events =
+            graph_event_exec::materialize_graph_events(ir, &graph_snapshot, &self.graph_edge_data);
 
         StepReport {
             tick,
@@ -375,6 +387,7 @@ impl Simulation {
             actor_movements,
             projection_bridges,
             graph_rules,
+            graph_events,
         }
     }
 }

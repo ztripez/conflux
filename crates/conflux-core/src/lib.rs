@@ -12,6 +12,7 @@ mod event;
 mod field;
 mod flow;
 mod graph;
+mod graph_event;
 mod lower;
 mod model;
 mod query;
@@ -26,6 +27,7 @@ pub use event::Event;
 pub use field::Field;
 pub use flow::Flow;
 pub use graph::{Graph, GraphRule};
+pub use graph_event::GraphEventTrigger;
 pub use lower::{lower, LowerError};
 pub use model::{ActorMovement, ActorRule, FieldRule, Model, Rule, Table};
 pub use query::ProximityQuery;
@@ -37,10 +39,11 @@ pub use unit::{Conversion, Unit};
 pub use conflux_ir::{
     cell, col, field_lit, graph_lit, incident_edge, incident_edge_count, lit, neighbor,
     neighbor_node, neighbor_node_count, node, param, AggregateOp, ApproximationPolicy, Assessment,
-    Authority, Cadence, ConservationPolicy, ConversionIr, Dimension, EdgePolicy, EventFieldIr,
-    EventIr, EventSource, Expr, FieldExpr, GraphChannelIr, GraphEdgeIr, GraphExpr, GraphIr,
-    GraphRuleIr, Grid2, QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind,
-    ScaleRef, SelfPolicy, TopologyKind, UnitIr, ValueKind,
+    Authority, Cadence, Comparison, ConservationPolicy, ConversionIr, Dimension, EdgePolicy,
+    EventFieldIr, EventIr, EventSource, Expr, FieldExpr, GraphChannelIr, GraphEdgeIr,
+    GraphEventTriggerIr, GraphExpr, GraphIr, GraphRuleIr, GraphTriggerConditionIr, Grid2,
+    QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy,
+    TopologyKind, UnitIr, ValueKind,
 };
 
 pub const CRATE_BOUNDARY: &str = "simulation declarations only";

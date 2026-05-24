@@ -19,12 +19,13 @@ pub use graph_expr::{
 };
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,
-    AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, ConservationPolicy,
-    ConversionIr, Dimension, EventFieldIr, EventIr, EventSource, FieldChannelIr, FieldIr,
-    FieldRuleIr, FlowIr, GraphChannelIr, GraphEdgeIr, GraphIr, GraphRuleIr, ParamIr,
-    ProjectionBridgeIr, ProjectionIr, QueryInput, QueryIr, QueryLimit, QueryMetric, QueryOrdering,
-    RegionIr, RegionMask, RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr,
-    TableIr, TopologyKind, UnitIr,
+    AggregateOp, ApproximationPolicy, Authority, BridgeIr, ColumnIr, Comparison,
+    ConservationPolicy, ConversionIr, Dimension, EventFieldIr, EventIr, EventSource,
+    FieldChannelIr, FieldIr, FieldRuleIr, FlowIr, GraphChannelIr, GraphEdgeIr, GraphEventTriggerIr,
+    GraphIr, GraphRuleIr, GraphTriggerConditionIr, ParamIr, ProjectionBridgeIr, ProjectionIr,
+    QueryInput, QueryIr, QueryLimit, QueryMetric, QueryOrdering, RegionIr, RegionMask,
+    RelationshipKind, RuleIr, ScaleLinkIr, ScaleRef, SelfPolicy, SimIr, TableIr, TopologyKind,
+    UnitIr,
 };
 pub use types::{Assessment, Cadence, Grid2, ValueKind};
 
