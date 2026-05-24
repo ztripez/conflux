@@ -74,6 +74,12 @@ Every entry below is a key in `ALL_SCENARIOS`.
 |---|---|---|---|
 | `unit_checked_settlement` | Unit-annotated columns; same-unit arithmetic lowers and runs; an incompatible expression is rejected at lowering; aggregate report carries the unit. | `Unit`, `.unit(...)`, `Aggregate`, `Bridge`, `Rule` | column units; aggregate report unit; `IncompatibleDimensions` (negative case) |
 
+### Graph / event scenario
+
+| Scenario | Proves | Public APIs | Report surfaces asserted |
+|---|---|---|---|
+| `road_network_pressure` | A directed graph carries per-node `pressure` and per-edge `capacity`; a graph rule raises pressure by incident-edge capacity; a report-only `congestion` event materializes per node above a threshold from the frozen snapshot. | `Graph`, `GraphRule`, `Event`, `GraphEventTrigger`, `node`, `incident_edge`, `Unit` | lowered graph identity/topology/channels; graph rule node outcomes; graph event instances (source node, payload value, unit) |
+
 ## Adding or changing a scenario
 
 A fixture is a stable contract: once added, its name and the behavior it pins
