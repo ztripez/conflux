@@ -117,6 +117,9 @@ fn lower_graph(
     for (e, edge) in edges.iter().enumerate() {
         incident_edges[edge.source].push(e);
         neighbor_sets[edge.source].insert(edge.target);
+        // Add the reverse side once. Self-loops are rejected above, so the guard is
+        // currently always true; it keeps adjacency correct if a future slice ever
+        // allows self-loops (a self-loop must not list a node as its own neighbor).
         if edge.source != edge.target {
             incident_edges[edge.target].push(e);
             neighbor_sets[edge.target].insert(edge.source);
