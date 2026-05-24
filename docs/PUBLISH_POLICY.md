@@ -71,6 +71,6 @@ release-blocked; this is the one known blocker for a full crates.io release.
 
 All crates use the `conflux-` prefix. The intended first-touch crate is
 `conflux-core` (authoring) paired with `conflux-runtime` (execution); the rest are
-backend/advisory/research layers a consumer opts into. The accompanying API
-stability notes (`docs/API_STABILITY.md`) record which surfaces are stable enough
-to depend on.
+backend/advisory/research layers a consumer opts into. Which surfaces are stable
+enough to depend on is recorded in the API stability notes
+(`docs/API_STABILITY.md`), added next in this release-polish epic.
