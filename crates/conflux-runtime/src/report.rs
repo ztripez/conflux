@@ -57,7 +57,8 @@ pub struct GraphRuleFireReport {
     pub rule: String,
     pub graph: String,
     pub target_channel: String,
-    /// The cadence-derived time step exposed to the rule.
+    /// The cadence-derived time step for this firing, reported for provenance. Graph
+    /// rule expressions have no `dt` access, so this is informational only.
     pub dt: f64,
     pub nodes: Vec<GraphNodeOutcome>,
 }

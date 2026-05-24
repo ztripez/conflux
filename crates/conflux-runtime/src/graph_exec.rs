@@ -158,29 +158,28 @@ fn eval_graph(
         }
         GraphExpr::IncidentEdge { channel, op } => {
             let edges = &graph.incident_edges[node];
-            // The channel index (when not a Count) is resolved once; `reduce` ignores
-            // the per-element value for Count.
-            let channel_value = |e: &usize| {
-                let c = graph
-                    .edge_channel_index(
-                        channel.as_ref().expect("non-count reduction has a channel"),
-                    )
-                    .expect("graph rule edge channel resolved at lowering");
-                edge_data[c][*e]
-            };
-            reduce(*op, edges, channel_value)
+            // Resolve the channel index once, outside the per-element reduction. It is
+            // `None` only for `Count`, which `reduce` short-circuits before ever calling
+            // the value closure.
+            let c = channel.as_ref().map(|ch| {
+                graph
+                    .edge_channel_index(ch)
+                    .expect("graph rule edge channel resolved at lowering")
+            });
+            reduce(*op, edges, |e: &usize| {
+                edge_data[c.expect("non-count reduction has a channel")][*e]
+            })
         }
         GraphExpr::NeighborNode { channel, op } => {
             let neighbors = &graph.neighbors[node];
-            let channel_value = |n: &usize| {
-                let c = graph
-                    .node_channel_index(
-                        channel.as_ref().expect("non-count reduction has a channel"),
-                    )
-                    .expect("graph rule neighbor channel resolved at lowering");
-                node_snapshot[c][*n]
-            };
-            reduce(*op, neighbors, channel_value)
+            let c = channel.as_ref().map(|ch| {
+                graph
+                    .node_channel_index(ch)
+                    .expect("graph rule neighbor channel resolved at lowering")
+            });
+            reduce(*op, neighbors, |n: &usize| {
+                node_snapshot[c.expect("non-count reduction has a channel")][*n]
+            })
         }
         GraphExpr::Neg(inner) => -eval_graph(inner, graph, node, node_snapshot, edge_data),
         GraphExpr::Add(a, b) => {

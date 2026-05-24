@@ -240,7 +240,7 @@ fn lower_graph_rule(
         (Some(target), Some(expr)) => (target, expr),
         _ => return Err(LowerError::GraphRuleMissingProposal(name.to_string())),
     };
-    if rule.cadence.period < 1 {
+    if rule.cadence.period == 0 {
         return Err(LowerError::BadCadence {
             rule: name.to_string(),
         });

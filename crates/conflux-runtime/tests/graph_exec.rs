@@ -127,10 +127,10 @@ fn rejected_proposal_preserves_raw_value_and_keeps_state() {
     assert_eq!(report.nodes[2].proposed_value, 300.0);
 }
 
-#[test]
-fn min_over_an_isolated_node_is_positive_infinity() {
-    // Node 2 is isolated (no edge touches it). Min over its empty incident-edge set is
-    // +inf, reported as data rather than clamped.
+/// A 3-node graph with one edge `0 -> 1` (so node 2 is isolated) and edge signal
+/// `w` = [7]. Proposes node stock `p` from a reduction over each node's incident
+/// edges, returning the committed `p` after one step.
+fn isolated_node_reduction(op: AggregateOp) -> Vec<f64> {
     let graph = Graph::new("G")
         .nodes(3)
         .directed()
@@ -140,15 +140,70 @@ fn min_over_an_isolated_node_is_positive_infinity() {
     let mut model = Model::new("world");
     model.add_graph(graph);
     model.add_graph_rule(
-        GraphRule::new("m")
+        GraphRule::new("r")
             .on_graph("G")
-            .propose("p", incident_edge("w", AggregateOp::Min)),
+            .propose("p", incident_edge("w", op)),
     );
     let mut sim = Simulation::new(lower(&model).unwrap());
     sim.step();
-    let p = sim.graph_node("G", "p").unwrap();
-    assert_eq!(p[0], 7.0); // node 0 has edge e0
-    assert!(p[2].is_infinite() && p[2] > 0.0); // node 2 isolated -> +inf
+    sim.graph_node("G", "p").unwrap().to_vec()
+}
+
+#[test]
+fn empty_reductions_yield_the_natural_identity_reported_as_data() {
+    // Node 2 is isolated: each reduction over its empty incident-edge set yields its
+    // identity, reported as data rather than clamped. Node 0 (one edge, w = 7) anchors
+    // the non-empty side.
+    let sum = isolated_node_reduction(AggregateOp::Sum);
+    assert_eq!(sum[0], 7.0);
+    assert_eq!(sum[2], 0.0); // empty sum -> 0
+
+    let mean = isolated_node_reduction(AggregateOp::Mean);
+    assert_eq!(mean[0], 7.0);
+    assert!(mean[2].is_nan()); // empty mean -> NaN
+
+    let min = isolated_node_reduction(AggregateOp::Min);
+    assert_eq!(min[0], 7.0);
+    assert!(min[2].is_infinite() && min[2] > 0.0); // empty min -> +inf
+
+    let max = isolated_node_reduction(AggregateOp::Max);
+    assert_eq!(max[0], 7.0);
+    assert!(max[2].is_infinite() && max[2] < 0.0); // empty max -> -inf
+}
+
+#[test]
+fn neighbor_mean_averages_over_neighbors() {
+    // p' = mean of neighbor p. node 0 ~ {1}=2, node 1 ~ {0,2}=(1+3)/2=2, node 2 ~ {1}=2.
+    let mut sim = Simulation::new(
+        lower(&path_graph(
+            GraphRule::new("smooth")
+                .on_graph("Roads")
+                .propose("p", neighbor_node("p", AggregateOp::Mean)),
+        ))
+        .unwrap(),
+    );
+    sim.step();
+    assert_eq!(sim.graph_node("Roads", "p"), Some(&[2.0, 2.0, 2.0][..]));
+}
+
+#[test]
+fn division_by_zero_is_reported_and_rejected_by_a_finite_assessment() {
+    // p' = p / 0 -> +inf per node. A Finite assessment rejects every node; the raw
+    // non-finite proposal is preserved and state is unchanged.
+    let mut sim = Simulation::new(
+        lower(&path_graph(
+            GraphRule::new("blowup")
+                .on_graph("Roads")
+                .propose("p", node("p") / graph_lit(0.0))
+                .assess(Assessment::Finite),
+        ))
+        .unwrap(),
+    );
+    let step = sim.step();
+    assert_eq!(sim.graph_node("Roads", "p"), Some(&[1.0, 2.0, 3.0][..]));
+    let report = &step.graph_rules[0];
+    assert!(report.nodes.iter().all(|n| !n.committed));
+    assert!(report.nodes.iter().all(|n| n.proposed_value.is_infinite()));
 }
 
 #[test]

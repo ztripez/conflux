@@ -3,7 +3,10 @@
 //! Graphs lower into validated `GraphIr`; rules and events are later slices. A
 //! graph-free model must lower unchanged.
 
-use conflux_core::{col, lit, lower, Graph, LowerError, Model, Rule, Table, Unit};
+use conflux_core::{
+    col, graph_lit, incident_edge, lit, lower, node, AggregateOp, Graph, GraphRule, LowerError,
+    Model, Rule, Table, Unit,
+};
 use conflux_ir::TopologyKind;
 
 /// A minimal table model so lowering produces something non-trivial alongside the
@@ -242,5 +245,157 @@ fn rejects_channel_with_unknown_unit() {
     ) {
         Err(LowerError::UnknownUnit { unit, .. }) => assert_eq!(unit, "ghost"),
         other => panic!("expected UnknownUnit, got {other:?}"),
+    }
+}
+
+// --- Graph rule lowering ---------------------------------------------------
+
+/// A 2-node graph with node stock `p`, node signal `cap_in`, and edge signal `cap`,
+/// plus `table_model`, lowered with `rule` added.
+fn lower_with_rule(rule: GraphRule) -> Result<conflux_ir::SimIr, LowerError> {
+    let mut model = table_model();
+    model.add_graph(
+        Graph::new("G")
+            .nodes(2)
+            .directed()
+            .edges([(0, 1)])
+            .node_stock("p", vec![0.0, 0.0])
+            .node_signal("cap_in", vec![1.0, 1.0])
+            .edge_signal("cap", vec![5.0]),
+    );
+    model.add_graph_rule(rule);
+    lower(&model)
+}
+
+#[test]
+fn lowers_a_valid_graph_rule() {
+    let ir = lower_with_rule(
+        GraphRule::new("load")
+            .on_graph("G")
+            .propose("p", node("p") + incident_edge("cap", AggregateOp::Sum)),
+    )
+    .expect("a valid graph rule lowers");
+    assert_eq!(ir.graph_rules.len(), 1);
+    let rule = &ir.graph_rules[0];
+    assert_eq!(rule.name, "load");
+    assert_eq!(rule.graph, ir.graph_index("G").unwrap());
+    assert_eq!(rule.target, 0); // node channel `p`
+}
+
+#[test]
+fn rejects_graph_rule_without_a_graph() {
+    match lower_with_rule(GraphRule::new("r").propose("p", node("p"))) {
+        Err(LowerError::GraphRuleMissingGraph(rule)) => assert_eq!(rule, "r"),
+        other => panic!("expected GraphRuleMissingGraph, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_without_a_proposal() {
+    match lower_with_rule(GraphRule::new("r").on_graph("G")) {
+        Err(LowerError::GraphRuleMissingProposal(rule)) => assert_eq!(rule, "r"),
+        other => panic!("expected GraphRuleMissingProposal, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_on_unknown_graph() {
+    match lower_with_rule(
+        GraphRule::new("r")
+            .on_graph("Ghost")
+            .propose("p", node("p")),
+    ) {
+        Err(LowerError::GraphRuleUnknownGraph { rule, graph }) => {
+            assert_eq!((rule.as_str(), graph.as_str()), ("r", "Ghost"));
+        }
+        other => panic!("expected GraphRuleUnknownGraph, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_with_unknown_target_channel() {
+    match lower_with_rule(
+        GraphRule::new("r")
+            .on_graph("G")
+            .propose("ghost", node("p")),
+    ) {
+        Err(LowerError::GraphRuleUnknownChannel { side, channel, .. }) => {
+            assert_eq!((side, channel.as_str()), ("node", "ghost"));
+        }
+        other => panic!("expected GraphRuleUnknownChannel (target), got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_reading_an_unknown_channel() {
+    // The proposal expression names an edge channel that does not exist.
+    match lower_with_rule(
+        GraphRule::new("r")
+            .on_graph("G")
+            .propose("p", incident_edge("ghost", AggregateOp::Sum)),
+    ) {
+        Err(LowerError::GraphRuleUnknownChannel { side, channel, .. }) => {
+            assert_eq!((side, channel.as_str()), ("edge", "ghost"));
+        }
+        other => panic!("expected GraphRuleUnknownChannel (expr), got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_targeting_a_non_stock_channel() {
+    match lower_with_rule(
+        GraphRule::new("r")
+            .on_graph("G")
+            .propose("cap_in", node("p")),
+    ) {
+        Err(LowerError::GraphRuleTargetNotStock { channel, .. }) => assert_eq!(channel, "cap_in"),
+        other => panic!("expected GraphRuleTargetNotStock, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_two_graph_rules_writing_the_same_node_stock() {
+    let mut model = table_model();
+    model.add_graph(Graph::new("G").nodes(2).node_stock("p", vec![0.0, 0.0]));
+    model.add_graph_rule(GraphRule::new("a").on_graph("G").propose("p", node("p")));
+    model.add_graph_rule(
+        GraphRule::new("b")
+            .on_graph("G")
+            .propose("p", node("p") + graph_lit(1.0)),
+    );
+    match lower(&model) {
+        Err(LowerError::GraphRuleDuplicateWriter {
+            channel,
+            first,
+            second,
+            ..
+        }) => {
+            assert_eq!(channel, "p");
+            assert_eq!((first.as_str(), second.as_str()), ("a", "b"));
+        }
+        other => panic!("expected GraphRuleDuplicateWriter, got {other:?}"),
+    }
+}
+
+#[test]
+fn graph_rule_names_collide_with_table_rule_names() {
+    // Rule names are globally unique across every domain; `tick` is the table rule in
+    // `table_model`.
+    match lower_with_rule(GraphRule::new("tick").on_graph("G").propose("p", node("p"))) {
+        Err(LowerError::DuplicateRule(name)) => assert_eq!(name, "tick"),
+        other => panic!("expected DuplicateRule, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_graph_rule_with_zero_cadence() {
+    match lower_with_rule(
+        GraphRule::new("r")
+            .on_graph("G")
+            .every(0)
+            .propose("p", node("p")),
+    ) {
+        Err(LowerError::BadCadence { rule }) => assert_eq!(rule, "r"),
+        other => panic!("expected BadCadence, got {other:?}"),
     }
 }
