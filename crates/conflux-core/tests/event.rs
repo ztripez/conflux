@@ -46,6 +46,29 @@ fn lowers_a_valid_graph_event_with_payload_and_units() {
 }
 
 #[test]
+fn lowers_multiple_events_preserving_order() {
+    let mut model = table_model();
+    model.add_event(Event::new("first").payload("a"));
+    model.add_event(Event::new("second").payload("b"));
+    let ir = lower(&model).expect("multiple events lower");
+    assert_eq!(ir.events.len(), 2);
+    assert_eq!(ir.events[0].name, "first");
+    assert_eq!(ir.events[1].name, "second");
+    assert_eq!(ir.event_index("second"), Some(1));
+}
+
+#[test]
+fn the_same_payload_field_name_is_allowed_across_events() {
+    // Payload field names are unique per event, not globally.
+    let mut model = table_model();
+    model.add_event(Event::new("a").payload("pressure"));
+    model.add_event(Event::new("b").payload("pressure"));
+    let ir = lower(&model).expect("a repeated field name across events lowers");
+    assert_eq!(ir.events[0].payload[0].name, "pressure");
+    assert_eq!(ir.events[1].payload[0].name, "pressure");
+}
+
+#[test]
 fn models_without_events_lower_unchanged() {
     let ir = lower(&table_model()).expect("an event-free model lowers");
     assert!(ir.events.is_empty());
