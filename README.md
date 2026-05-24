@@ -164,3 +164,8 @@ scenario fixture and prints the current report shape (structure, reference
 execution, kernel/equivalence, planner choices, fallbacks, diagnostic violation
 counts, transfer advisories) in one place, to eyeball regressions. It reports no
 timings and changes no behavior.
+
+Every canonical scenario — what domain behavior it proves, which public APIs it
+exercises, and which report surfaces it asserts — is catalogued in
+[`docs/SCENARIOS.md`](docs/SCENARIOS.md). The fixtures are contracts, not an
+alternative API.
