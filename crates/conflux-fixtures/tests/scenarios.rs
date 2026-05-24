@@ -609,6 +609,117 @@ fn unit_checked_settlement_validates_dimensions_and_carries_units() {
 }
 
 #[test]
+fn regional_settlement_ecology_lowers_every_domain_through_the_public_api() {
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+
+    // Every combined domain is present in the lowered IR.
+    assert_eq!(ir.fields.len(), 1, "Terrain field");
+    assert_eq!(ir.flows.len(), 1, "runoff flow");
+    assert_eq!(ir.regions.len(), 2, "north/south basins");
+    assert_eq!(ir.aggregates.len(), 2, "north/south crop aggregates");
+    assert_eq!(ir.bridges.len(), 1, "north_crop -> food bridge");
+    assert_eq!(ir.tables.len(), 1, "Settlement");
+    assert_eq!(ir.rules.len(), 2, "store_grain + grow_population");
+    assert_eq!(ir.actors.len(), 1, "Herd");
+    assert_eq!(ir.actor_rules.len(), 2, "graze + alert");
+    assert_eq!(ir.actor_movements.len(), 1, "drift");
+    assert_eq!(ir.queries.len(), 1, "nearby_herd");
+    assert_eq!(ir.scale_links.len(), 1, "south_to_settlement");
+    assert_eq!(ir.projections.len(), 1, "yield_up");
+    assert_eq!(ir.projection_bridges.len(), 1);
+    assert_eq!(ir.graphs.len(), 1, "TradeRoutes");
+    assert_eq!(ir.graph_rules.len(), 1, "trade_load");
+    assert_eq!(ir.events.len(), 1, "trade_congestion");
+    assert_eq!(ir.graph_event_triggers.len(), 1, "congested_route");
+    assert_eq!(ir.graphs[0].topology, TopologyKind::Directed);
+}
+
+#[test]
+fn regional_settlement_ecology_runs_on_the_cpu_reference_path() {
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut sim = Simulation::new(ir);
+
+    // Start-of-run basin crop totals (over crop = [5,5,5,5]): each basin sums 10 grain.
+    let aggregates = sim.aggregate_report();
+    let agg = |name: &str| aggregates.iter().find(|a| a.name == name).unwrap();
+    assert_eq!(agg("north_crop").value, 10.0);
+    assert_eq!(agg("north_crop").unit.as_deref(), Some("grain"));
+    assert_eq!(agg("south_crop").value, 10.0);
+
+    let step = sim.step();
+
+    // Table: grain_store accumulates both cross-scale inflows (food 10 + projected 10),
+    // and population grows 10% (dt = 1).
+    assert_eq!(
+        sim.column("Settlement", "grain_store"),
+        Some(&[20.0, 20.0][..])
+    );
+    let population = sim.column("Settlement", "population").unwrap();
+    assert!(
+        (population[0] - 110.0).abs() < 1e-9 && (population[1] - 66.0).abs() < 1e-9,
+        "population grew 10% per tick: {population:?}"
+    );
+
+    // The food bridge and the projection bridge both wrote their grain signals.
+    let bridge = step
+        .bridges
+        .iter()
+        .find(|b| b.aggregate == "north_crop")
+        .unwrap();
+    assert_eq!(
+        (bridge.table.as_str(), bridge.signal.as_str()),
+        ("Settlement", "food")
+    );
+    assert_eq!(bridge.value, 10.0);
+    let projection_bridge = &step.projection_bridges[0];
+    assert_eq!(projection_bridge.value, 10.0);
+    assert_eq!(projection_bridge.unit.as_deref(), Some("grain"));
+
+    // The projection is source-authoritative (its meaning, regardless of later drift).
+    let projection = &sim.projection_report()[0];
+    assert_eq!(projection.projection, "yield_up");
+    assert_eq!(projection.authority, Authority::SourceAuthoritative);
+
+    // Flow conserved water: total drops only by the accounted boundary loss.
+    let flow = &step.flows[0];
+    let summary = flow.summary();
+    assert_eq!(summary.conservation_delta, 0.0);
+    assert!(summary.total_boundary_loss > 0.0);
+
+    // Actors: graze gains the grown crop (5.5) at each cell; alertness is the nearby
+    // herd-mate count (each of the two adjacent herds sees one neighbor).
+    assert_eq!(sim.actor_channel("Herd", "energy"), Some(&[5.5, 5.5][..]));
+    assert_eq!(
+        sim.actor_channel("Herd", "alertness"),
+        Some(&[1.0, 1.0][..])
+    );
+
+    // Graph: congestion rises by incident road capacity ([10,15,5] added to [10,0,0]).
+    assert_eq!(
+        sim.graph_node("TradeRoutes", "congestion"),
+        Some(&[20.0, 15.0, 5.0][..])
+    );
+
+    // Report-only event: node 0's start-of-tick congestion (10) exceeds 8.
+    let event = &step.graph_events[0];
+    assert_eq!(event.event, "trade_congestion");
+    assert_eq!(event.instances.len(), 1);
+    assert_eq!(event.instances[0].node, 0);
+    assert_eq!(event.instances[0].payload[0].field, "level");
+    assert_eq!(event.instances[0].payload[0].value, 10.0);
+
+    // Nothing was rejected this tick.
+    assert_eq!(
+        step.rules
+            .iter()
+            .flat_map(|r| &r.rows)
+            .filter(|row| !row.committed)
+            .count(),
+        0
+    );
+}
+
+#[test]
 fn unit_checked_settlement_rejects_an_incompatible_expression() {
     // Build the negative case from the canonical fixture through the public API: a
     // rule adding population (people) to harvest (grain). The single lowering gate —
