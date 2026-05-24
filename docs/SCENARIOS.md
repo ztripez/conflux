@@ -27,8 +27,22 @@ cargo run -p conflux-fixtures --example baseline_report
 current report shape in one place — structure, reference execution,
 kernel/equivalence, planner backend choices and fallback reasons, diagnostic
 violation counts, transfer advisories, and (where present) region/aggregate,
-flow, actor, query, projection, and unit output. It is visibility-only: no
-timings, no benchmark, and it changes no behavior.
+flow, actor, query, projection, graph/event, and unit output. It is
+visibility-only: no timings, no benchmark, and it changes no behavior.
+
+## Measure the real scenario
+
+```sh
+cargo run -p conflux-fixtures --example ecology_baseline
+```
+
+`ecology_baseline` is a **stable, repeatable** measurement of the
+`regional_settlement_ecology` real scenario (Alpha 0, epic #179): domain sizes,
+rule/writer counts, per-tick report counts, a coarse per-domain work proxy
+(`items × elements`, no timings), and the likely bottleneck domains ranked by
+that proxy and annotated with whether an optimized execution path exists today.
+It is measurement-only and diffable across PRs; it informs the first
+optimization-target decision (#184) without changing any execution semantics.
 
 ## Scenarios
 

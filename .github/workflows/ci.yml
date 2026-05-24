@@ -47,6 +47,11 @@ jobs:
       - name: Baseline report smoke
         run: cargo run -p conflux-fixtures --example baseline_report
 
+      # Deterministic, no-timing baseline measurement for the real Alpha 0
+      # scenario. Diffable across PRs; informs the optimization-target decision.
+      - name: Ecology baseline measurement smoke
+        run: cargo run -p conflux-fixtures --example ecology_baseline
+
   docs:
     name: docs
     runs-on: ubuntu-latest
