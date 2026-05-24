@@ -28,7 +28,8 @@ crates/
   It depends on nothing else in the workspace.
 - **conflux-core** is the public authoring surface (tables, fields, regions,
   aggregates, bridges, flows, actors, proximity queries, scale links, projections,
-  units) and owns `lower()` — the single gate where model validity is decided.
+  units, graphs, and report-only events) and owns `lower()` — the single gate where
+  model validity is decided.
 - **conflux-kernel** extracts bounded elementwise/stencil numeric kernels from the
   IR and executes them on the CPU in f32. Ineligible rules are reported with a
   reason; extraction never mutates the IR.
@@ -43,7 +44,8 @@ crates/
   Residency's transfer report.
 - **conflux-planner** reads the kernel / WGSL / Residency reports and produces
   advisory reports (backend choice, static cost hints, fusion candidates, transfer
-  notes, proximity-index eligibility). It never mutates the IR or changes execution.
+  notes, proximity-index eligibility, and graph-kernel eligibility). It never
+  mutates the IR or changes execution.
 - **conflux-trace** is a standalone schema + recommendation crate, off the
   execution path. It imports transfer summaries as plain totals (never Residency
   directly) and turns a recorded trace into profile-guided recommendations.
@@ -83,6 +85,20 @@ projected) on the CPU reference path. Units attach to all value-bearing domains.
   A projection carries an existing aggregate's value up a region→table link to a
   target signal; evaluation is report-only (with drift), and the optional explicit
   projection bridge is the only place a projection writes table state.
+- **Graphs** — a distinct domain with explicit topology: a fixed node count, an
+  edge list with stable indices (directed or undirected), and scalar stock / signal
+  / derived channels in two namespaces (node and edge). Bounded, direction-agnostic
+  adjacency (incident edges + neighbor nodes per node) is precomputed at lowering —
+  no generic traversal or gather/scatter. Graph rules propose a per-node stock value
+  at a cadence from a bounded `GraphExpr` (current node, an incident-edge reduction,
+  a neighbor-node reduction, or arithmetic), assessed and committed like other
+  rules.
+- **Events** — declared report-only output **types**: an origin domain
+  (graph-origin in this slice) and an ordered scalar payload, each field with an
+  optional unit. A *graph event trigger* materializes a declared event per node when
+  an optional threshold condition holds, with payload values from the same frozen
+  graph snapshot the graph rules read. Materialization is a report surface only: it
+  writes no simulation state and is never consumed, queued, or scheduled.
 - **Units & dimensions** — validation metadata only. Units (`base` / `dimensionless`
   / `ratio` / `alias`) annotate value-bearing declarations; `lower()` runs
   dimensional checks over expressions (add/sub require compatible dimensions,
@@ -109,9 +125,16 @@ this fixed order:
    pre-movement cell and consuming query results from the same pre-movement
    positions.
 7. **Actor movements** — shift actor positions over the host field.
+8. **Graph phase** — graph rules propose per-node stock writes against a frozen
+   start-of-tick graph snapshot, then report-only graph event triggers materialize
+   events from that **same** snapshot. Both share one snapshot, so neither node
+   order, rule order, nor event materialization changes what is observed, and events
+   never observe a rule's writes.
 
 Region aggregates, proximity queries, and projections are exposed as **read-only
-report projections** over current state, not mutation phases.
+report projections** over current state, not mutation phases. Graph events are
+materialized during the graph phase and surfaced in the step report; they are
+report-only and mutate nothing.
 
 ## Reference path is the source of truth
 
@@ -124,16 +147,19 @@ reported as data, never clamped.
 
 ## Report surfaces
 
-- **Step / run report** — per rule (table, field, actor) the raw proposed value,
-  old value, commit/reject, and per-assessment outcome; plus per-tick bridges,
-  flows (with conservation summary), actor movements, and projection bridges.
+- **Step / run report** — per rule (table, field, actor, graph) the raw proposed
+  value, old value, commit/reject, and per-assessment outcome; plus per-tick
+  bridges, flows (with conservation summary), actor movements, projection bridges,
+  and report-only graph events (event type, source node identity, payload values
+  with units).
 - **Read-only projections** — `aggregate_report`, `query_report`,
   `projection_report` summarize current state with provenance (including units and,
   for projections, drift) without mutating.
 - **Equivalence report** — per rule, matched kernel run vs fallback to reference,
   with the reason.
 - **Planner reports** — backend choice + cost hints, fusion candidates, transfer
-  advisories, and proximity-index eligibility (all advisory).
+  advisories, proximity-index eligibility, and graph-kernel eligibility (all
+  advisory).
 - **Trace + recommendations** — optional, off the execution path.
 - **Baseline report** — `cargo run -p conflux-fixtures --example baseline_report`
   prints the report shape for every canonical scenario in one place (visibility
@@ -157,6 +183,8 @@ reported as data, never clamped.
 No custom DSL parser. No GPU/shader code outside `conflux-wgsl`. No Residency
 dependency outside `conflux-residency`. No applied/automatic optimizer (planning is
 advisory). No silent clamps, implicit `dt` accumulation, or hidden full-state
-readbacks. No engine/ECS integration and no graph/event domain yet. Units are
-validation metadata, not a runtime numeric domain, and there is no automatic unit
-conversion.
+readbacks. No engine/ECS integration. The graph and event domains exist, but there
+is **no graph-kernel backend** — graph rules and events run only on the CPU
+reference path — and events are report-only, with no queue, consumption, or
+scheduling. Units are validation metadata, not a runtime numeric domain, and there
+is no automatic unit conversion.

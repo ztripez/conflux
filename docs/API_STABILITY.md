@@ -13,7 +13,7 @@ pre-release guide, not a SemVer guarantee.
 
 | Surface | Status | Notes |
 |---|---|---|
-| `conflux-core` authoring API | **Stable-enough** | The primary entry point: `Model`, `Table`/`Field`/`Region`/`Aggregate`/`Bridge`/`Flow`/`ActorSet`/`ActorRule`/`ActorMovement`/`ProximityQuery`/`ScaleLink`/`Projection`/`ProjectionBridge`/`Unit`/`Conversion`, plus the shared builders (`col`/`lit`/`param`/`cell`/`neighbor`). Broad and exercised by every fixture. Expect **additive** growth as domains land, not churn of existing builders. |
+| `conflux-core` authoring API | **Stable-enough** | The primary entry point: `Model`, `Table`/`Field`/`Region`/`Aggregate`/`Bridge`/`Flow`/`ActorSet`/`ActorRule`/`ActorMovement`/`ProximityQuery`/`ScaleLink`/`Projection`/`ProjectionBridge`/`Graph`/`GraphRule`/`Event`/`GraphEventTrigger`/`Unit`/`Conversion`, plus the shared builders (`col`/`lit`/`param`/`cell`/`neighbor`/`node`/`incident_edge`/`neighbor_node`). Broad and exercised by every fixture. Expect **additive** growth as domains land, not churn of existing builders. |
 | `conflux_core::lower()` + `LowerError` | **Stable-enough** | The single validation gate. New `LowerError` variants are added as domains grow, so **match variants (not Display strings) and keep a `_` arm** (see `docs/ERROR_POLICY.md`). |
 | `conflux-ir` (`SimIr` + IR types) | **Semi-stable** | The lowered contract `lower()` produces — inspectable and depended on by backends. Structs gain fields as domains are added; treat as additive, not frozen. |
 | `conflux-runtime` reports | **Contract (strong)** | `Simulation`, the step/run report types, and the read-only projections (`aggregate_report`/`query_report`/`projection_report`) are pinned by the fixture contract suite. Report structs grow additively (new per-domain fields). |
@@ -33,6 +33,8 @@ Named so they are not mistaken for stable contracts:
 - **Profile-guided trace** (`conflux-trace`) — optional research; there is no release compiler or runtime adaptive optimizer.
 - **Unit conversions** (`Conversion`) — declared and validated, but **not yet applied**; no expression invocation surface exists yet (`docs/PUBLISH_POLICY.md` and the units epic note this).
 - **Proximity index** — only the advisory *eligibility* report exists; there is no spatial-index backend (queries evaluate exactly on the CPU).
+- **Graph kernel** — only the advisory `graph_eligibility` report exists; there is no graph-kernel backend (graph rules and events run only on the CPU reference path).
+- **Events** — declared and materialized **report-only**: events appear in the step report but are never consumed, queued, or scheduled, and only graph-origin events are supported in this slice.
 - **Scale links / projections beyond region→table** — only the region→table relationship is supported; other combinations are rejected at lowering.
 
 ## Report contracts are stronger than incidental examples
