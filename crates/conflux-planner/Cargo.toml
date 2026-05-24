@@ -1,6 +1,7 @@
 [package]
 name = "conflux-planner"
 version = "0.1.0"
+description = "Advisory optimization and planning reports for Conflux (reads backend reports)."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

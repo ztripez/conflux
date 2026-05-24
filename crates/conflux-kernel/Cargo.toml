@@ -1,6 +1,7 @@
 [package]
 name = "conflux-kernel"
 version = "0.1.0"
+description = "Bounded numeric kernel IR and CPU kernel executor for Conflux."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

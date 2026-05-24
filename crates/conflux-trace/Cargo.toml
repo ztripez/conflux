@@ -1,6 +1,7 @@
 [package]
 name = "conflux-trace"
 version = "0.1.0"
+description = "Trace artifacts and profile-guided recommendations for Conflux (research)."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

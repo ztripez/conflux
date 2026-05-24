@@ -1,6 +1,7 @@
 [package]
 name = "conflux-runtime"
 version = "0.1.0"
+description = "CPU reference execution, scheduler, reports, and equivalence harness for Conflux."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
