@@ -10,15 +10,12 @@
 //! Topology is static: there is no dynamic mutation, and there is no execution or
 //! event materialization here. Construction is permissive — node/edge counts,
 //! endpoint bounds, channel lengths, self-loop/duplicate-edge policy, and name
-//! uniqueness are all checked at `lower()` (a later slice).
+//! uniqueness are all checked at `lower()`. Self-loops and duplicate edges are
+//! rejected.
 
 use conflux_ir::{Expr, TopologyKind, ValueKind};
 
 /// One scalar channel of a graph, in either the node or the edge namespace.
-//
-// Fields are authoring data consumed by graph lowering (#166); this slice is
-// authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct GraphChannel {
     pub(crate) name: String,
@@ -37,10 +34,6 @@ enum LastChannel {
 }
 
 /// A static graph: a fixed topology with node and edge scalar channels.
-//
-// `topology`/`nodes`/`edges`/channels are consumed by graph lowering (#166); this
-// slice is authoring-only.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Graph {
     pub(crate) name: String,
