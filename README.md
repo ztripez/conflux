@@ -79,12 +79,17 @@ crates/
 ## Status
 
 The MVP ladder (MVP0–MVP7) is complete; the sections below describe each rung as
-it stands today. Two domains have since landed past the ladder: 2D **fields**
-(regular grids with local-kernel rules and field-kernel equivalence) and
-**regions** (named selections over a field, with named aggregates and an explicit
-field-to-table bridge). For a concise snapshot of what is true now and the
-invariants you can rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md);
-the current checkpoint is tagged `mvp-cpu-snapshot-v0`. For which APIs are stable
+it stands today. Several domains have since landed past the ladder, all on the CPU
+reference path: 2D **fields** (local-kernel rules + field-kernel equivalence),
+**regions/aggregates/bridges**, field-local **flows**, **actors** with exact
+**proximity queries**, multiscale **scale links/projections**, **units &
+dimensions**, an explicit **graph** domain (topology + node/edge channels +
+bounded-adjacency graph rules), and report-only **events** materialized from graph
+rules. For a concise snapshot of what is true now and the invariants you can rely
+on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md); the current checkpoint is
+tagged `mvp-cpu-snapshot-v0`, and the project is now in the **Alpha 0** phase —
+freeze the contracts, prove the public API on one real end-to-end scenario, and
+choose the first optimization target from evidence. For which APIs are stable
 enough to build on versus experimental, see
 [`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview
 tag or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).

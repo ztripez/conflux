@@ -21,14 +21,22 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: MVP7 (ladder complete)
+## Current stage: Alpha 0 (post-MVP, ladder complete)
 
-All MVP rungs MVP0–MVP7 are complete: guardrails, CPU reference path, kernel IR
+The MVP ladder (MVP0–MVP7) is complete: guardrails, CPU reference path, kernel IR
 extraction, kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL
 backend, advisory optimization/planning reports (`conflux-planner`), and trace
-artifacts + profile-guided recommendation research (`conflux-trace`). The MVP
-ladder in `docs/MVP_LADDER.md` records the order; new work past the ladder should
-be scoped against the same boundaries below before starting.
+artifacts + profile-guided recommendation research (`conflux-trace`). Several
+domains landed past the ladder: 2D fields, regions/aggregates/bridges, flows,
+actors and proximity queries, multiscale scale-links/projections, units, and the
+graph and report-only event domains.
+
+The project is now in **Alpha 0** (epic #179): freeze the CPU reference contracts,
+prove the public API on one real end-to-end scenario, measure it, and choose the
+first optimized execution target from evidence — without adding a new semantic
+domain. `docs/MVP_LADDER.md` records the original order; the current factual state
+is `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE_SNAPSHOT.md`. New work is scoped
+against the boundaries below before starting.
 
 Hard boundary (still in force):
 
@@ -40,6 +48,8 @@ Planning is advisory only: no applied/automatic optimizer, no silent semantic
 changes.
 Profile-guided planning is optional research: normal execution must never require
 a trace, and there is no release compiler or runtime adaptive optimizer.
+No graph-kernel backend: graph rules and events run only on the CPU reference
+path, and events are report-only (no queue, consumption, or scheduling).
 ```
 
 Dependency boundaries, enforced by the crate graph:
@@ -65,7 +75,9 @@ The parser is not the product.
 
 ## How to work
 
-- Stay inside one MVP rung at a time; follow `docs/MVP_LADDER.md` order.
+- The MVP ladder is complete: work in vertical slices (one concrete scenario or
+  capability end to end), scoped against `docs/CURRENT_STATE.md` and the boundaries
+  above — not a remaining rung. `docs/MVP_LADDER.md` is history.
 - Keep the workspace green before committing:
 
   ```sh
