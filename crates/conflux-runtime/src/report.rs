@@ -9,7 +9,7 @@ use conflux_ir::{
     AggregateOp, Assessment, Authority, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
     QueryOrdering, SelfPolicy,
 };
-use conflux_kernel::RejectionReason;
+use conflux_kernel::{FlowRejectionReason, RejectionReason};
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
@@ -183,6 +183,15 @@ pub struct FlowFireReport {
     /// flow is otherwise conservative).
     pub total_after: f64,
     pub transfers: Vec<FlowTransfer>,
+    /// The path this flow ran on: `Reference` (the default and source of truth),
+    /// `CpuKernel` (the opt-in optimized path), or `None` when a required kernel was
+    /// unavailable and the flow was refused (no movement this tick).
+    pub used_path: Option<ExecutionPath>,
+    /// Why the flow did not run on the requested optimized path, if applicable.
+    pub fallback_reason: Option<FallbackReason>,
+    /// The specific, typed reason the flow has no kernel, when an optimized path was
+    /// requested but unavailable. `None` when a kernel ran or the mode requested none.
+    pub kernel_rejection: Option<FlowRejectionReason>,
 }
 
 /// A per-flow conservation/balance rollup, computed from the transfers and the
@@ -228,6 +237,26 @@ impl FlowFireReport {
             total_boundary_loss,
             conservation_delta: (self.total_after - self.total_before) + total_boundary_loss,
             violations,
+        }
+    }
+
+    /// A short Display suffix describing the execution path and — for a fallback or
+    /// refusal — the specific, typed reason. Empty for a plain reference run, so
+    /// reference-only reports do not imply optimization happened.
+    fn execution_note(&self) -> String {
+        let why = || match &self.kernel_rejection {
+            Some(reason) => reason.to_string(),
+            None => "not flow-kernel-eligible".to_string(),
+        };
+        match (self.used_path, self.fallback_reason) {
+            (Some(ExecutionPath::CpuKernel), _) => " [flow-kernel]".to_string(),
+            (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
+                format!(" [fell back to reference: {}]", why())
+            }
+            (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
+                format!(" [REFUSED: required kernel unavailable — {}]", why())
+            }
+            _ => String::new(),
         }
     }
 }
@@ -629,12 +658,13 @@ impl fmt::Display for Report {
                 let summary = flow.summary();
                 writeln!(
                     f,
-                    "  flow `{}` -> {}.{}{} ({:?}): moved {}, boundary loss {}, delta {}, {} violation(s)",
+                    "  flow `{}` -> {}.{}{} ({:?}){}: moved {}, boundary loss {}, delta {}, {} violation(s)",
                     flow.flow,
                     flow.field,
                     flow.channel,
                     unit_suffix(&flow.unit),
                     flow.conservation,
+                    flow.execution_note(),
                     summary.total_moved,
                     summary.total_boundary_loss,
                     summary.conservation_delta,
