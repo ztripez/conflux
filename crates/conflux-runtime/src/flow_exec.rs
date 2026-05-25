@@ -180,6 +180,13 @@ pub(crate) fn reference_flow(flow: &FlowIr, ir: &SimIr, snapshot: &[Vec<f64>]) -
 
 /// Runs the optimized flow kernel and applies its f32-computed scatter into the live
 /// field state, returning the per-source transfers (with reported diagnostics).
+///
+/// The kernel evaluates emitted amounts from the frozen `snapshot`, but the
+/// resulting debits/credits are applied to the **live** channel — exactly like the
+/// reference `apply_flow` — so multiple flows on the same channel accumulate rather
+/// than overwrite. (`FlowKernelOutput::channel` is the kernel's own snapshot-based
+/// buffer, used standalone and by the equivalence harness; the runtime needs the
+/// deltas, not that buffer.)
 fn run_flow_kernel(
     flow: &FlowIr,
     kernel: &FlowKernel,
@@ -187,7 +194,13 @@ fn run_flow_kernel(
     field: &mut [Vec<f64>],
 ) -> Vec<FlowTransfer> {
     let out = execute_flow(kernel, snapshot);
-    field[flow.channel] = out.channel;
+    let moved = &mut field[flow.channel];
+    for transfer in &out.transfers {
+        moved[transfer.source] -= transfer.amount;
+        if let FlowKernelDestination::Cell(dest) = transfer.destination {
+            moved[dest] += transfer.amount;
+        }
+    }
     out.transfers
         .into_iter()
         .map(|t| FlowTransfer {
