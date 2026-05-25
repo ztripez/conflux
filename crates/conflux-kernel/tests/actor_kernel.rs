@@ -89,6 +89,63 @@ fn the_proposal_is_computed_in_f32() {
 }
 
 #[test]
+fn a_repeated_channel_read_is_one_binding() {
+    // energy + energy reads the same actor channel twice -> a single binding.
+    let ir = lower(&herd_model(
+        ActorRule::new("double")
+            .on_actors("Herd")
+            .propose("energy", col("energy") + col("energy")),
+        None,
+    ))
+    .unwrap();
+    let kernel = &extract_actor_rules(&ir).accepted[0];
+    assert_eq!(kernel.bindings.len(), 1);
+    assert_eq!(kernel.bindings[0].source, ActorInputSource::ActorChannel(0));
+
+    let out = execute_actor_rule(kernel, &[vec![1.0, 2.0]], &[vec![5.0, 10.0, 20.0]], &[0, 1]);
+    assert_eq!(out, vec![2.0, 4.0]); // energy * 2
+}
+
+#[test]
+fn two_distinct_samples_bind_their_own_field_channels() {
+    // A rule sampling two host-field channels binds each at its own channel index.
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain
+        .stock("grass", vec![5.0, 10.0])
+        .stock("water", vec![1.0, 2.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("grass")
+            .sample_field("water")
+            .propose("energy", col("grass") + col("water")),
+    );
+    let ir = lower(&model).unwrap();
+    let kernel = &extract_actor_rules(&ir).accepted[0];
+
+    // grass is field channel 0, water is field channel 1.
+    assert_eq!(kernel.bindings.len(), 2);
+    assert_eq!(kernel.bindings[0].source, ActorInputSource::FieldSample(0));
+    assert_eq!(kernel.bindings[1].source, ActorInputSource::FieldSample(1));
+
+    // actor0: grass[0] + water[0] = 5 + 1 = 6; actor1: grass[1] + water[1] = 10 + 2 = 12.
+    let out = execute_actor_rule(
+        kernel,
+        &[vec![0.0, 0.0]],
+        &[vec![5.0, 10.0], vec![1.0, 2.0]],
+        &[0, 1],
+    );
+    assert_eq!(out, vec![6.0, 12.0]);
+}
+
+#[test]
 fn a_query_consuming_actor_rule_is_rejected() {
     let ir = lower(&herd_model(
         ActorRule::new("alert")
