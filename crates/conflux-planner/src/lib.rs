@@ -25,11 +25,17 @@
 //! shape, and the rejection reasons — again advisory only; the reference flow
 //! executor stays the source of truth for conservation accounting.
 //!
+//! Likewise it reports *actor-rule-optimization eligibility* — which per-actor rules
+//! could be backed by an optimized CPU actor kernel (a conservative first subset:
+//! no query bindings, no parameter reads) and why others cannot — advisory only,
+//! never bypassing declared field-sampling or query-consumption semantics.
+//!
 //! Boundary: the planner depends on the backend crates only to *read* their
 //! reports. It contains no shader code, no `wgpu`, and no buffer-movement logic;
 //! Residency still owns all data movement and this crate only reads its transfer
 //! report.
 
+mod actor_eligibility;
 mod backend;
 mod cost;
 mod flow_eligibility;
@@ -40,15 +46,17 @@ mod plan;
 mod report;
 mod transfer;
 
+pub use actor_eligibility::actor_eligibility;
 pub use flow_eligibility::flow_eligibility;
 pub use graph_eligibility::graph_eligibility;
 pub use index_eligibility::index_eligibility;
 pub use plan::plan;
 pub use report::{
-    ApproximationStatus, BackendChoice, CandidateIndex, CostHint, FlowCandidateShape,
-    FlowEligibility, FlowEligibilityReport, FusionGroup, GraphCandidateShape,
-    GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport,
-    IndexRebuildInputs, OptimizationReport, QueryIndexEligibility, RulePlan, TransferAdvisory,
+    ActorCandidateShape, ActorRuleEligibility, ActorRuleEligibilityReport, ApproximationStatus,
+    BackendChoice, CandidateIndex, CostHint, FlowCandidateShape, FlowEligibility,
+    FlowEligibilityReport, FusionGroup, GraphCandidateShape, GraphEligibilityReport,
+    GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport, IndexRebuildInputs,
+    OptimizationReport, QueryIndexEligibility, RulePlan, TransferAdvisory,
 };
 pub use transfer::transfer_advisory;
 
