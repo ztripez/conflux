@@ -36,13 +36,17 @@ visibility-only: no timings, no benchmark, and it changes no behavior.
 cargo run -p conflux-fixtures --example ecology_baseline
 ```
 
-`ecology_baseline` is a **stable, repeatable** measurement of the
-`regional_settlement_ecology` real scenario (Alpha 0, epic #179): domain sizes,
-rule/writer counts, per-tick report counts, a coarse per-domain work proxy
-(`items × elements`, no timings), and the likely bottleneck domains ranked by
-that proxy and annotated with whether an optimized execution path exists today.
-It is measurement-only and diffable across PRs; it informs the first
-optimization-target decision (#184) without changing any execution semantics.
+`ecology_baseline` is a **stable, repeatable** report on the
+`regional_settlement_ecology` real scenario: domain sizes, rule/writer counts,
+per-tick report counts, a coarse per-domain work proxy (`items × elements`, no
+timings), the likely bottleneck domains, and — since epic #192 added the first
+optimized execution track — the flow and actor-rule optimization availability
+plus the selected-execution path each rule takes under `PreferCpuKernel`
+(optimized / reference / fallback). It distinguishes reference-only, eligible,
+optimized, and fallback cases; flows and actor rules (the #184 target) now show as
+eligible/optimized rather than the Alpha 0 reference-only. Measurement/visibility
+only and diffable across PRs; it changes no execution semantics (the default run
+is reference-only, optimized paths are opt-in and equivalence-checked).
 
 ## Scenarios
 
