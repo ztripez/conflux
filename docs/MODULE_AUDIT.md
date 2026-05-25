@@ -74,6 +74,23 @@ Split trigger: behavioral, not size — if `plan()` starts doing analysis inline
 instead of delegating, move that logic into a new analysis module. Keep `plan.rs`
 an assembler.
 
+## `crates/conflux-planner/src/report.rs` — ~620 lines  ⚠ watch
+
+The shared data-types-plus-`Display` home for every advisory report family: the
+optimization plan, index eligibility, graph-kernel eligibility, flow eligibility,
+and actor-rule eligibility. It is pure DTOs + their `Display` (no analysis,
+validation, execution, or IO — each analysis lives in its own sibling module), so
+it is **not** a god module, but it grows by one report family per optimization
+track and is now the planner's largest accumulation point.
+
+Verdict: **no action now**, on the watch list.
+
+Split trigger: when the next report family lands (or any `Display` gains
+non-trivial formatting logic beyond a few lines), split into a `report/` submodule
+with one file per family (`report/index.rs`, `report/graph.rs`, `report/flow.rs`,
+`report/actor.rs`, …) re-exported from `report/mod.rs`. Keep them DTO + `Display`
+only.
+
 ## Follow-up issues
 
 None created: no split is warranted yet. Re-run this audit (or split per the

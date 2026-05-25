@@ -421,6 +421,9 @@ impl ActorRuleEligibilityReport {
 pub struct ActorRuleEligibility {
     pub rule: String,
     pub actor_set: String,
+    /// The actor set's size (number of actors) — the per-actor kernel's element
+    /// count, kept as provenance.
+    pub actor_count: usize,
     /// Whether the rule samples host-field channels (allowed; materialized into
     /// per-actor columns by an implementation).
     pub samples_fields: bool,
@@ -474,9 +477,10 @@ impl fmt::Display for ActorRuleEligibilityReport {
             };
             writeln!(
                 f,
-                "  ACTOR RULE `{}` on `{}` -> {} [candidate: {}, samples: {}, query: {}, exact reference: {}]",
+                "  ACTOR RULE `{}` on `{}` ({} actor(s)) -> {} [candidate: {}, samples: {}, query: {}, exact reference: {}]",
                 rule.rule,
                 rule.actor_set,
+                rule.actor_count,
                 verdict,
                 rule.candidate_shape.label(),
                 rule.samples_fields,

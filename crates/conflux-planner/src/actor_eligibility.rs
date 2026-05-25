@@ -28,7 +28,8 @@ pub fn actor_eligibility(ir: &SimIr) -> ActorRuleEligibilityReport {
 }
 
 fn eligibility(rule: &ActorRuleIr, ir: &SimIr) -> ActorRuleEligibility {
-    let actor_set = ir.actors[rule.actor_set].name.clone();
+    let set = &ir.actors[rule.actor_set];
+    let actor_set = set.name.clone();
     let consumes_query = !rule.query_inputs.is_empty();
     let samples_fields = !rule.samples.is_empty();
 
@@ -59,6 +60,7 @@ fn eligibility(rule: &ActorRuleIr, ir: &SimIr) -> ActorRuleEligibility {
     ActorRuleEligibility {
         rule: rule.name.clone(),
         actor_set,
+        actor_count: set.count,
         samples_fields,
         consumes_query,
         exact_reference_available: true,

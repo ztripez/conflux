@@ -40,6 +40,7 @@ fn a_field_sampling_per_actor_rule_is_eligible() {
     let rule = &report.rules[0];
     assert_eq!(rule.rule, "graze");
     assert_eq!(rule.actor_set, "Herd");
+    assert_eq!(rule.actor_count, 2);
     assert!(rule.eligible);
     assert_eq!(rule.candidate_shape, ActorCandidateShape::PerActorStock);
     assert!(rule.samples_fields);
