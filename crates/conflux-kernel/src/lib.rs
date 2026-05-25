@@ -5,6 +5,10 @@
 //! Backends (CPU in MVP3, WGSL/GPU later) lower this IR to execution targets; it
 //! never reaches back into simulation meaning or owns buffer movement.
 
+mod actor_execute;
+mod actor_extract;
+mod actor_ir;
+mod actor_report;
 mod diagnose;
 mod execute;
 mod extract;
@@ -19,6 +23,10 @@ mod flow_report;
 mod ir;
 mod report;
 
+pub use actor_execute::execute_actor_rule;
+pub use actor_extract::extract_actor_rules;
+pub use actor_ir::{ActorInputSource, ActorKernel, ActorKernelBinding};
+pub use actor_report::{ActorKernelReport, ActorRejectionReason, RejectedActorKernel};
 pub use diagnose::diagnose_elementwise;
 pub use execute::execute_elementwise;
 pub use extract::extract;
