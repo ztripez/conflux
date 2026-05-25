@@ -95,6 +95,15 @@ impl Flow {
         self
     }
 
+    /// Adds the finite + non-negative assessment pair — the overwhelmingly common
+    /// case. Equivalent to
+    /// `.assess(Assessment::Finite).assess(Assessment::range(0.0, f64::INFINITY))`;
+    /// see [`Assessment::finite_nonneg`].
+    pub fn finite_nonneg(mut self) -> Self {
+        self.assessments.extend(Assessment::finite_nonneg());
+        self
+    }
+
     /// The flow's name.
     pub fn name(&self) -> &str {
         &self.name

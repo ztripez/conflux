@@ -395,6 +395,15 @@ impl Rule {
         self.assessments.push(assessment);
         self
     }
+
+    /// Adds the finite + non-negative assessment pair — the overwhelmingly common
+    /// case. Equivalent to
+    /// `.assess(Assessment::Finite).assess(Assessment::range(0.0, f64::INFINITY))`;
+    /// see [`Assessment::finite_nonneg`].
+    pub fn finite_nonneg(mut self) -> Self {
+        self.assessments.extend(Assessment::finite_nonneg());
+        self
+    }
 }
 
 /// A rule that proposes a new value for one field stock channel at a cadence,
@@ -447,6 +456,15 @@ impl FieldRule {
     /// Adds an assessment applied to the proposed value before commit.
     pub fn assess(mut self, assessment: Assessment) -> Self {
         self.assessments.push(assessment);
+        self
+    }
+
+    /// Adds the finite + non-negative assessment pair — the overwhelmingly common
+    /// case. Equivalent to
+    /// `.assess(Assessment::Finite).assess(Assessment::range(0.0, f64::INFINITY))`;
+    /// see [`Assessment::finite_nonneg`].
+    pub fn finite_nonneg(mut self) -> Self {
+        self.assessments.extend(Assessment::finite_nonneg());
         self
     }
 }
@@ -600,5 +618,45 @@ impl ActorRule {
     pub fn assess(mut self, assessment: Assessment) -> Self {
         self.assessments.push(assessment);
         self
+    }
+
+    /// Adds the finite + non-negative assessment pair — the overwhelmingly common
+    /// case. Equivalent to
+    /// `.assess(Assessment::Finite).assess(Assessment::range(0.0, f64::INFINITY))`;
+    /// see [`Assessment::finite_nonneg`].
+    pub fn finite_nonneg(mut self) -> Self {
+        self.assessments.extend(Assessment::finite_nonneg());
+        self
+    }
+}
+
+#[cfg(test)]
+mod finite_nonneg_tests {
+    use super::{ActorRule, FieldRule, Rule};
+    use crate::flow::Flow;
+    use crate::graph::GraphRule;
+    use conflux_ir::Assessment;
+
+    /// The convenience must apply exactly the explicit `Finite` + non-negative
+    /// pair on every builder that exposes `assess`, so it is sugar over the same
+    /// variants and not a second assessment path.
+    #[test]
+    fn helper_matches_explicit_pair_on_every_builder() {
+        let pair = [Assessment::Finite, Assessment::range(0.0, f64::INFINITY)];
+
+        assert_eq!(Rule::new("r").finite_nonneg().assessments, pair);
+        assert_eq!(FieldRule::new("r").finite_nonneg().assessments, pair);
+        assert_eq!(ActorRule::new("r").finite_nonneg().assessments, pair);
+        assert_eq!(Flow::new("r").finite_nonneg().assessments, pair);
+        assert_eq!(GraphRule::new("r").finite_nonneg().assessments, pair);
+
+        // Identical to spelling the two `assess` calls out by hand.
+        assert_eq!(
+            Rule::new("r").finite_nonneg().assessments,
+            Rule::new("r")
+                .assess(Assessment::Finite)
+                .assess(Assessment::range(0.0, f64::INFINITY))
+                .assessments,
+        );
     }
 }

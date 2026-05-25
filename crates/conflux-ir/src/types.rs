@@ -36,6 +36,18 @@ impl Assessment {
     pub fn max_relative_delta(fraction: f64) -> Self {
         Assessment::MaxRelativeDelta { fraction }
     }
+
+    /// The overwhelmingly common pair: the proposed value must be finite **and**
+    /// non-negative.
+    ///
+    /// Pure convenience — it desugars to the existing
+    /// `[Assessment::Finite, Assessment::range(0.0, f64::INFINITY)]` and adds no
+    /// new assessment semantics. The builders' `finite_nonneg()` helpers apply
+    /// exactly this pair, so every call site shares one definition and is validated
+    /// by the single `lower()` gate.
+    pub fn finite_nonneg() -> [Assessment; 2] {
+        [Assessment::Finite, Assessment::range(0.0, f64::INFINITY)]
+    }
 }
 
 /// Semantic cadence: a rule fires every `period` ticks.
@@ -91,5 +103,18 @@ impl Grid2 {
     /// bounds-check; callers must keep `cell < cells()`.
     pub fn xy(&self, cell: usize) -> (usize, usize) {
         (cell % self.width, cell / self.width)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finite_nonneg_desugars_to_the_existing_pair() {
+        assert_eq!(
+            Assessment::finite_nonneg(),
+            [Assessment::Finite, Assessment::range(0.0, f64::INFINITY)],
+        );
     }
 }

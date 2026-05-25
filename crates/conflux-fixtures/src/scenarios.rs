@@ -51,8 +51,7 @@ pub fn settlement_growth() -> Model {
                 "population",
                 col("population") * (lit(1.0) + param("growth_rate") * param("dt")),
             )
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
     model
 }
@@ -508,8 +507,7 @@ pub fn road_network_pressure() -> Model {
                 "pressure",
                 node("pressure") + incident_edge("capacity", AggregateOp::Sum),
             )
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
     // A report-only congestion event: emitted per node whose pressure exceeds 50.
     model.add_event(
@@ -567,8 +565,7 @@ pub fn regional_settlement_ecology() -> Model {
         FieldRule::new("grow_crop")
             .on_field("Terrain")
             .propose("crop", cell("crop") + cell("crop") * field_lit(0.1))
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
     // Water runs off one cell east, conserved, leaving the grid at the edge.
     model.add_flow(
@@ -630,8 +627,7 @@ pub fn regional_settlement_ecology() -> Model {
                 "grain_store",
                 col("grain_store") + col("food") + col("projected_yield"),
             )
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
     // Population grows at a per-tick rate (people stays people).
     model.add_rule(
@@ -641,8 +637,7 @@ pub fn regional_settlement_ecology() -> Model {
                 "population",
                 col("population") * (lit(1.0) + param("growth") * param("dt")),
             )
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
 
     // --- Herd actors: graze crop, track neighbors, drift ------------------------
@@ -700,8 +695,7 @@ pub fn regional_settlement_ecology() -> Model {
                 "congestion",
                 node("congestion") + incident_edge("capacity", AggregateOp::Sum),
             )
-            .assess(Assessment::Finite)
-            .assess(Assessment::range(0.0, f64::INFINITY)),
+            .finite_nonneg(),
     );
     model.add_event(
         Event::new("trade_congestion")
