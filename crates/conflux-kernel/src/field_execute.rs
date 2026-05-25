@@ -9,7 +9,7 @@
 
 use conflux_ir::{EdgePolicy, Grid2};
 
-use crate::field_ir::{FieldKernel, FieldKernelExpr};
+use crate::field_ir::{FieldKernel, FieldKernelBinding, FieldKernelExpr};
 
 /// Executes a field kernel on the CPU, returning the proposed value for each cell
 /// (row-major). A cell is `None` when a `Reject`-edge neighbor read fell outside
@@ -21,10 +21,10 @@ pub fn execute_field(kernel: &FieldKernel, channels: &[Vec<f64>]) -> Vec<Option<
     let grid = kernel.grid;
     (0..grid.cells())
         .map(|cell| {
-            eval(
+            eval_field_cell(
                 &kernel.expr,
-                kernel,
                 channels,
+                &kernel.channels,
                 grid,
                 cell % grid.width,
                 cell / grid.width,
@@ -33,19 +33,21 @@ pub fn execute_field(kernel: &FieldKernel, channels: &[Vec<f64>]) -> Vec<Option<
         .collect()
 }
 
-fn eval(
+/// Evaluates a bounded field expression at one cell in f32, against `channels`
+/// (addressed `channels[channel][cell]`) with `bindings` mapping expression channel
+/// indices to absolute channel indices. `None` when a `Reject`-edge neighbor read
+/// fell off the grid. Shared by field-rule and flow-amount execution.
+pub(crate) fn eval_field_cell(
     expr: &FieldKernelExpr,
-    kernel: &FieldKernel,
     channels: &[Vec<f64>],
+    bindings: &[FieldKernelBinding],
     grid: Grid2,
     x: usize,
     y: usize,
 ) -> Option<f32> {
     match expr {
         FieldKernelExpr::Literal(value) => Some(*value as f32),
-        FieldKernelExpr::Cell(n) => {
-            Some(channels[kernel.channels[*n].channel][grid.index(x, y)] as f32)
-        }
+        FieldKernelExpr::Cell(n) => Some(channels[bindings[*n].channel][grid.index(x, y)] as f32),
         FieldKernelExpr::Neighbor {
             channel,
             dx,
@@ -53,27 +55,34 @@ fn eval(
             edge,
         } => {
             let (nx, ny) = resolve_neighbor(x, y, *dx, *dy, grid, *edge)?;
-            Some(channels[kernel.channels[*channel].channel][grid.index(nx, ny)] as f32)
+            Some(channels[bindings[*channel].channel][grid.index(nx, ny)] as f32)
         }
-        FieldKernelExpr::Neg(inner) => Some(-eval(inner, kernel, channels, grid, x, y)?),
+        FieldKernelExpr::Neg(inner) => {
+            Some(-eval_field_cell(inner, channels, bindings, grid, x, y)?)
+        }
         FieldKernelExpr::Add(lhs, rhs) => Some(
-            eval(lhs, kernel, channels, grid, x, y)? + eval(rhs, kernel, channels, grid, x, y)?,
+            eval_field_cell(lhs, channels, bindings, grid, x, y)?
+                + eval_field_cell(rhs, channels, bindings, grid, x, y)?,
         ),
         FieldKernelExpr::Sub(lhs, rhs) => Some(
-            eval(lhs, kernel, channels, grid, x, y)? - eval(rhs, kernel, channels, grid, x, y)?,
+            eval_field_cell(lhs, channels, bindings, grid, x, y)?
+                - eval_field_cell(rhs, channels, bindings, grid, x, y)?,
         ),
         FieldKernelExpr::Mul(lhs, rhs) => Some(
-            eval(lhs, kernel, channels, grid, x, y)? * eval(rhs, kernel, channels, grid, x, y)?,
+            eval_field_cell(lhs, channels, bindings, grid, x, y)?
+                * eval_field_cell(rhs, channels, bindings, grid, x, y)?,
         ),
         FieldKernelExpr::Div(lhs, rhs) => Some(
-            eval(lhs, kernel, channels, grid, x, y)? / eval(rhs, kernel, channels, grid, x, y)?,
+            eval_field_cell(lhs, channels, bindings, grid, x, y)?
+                / eval_field_cell(rhs, channels, bindings, grid, x, y)?,
         ),
     }
 }
 
 /// Resolves a neighbor offset under `edge`: `Wrap` is toroidal (always in bounds);
-/// `Reject` returns `None` off the grid. Matches the field reference path.
-fn resolve_neighbor(
+/// `Reject` returns `None` off the grid. Matches the field reference path. Shared by
+/// field-kernel evaluation and flow-kernel destination resolution.
+pub(crate) fn resolve_neighbor(
     x: usize,
     y: usize,
     dx: i32,

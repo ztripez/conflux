@@ -12,6 +12,10 @@ mod field_execute;
 mod field_extract;
 mod field_ir;
 mod field_report;
+mod flow_execute;
+mod flow_extract;
+mod flow_ir;
+mod flow_report;
 mod ir;
 mod report;
 
@@ -24,6 +28,10 @@ pub use field_ir::{
     FieldKernel, FieldKernelBinding, FieldKernelExpr, FieldKernelShape, MAX_STENCIL_RADIUS,
 };
 pub use field_report::{FieldKernelReport, FieldRejectionReason, RejectedFieldKernel};
+pub use flow_execute::{execute_flow, FlowKernelDestination, FlowKernelOutput, FlowKernelTransfer};
+pub use flow_extract::extract_flows;
+pub use flow_ir::FlowKernel;
+pub use flow_report::{FlowKernelReport, FlowRejectionReason, RejectedFlowKernel};
 pub use ir::{Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType};
 pub use report::{KernelReport, RejectedKernel, RejectionReason};
 

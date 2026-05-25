@@ -31,13 +31,25 @@ pub fn extract_fields(ir: &SimIr) -> FieldKernelReport {
     report
 }
 
+/// Lowers a bounded field expression to [`FieldKernelExpr`], returning the lowered
+/// expression, the channel bindings it reads (index-based, first-seen order), and
+/// the widest neighbor offset (stencil radius) it uses. Shared by field-rule and
+/// flow-amount extraction; it only reads the field.
+pub(crate) fn lower_field_expr(
+    expr: &FieldExpr,
+    field: &FieldIr,
+) -> Result<(FieldKernelExpr, Vec<FieldKernelBinding>, i32), FieldRejectionReason> {
+    let mut channels = Vec::new();
+    let mut radius = 0;
+    let lowered = lower_expr(expr, field, &mut channels, &mut radius)?;
+    Ok((lowered, channels, radius))
+}
+
 fn extract_field_rule(
     rule: &FieldRuleIr,
     field: &FieldIr,
 ) -> Result<FieldKernel, FieldRejectionReason> {
-    let mut channels = Vec::new();
-    let mut stencil_radius = 0;
-    let expr = lower_expr(&rule.expr, field, &mut channels, &mut stencil_radius)?;
+    let (expr, channels, stencil_radius) = lower_field_expr(&rule.expr, field)?;
 
     Ok(FieldKernel {
         name: rule.name.clone(),
