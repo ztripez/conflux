@@ -16,26 +16,30 @@ use crate::Kernel;
 /// a kernel input binding indexes into it by column. Computation is done in f32.
 pub fn execute_elementwise(kernel: &Kernel, columns: &[Vec<f64>]) -> Vec<f32> {
     (0..kernel.rows)
-        .map(|row| eval(&kernel.expr, kernel, columns, row))
+        .map(|row| {
+            // Assemble this row's input values in binding order, then evaluate the
+            // shared `KernelExpr` interpreter (also used by the actor-rule kernel).
+            let inputs: Vec<f32> = kernel
+                .inputs
+                .iter()
+                .map(|b| columns[b.column][row] as f32)
+                .collect();
+            eval_kernel_expr(&kernel.expr, &inputs)
+        })
         .collect()
 }
 
-fn eval(expr: &KernelExpr, kernel: &Kernel, columns: &[Vec<f64>], row: usize) -> f32 {
+/// Evaluates a bounded `KernelExpr` over per-binding input values in f32:
+/// `Input(n)` reads `inputs[n]`. The single `KernelExpr` interpreter, shared by
+/// elementwise table kernels and per-actor actor-rule kernels.
+pub(crate) fn eval_kernel_expr(expr: &KernelExpr, inputs: &[f32]) -> f32 {
     match expr {
         KernelExpr::Literal(value) => *value as f32,
-        KernelExpr::Input(n) => columns[kernel.inputs[*n].column][row] as f32,
-        KernelExpr::Neg(inner) => -eval(inner, kernel, columns, row),
-        KernelExpr::Add(lhs, rhs) => {
-            eval(lhs, kernel, columns, row) + eval(rhs, kernel, columns, row)
-        }
-        KernelExpr::Sub(lhs, rhs) => {
-            eval(lhs, kernel, columns, row) - eval(rhs, kernel, columns, row)
-        }
-        KernelExpr::Mul(lhs, rhs) => {
-            eval(lhs, kernel, columns, row) * eval(rhs, kernel, columns, row)
-        }
-        KernelExpr::Div(lhs, rhs) => {
-            eval(lhs, kernel, columns, row) / eval(rhs, kernel, columns, row)
-        }
+        KernelExpr::Input(n) => inputs[*n],
+        KernelExpr::Neg(inner) => -eval_kernel_expr(inner, inputs),
+        KernelExpr::Add(lhs, rhs) => eval_kernel_expr(lhs, inputs) + eval_kernel_expr(rhs, inputs),
+        KernelExpr::Sub(lhs, rhs) => eval_kernel_expr(lhs, inputs) - eval_kernel_expr(rhs, inputs),
+        KernelExpr::Mul(lhs, rhs) => eval_kernel_expr(lhs, inputs) * eval_kernel_expr(rhs, inputs),
+        KernelExpr::Div(lhs, rhs) => eval_kernel_expr(lhs, inputs) / eval_kernel_expr(rhs, inputs),
     }
 }
