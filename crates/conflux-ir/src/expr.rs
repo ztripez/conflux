@@ -14,8 +14,9 @@ pub enum Expr {
     Literal(f64),
     /// Reads a column on the current row of the rule's table.
     Column(String),
-    /// Reads a scalar parameter. The name `dt` is supplied by the executor
-    /// from the rule cadence and must not be declared as a model parameter.
+    /// Reads a scalar parameter. The name [`RESERVED_DT`] (`dt`) is supplied by
+    /// the executor from the rule cadence and must not be declared as a model
+    /// parameter; read it with [`dt`].
     Param(String),
     /// Arithmetic negation.
     Neg(Box<Expr>),
@@ -38,6 +39,23 @@ pub fn col(name: impl Into<String>) -> Expr {
 /// A scalar parameter read.
 pub fn param(name: impl Into<String>) -> Expr {
     Expr::Param(name.into())
+}
+
+/// The parameter name the executor reserves for the rule cadence: the rule's own
+/// time step, supplied from its cadence rather than declared as a model
+/// parameter. This is the single source of truth for the reserved name, shared by
+/// the [`dt`] constructor and the lowering gate that rejects a user-declared `dt`.
+pub const RESERVED_DT: &str = "dt";
+
+/// Reads the reserved cadence parameter `dt` — the executor-supplied time step
+/// for the current rule, derived from its cadence.
+///
+/// Discoverability sugar that produces exactly the same expression as
+/// `param("dt")` ([`RESERVED_DT`]), so the cadence step is self-documenting and
+/// the reserved name is not a magic string at the call site:
+/// `col("population") * (lit(1.0) + param("growth") * dt())`.
+pub fn dt() -> Expr {
+    param(RESERVED_DT)
 }
 
 impl Expr {
@@ -97,5 +115,20 @@ impl Neg for Expr {
     type Output = Expr;
     fn neg(self) -> Expr {
         Expr::Neg(Box::new(self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dt_is_exactly_param_of_the_reserved_name() {
+        assert_eq!(RESERVED_DT, "dt");
+        // dt() is pure sugar: it must produce the same Expr as param("dt"), so it
+        // is not a second representation of the reserved cadence parameter.
+        assert_eq!(dt(), param(RESERVED_DT));
+        assert_eq!(dt(), param("dt"));
+        assert_eq!(dt(), Expr::Param("dt".to_string()));
     }
 }

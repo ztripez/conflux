@@ -11,7 +11,7 @@ mod graph_expr;
 mod sim;
 mod types;
 
-pub use expr::{col, lit, param, Expr};
+pub use expr::{col, dt, lit, param, Expr, RESERVED_DT};
 pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use graph_expr::{
     graph_lit, incident_edge, incident_edge_count, neighbor_node, neighbor_node_count, node,

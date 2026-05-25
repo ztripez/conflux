@@ -3,7 +3,7 @@
 //! the model name.
 
 use conflux_core::{
-    cell, col, field_lit, incident_edge, lit, node, param, ActorMovement, ActorRule, ActorSet,
+    cell, col, dt, field_lit, incident_edge, lit, node, param, ActorMovement, ActorRule, ActorSet,
     Aggregate, AggregateOp, Assessment, Bridge, EdgePolicy, Event, Field, FieldRule, Flow, Graph,
     GraphEventTrigger, GraphRule, Grid2, Model, Projection, ProjectionBridge, ProximityQuery,
     QueryMetric, Region, Rule, ScaleLink, Table, Unit,
@@ -49,7 +49,7 @@ pub fn settlement_growth() -> Model {
             .on("Settlement")
             .propose(
                 "population",
-                col("population") * (lit(1.0) + param("growth_rate") * param("dt")),
+                col("population") * (lit(1.0) + param("growth_rate") * dt()),
             )
             .finite_nonneg(),
     );
@@ -635,7 +635,7 @@ pub fn regional_settlement_ecology() -> Model {
             .on("Settlement")
             .propose(
                 "population",
-                col("population") * (lit(1.0) + param("growth") * param("dt")),
+                col("population") * (lit(1.0) + param("growth") * dt()),
             )
             .finite_nonneg(),
     );
