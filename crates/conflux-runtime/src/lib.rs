@@ -4,6 +4,7 @@
 //! execution/stability report. It is the reference path: optimized backends
 //! (later MVPs) must prove equivalence against it within declared tolerances.
 
+mod actor_equivalence;
 mod actor_exec;
 mod aggregate_eval;
 mod equivalence;
@@ -21,6 +22,10 @@ mod query_exec;
 mod report;
 mod selection;
 
+pub use actor_equivalence::{
+    check_actor_equivalence, ActorEquivalenceReport, ActorKernelComparison, ActorPathOutcome,
+    ActorRulePath,
+};
 pub use equivalence::{
     check_equivalence, EquivalenceReport, KernelComparison, PathOutcome, RulePath, Tolerance,
 };
@@ -47,6 +52,6 @@ pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 pub use conflux_ir::AggregateOp;
 // Re-export the kernel rejection reasons so consumers can match on the typed
 // fallback detail in `RuleFireReport::kernel_rejection` / `FlowFireReport::kernel_rejection`.
-pub use conflux_kernel::{FlowRejectionReason, RejectionReason};
+pub use conflux_kernel::{ActorRejectionReason, FlowRejectionReason, RejectionReason};
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";
