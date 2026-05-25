@@ -3,8 +3,9 @@
 //! agent-written code have stable, named scenarios to check against.
 
 use conflux_core::{
-    cell, col, field_lit, lower, neighbor, Authority, EdgePolicy, Field, Flow, Grid2, LowerError,
-    Model, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy, TopologyKind,
+    cell, col, field_lit, lit, lower, neighbor, ActorRule, ActorSet, Authority, EdgePolicy, Field,
+    Flow, Grid2, LowerError, Model, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy,
+    TopologyKind,
 };
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
@@ -614,6 +615,56 @@ fn herd_grazing_actor_rule_optimized_path_matches_reference() {
     assert_eq!(
         reference.actor_channel("Herd", "energy"),
         prefer.actor_channel("Herd", "energy")
+    );
+}
+
+#[test]
+fn an_actor_kernel_within_tolerance_need_not_be_bit_exact() {
+    // energy = energy * 0.1 (no samples): f32 `0.1` differs from f64 `0.1`, so the
+    // kernel proposal is within tolerance but not bit-exact — exercising the
+    // tolerance branch (and an eligible rule with no field samples).
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("grass", vec![0.0]);
+    let herd = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![1.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("decay")
+            .on_actors("Herd")
+            .propose("energy", col("energy") * lit(0.1)),
+    );
+    let ir = lower(&model).unwrap();
+
+    let equivalence = check_actor_equivalence(&ir, Tolerance::default());
+    match &equivalence.rules[0].outcome {
+        ActorPathOutcome::Kernel(c) => {
+            assert!(c.within_tolerance);
+            assert!(c.max_abs_diff > 0.0, "f32 should differ from f64 here");
+        }
+        other => panic!("expected kernel match, got {other:?}"),
+    }
+}
+
+#[test]
+fn regional_ecology_actor_rules_mix_optimized_and_fallback_in_one_step() {
+    // The real scenario has both an eligible sampling rule (graze) and a
+    // query-consuming rule (alert); under PreferCpuKernel one step report shows both
+    // path choices.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut prefer = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let step = prefer.step();
+
+    let graze = step.actor_rules.iter().find(|r| r.rule == "graze").unwrap();
+    assert_eq!(graze.used_path, Some(ExecutionPath::CpuKernel));
+    let alert = step.actor_rules.iter().find(|r| r.rule == "alert").unwrap();
+    assert_eq!(alert.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        alert.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
     );
 }
 
