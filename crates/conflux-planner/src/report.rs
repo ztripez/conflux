@@ -290,10 +290,12 @@ impl GraphCandidateShape {
 /// and conservation accounting.
 ///
 /// In this slice flows are always field-local with an explicit edge and
-/// conservation policy, and the amount is a bounded field expression, so the only
-/// reachable rejections are an amount that reads beyond the bounded stencil radius
-/// or a non-stock quantity channel. Unit/dimension mismatch and dynamic cadence are
-/// documented possible reasons a richer flow domain could surface.
+/// conservation policy, the moved channel is a stock (the single `lower()` gate
+/// already rejects a non-stock flow channel), and the amount is a bounded field
+/// expression — so the only reachable rejection is an amount that reads beyond the
+/// bounded stencil radius. The non-stock check below is defense-in-depth that never
+/// fires on lowered IR; unit/dimension mismatch and dynamic cadence are documented
+/// possible reasons a richer flow domain could surface.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlowEligibilityReport {
     /// One entry per declared flow, in IR order.
@@ -368,18 +370,18 @@ impl fmt::Display for FlowEligibilityReport {
             };
             writeln!(
                 f,
-                "  FLOW `{}` -> {}.{} {}x{} [{} | edge: {}, conservation: {}, exact reference: {}]",
+                "  FLOW `{}` -> {}.{} {}x{} [{} | candidate: {}, edge: {}, conservation: {}, exact reference: {}]",
                 flow.flow,
                 flow.field,
                 flow.channel,
                 flow.grid.0,
                 flow.grid.1,
                 verdict,
+                flow.candidate_shape.label(),
                 flow.edge,
                 flow.conservation,
                 flow.exact_reference_available,
             )?;
-            let _ = flow.candidate_shape;
             for rejection in &flow.rejections {
                 writeln!(f, "      not flow-kernelizable: {rejection}")?;
             }

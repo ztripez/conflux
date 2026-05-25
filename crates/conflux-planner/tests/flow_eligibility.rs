@@ -95,6 +95,7 @@ fn the_report_renders_a_stable_display() {
     assert!(rendered.contains("flow optimization eligibility"));
     assert!(rendered.contains("FLOW `runoff`"));
     assert!(rendered.contains("ELIGIBLE"));
+    assert!(rendered.contains("candidate: fixed-offset field-local"));
 }
 
 #[test]

@@ -10,9 +10,10 @@
 //! The eligible subset is a fixed-offset, field-local flow whose amount is a bounded
 //! field expression (no neighbor read beyond the stencil radius the kernel path
 //! supports) moving a stock quantity channel, with an explicit edge and conservation
-//! policy. The only reachable rejections are an over-wide amount stencil or a
-//! non-stock channel; unit/dimension and dynamic-cadence reasons are documented in
-//! the report type as future possibilities.
+//! policy. The only reachable rejection is an over-wide amount stencil — the single
+//! `lower()` gate already rejects a non-stock flow channel, so the non-stock check
+//! here is defense-in-depth that never fires on lowered IR. Unit/dimension and
+//! dynamic-cadence reasons are documented in the report type as future possibilities.
 
 use conflux_ir::{ConservationPolicy, EdgePolicy, FieldExpr, FlowIr, SimIr, ValueKind};
 use conflux_kernel::MAX_STENCIL_RADIUS;
