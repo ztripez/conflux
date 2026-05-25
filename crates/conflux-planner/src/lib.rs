@@ -20,6 +20,11 @@
 //! only. No graph kernel is implemented and the CPU reference path stays the single
 //! source of truth.
 //!
+//! And it reports *flow-optimization eligibility* for declared flows — which
+//! field-local flows could be backed by an optimized CPU flow kernel, the candidate
+//! shape, and the rejection reasons — again advisory only; the reference flow
+//! executor stays the source of truth for conservation accounting.
+//!
 //! Boundary: the planner depends on the backend crates only to *read* their
 //! reports. It contains no shader code, no `wgpu`, and no buffer-movement logic;
 //! Residency still owns all data movement and this crate only reads its transfer
@@ -27,6 +32,7 @@
 
 mod backend;
 mod cost;
+mod flow_eligibility;
 mod fusion;
 mod graph_eligibility;
 mod index_eligibility;
@@ -34,11 +40,13 @@ mod plan;
 mod report;
 mod transfer;
 
+pub use flow_eligibility::flow_eligibility;
 pub use graph_eligibility::graph_eligibility;
 pub use index_eligibility::index_eligibility;
 pub use plan::plan;
 pub use report::{
-    ApproximationStatus, BackendChoice, CandidateIndex, CostHint, FusionGroup, GraphCandidateShape,
+    ApproximationStatus, BackendChoice, CandidateIndex, CostHint, FlowCandidateShape,
+    FlowEligibility, FlowEligibilityReport, FusionGroup, GraphCandidateShape,
     GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport,
     IndexRebuildInputs, OptimizationReport, QueryIndexEligibility, RulePlan, TransferAdvisory,
 };
