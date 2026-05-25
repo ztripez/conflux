@@ -78,21 +78,26 @@ crates/
 
 ## Status
 
-The MVP ladder (MVP0–MVP7) is complete; the sections below describe each rung as
-it stands today. Several domains have since landed past the ladder, all on the CPU
-reference path: 2D **fields** (local-kernel rules + field-kernel equivalence),
-**regions/aggregates/bridges**, field-local **flows**, **actors** with exact
-**proximity queries**, multiscale **scale links/projections**, **units &
-dimensions**, an explicit **graph** domain (topology + node/edge channels +
-bounded-adjacency graph rules), and report-only **events** materialized from graph
-rules. For a concise snapshot of what is true now and the invariants you can rely
-on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md); the current checkpoint is
-tagged `mvp-cpu-snapshot-v0`, and the project is now in the **Alpha 0** phase —
-freeze the contracts, prove the public API on one real end-to-end scenario, and
-choose the first optimization target from evidence. For which APIs are stable
-enough to build on versus experimental, see
-[`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview
-tag or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
+The MVP ladder (MVP0–MVP7) and Alpha 0 are complete. The Alpha 0 checkpoint is
+tagged `alpha-0`: it freezes the reference-grade CPU semantics, proves the public
+API with the `regional_settlement_ecology` scenario, and records the first
+optimization target from evidence. Since that checkpoint, the first optimized
+execution track (#192) added opt-in CPU paths for field-local **flows** and eligible
+**actor rules**, with visible fallback/equivalence reporting.
+
+The current implemented domains include 2D **fields** (local-kernel rules +
+field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**,
+**actors** with exact **proximity queries**, multiscale **scale links/projections**,
+**units & dimensions**, an explicit **graph** domain (topology, node/edge channels,
+and bounded-adjacency graph rules), and report-only **events** materialized from
+graph rules. For a concise snapshot of what is true now and the invariants you can
+rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). The current next
+optimization slice is exact bounded-radius proximity-query indexing (#217),
+recorded in
+[`docs/POST_ALPHA_OPTIMIZATION_TARGET.md`](docs/POST_ALPHA_OPTIMIZATION_TARGET.md).
+For which APIs are stable enough to build on versus experimental, see
+[`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview tag
+or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 The CPU-only vertical slice (MVP1) is in place:
 

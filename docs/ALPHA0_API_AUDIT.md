@@ -13,7 +13,7 @@ Each finding is tagged with its disposition: a created **follow-up issue**, a
 
 ## Findings with follow-up issues
 
-### 1. Repeated finite + non-negative assessment boilerplate → #195
+### 1. Repeated finite + non-negative assessment boilerplate → #195 (resolved)
 
 Nearly every rule across every domain repeats:
 
@@ -26,7 +26,13 @@ In `regional_settlement_ecology` this appears on `store_grain`, `grow_population
 `grow_crop`, and `trade_load`. A single combinator that desugars to the same
 assessments would remove the most common boilerplate. (#195)
 
-### 2. Asymmetric report access → #196
+**Resolved:** `Assessment::finite_nonneg()` returns the exact existing pair
+(`Assessment::Finite`, `Assessment::range(0.0, f64::INFINITY)`). Rule builders for
+tables, fields, flows, actors, and graphs expose `.finite_nonneg()` convenience
+methods that append that same pair; no new assessment variant or validation path was
+introduced.
+
+### 2. Asymmetric report access → #196 (resolved)
 
 Reading outcomes is inconsistent: `sim.column(table, col)` and
 `sim.graph_node(graph, channel)` take **names** and return `Option<&[f64]>`, but
@@ -34,6 +40,12 @@ Reading outcomes is inconsistent: `sim.column(table, col)` and
 require `report().iter().find(|x| x.name == ...)`. The scenario's contract test
 shows the friction. Name-based accessors (`field_channel`, `aggregate`,
 `projection`) mirroring `column` would make access uniform. (#196)
+
+**Resolved:** `Simulation::field_channel(field, channel)`,
+`Simulation::aggregate(name)`, and `Simulation::projection(name)` provide the same
+by-name access style as `column` and `graph_node`. They are thin lookup/report
+helpers over the existing simulation state and report projections, not duplicate
+evaluators.
 
 ### 3. The reserved `dt` parameter is a magic string → #197 (resolved)
 

@@ -141,9 +141,13 @@ governed by `docs/RELEASE_CHECKLIST.md`.
 
 ## Next
 
-The reference-grade core is complete and frozen at `alpha-0`. The next phase is the
-**first optimized execution track** — flows and actor-rule execution (#192) — which
-must keep the CPU reference as the source of truth and explain equivalence or
-fallback for every optimized path. The API ergonomics follow-ups (#195–#197) and
-the deferred optimization candidates (graph-rule kernels, the proximity-query
-index) remain available to pick up as evidence-driven vertical slices.
+The reference-grade core is complete and frozen at `alpha-0`, and the first
+optimized execution track — flows and actor-rule execution (#192) — has landed. The
+current evidence-driven next slice is **exact proximity-query indexing for
+bounded-radius actor queries** (#217), recorded in
+`docs/POST_ALPHA_OPTIMIZATION_TARGET.md`.
+
+That slice must keep the exact CPU scan as the source of truth, stay opt-in, and
+explain indexed execution or fallback for every query. Aggregates remain a later
+reference-only optimization candidate. Graph-rule kernels remain advisory only under
+the current hard boundary unless that boundary is explicitly reopened.
