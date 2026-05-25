@@ -934,11 +934,10 @@ fn regional_settlement_ecology_runs_on_the_cpu_reference_path() {
     let mut sim = Simulation::new(ir);
 
     // Start-of-run basin crop totals (over crop = [5,5,5,5]): each basin sums 10 grain.
-    let aggregates = sim.aggregate_report();
-    let agg = |name: &str| aggregates.iter().find(|a| a.name == name).unwrap();
-    assert_eq!(agg("north_crop").value, 10.0);
-    assert_eq!(agg("north_crop").unit.as_deref(), Some("grain"));
-    assert_eq!(agg("south_crop").value, 10.0);
+    let north_crop = sim.aggregate("north_crop").unwrap();
+    assert_eq!(north_crop.value, 10.0);
+    assert_eq!(north_crop.unit.as_deref(), Some("grain"));
+    assert_eq!(sim.aggregate("south_crop").unwrap().value, 10.0);
 
     let step = sim.step();
 
@@ -970,7 +969,7 @@ fn regional_settlement_ecology_runs_on_the_cpu_reference_path() {
     assert_eq!(projection_bridge.unit.as_deref(), Some("grain"));
 
     // The projection is source-authoritative (its meaning, regardless of later drift).
-    let projection = &sim.projection_report()[0];
+    let projection = sim.projection("yield_up").unwrap();
     assert_eq!(projection.projection, "yield_up");
     assert_eq!(projection.authority, Authority::SourceAuthoritative);
 
@@ -1011,6 +1010,41 @@ fn regional_settlement_ecology_runs_on_the_cpu_reference_path() {
             .count(),
         0
     );
+}
+
+#[test]
+fn by_name_report_accessors_match_manual_index_lookups() {
+    // #196: the by-name accessors are thin lookups over the *same* materialized
+    // state / report computation the index and `iter().find(...)` forms expose —
+    // no second evaluator, no shadow representation. Assert each accessor returns
+    // exactly what the manual form returns, and `None` for unknown names.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut sim = Simulation::new(ir);
+    sim.step();
+
+    // field_channel(field, channel) == field_data[field_idx][channel_idx]
+    let f = sim.ir().field_index("Terrain").unwrap();
+    let c = sim.ir().fields[f].channel_index("water").unwrap();
+    let by_name = sim.field_channel("Terrain", "water");
+    assert_eq!(by_name, Some(&sim.field_data(f)[c][..]));
+    assert_eq!(sim.field_channel("Nope", "water"), None);
+    assert_eq!(sim.field_channel("Terrain", "nope"), None);
+
+    // aggregate(name) == aggregate_report().into_iter().find(name)
+    let manual_agg = sim
+        .aggregate_report()
+        .into_iter()
+        .find(|a| a.name == "north_crop");
+    assert_eq!(sim.aggregate("north_crop"), manual_agg);
+    assert_eq!(sim.aggregate("missing"), None);
+
+    // projection(name) == projection_report().into_iter().find(name)
+    let manual_proj = sim
+        .projection_report()
+        .into_iter()
+        .find(|p| p.projection == "yield_up");
+    assert_eq!(sim.projection("yield_up"), manual_proj);
+    assert_eq!(sim.projection("missing"), None);
 }
 
 #[test]
