@@ -9,7 +9,10 @@
 use std::collections::HashMap;
 
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
-use conflux_kernel::{execute_elementwise, extract, Kernel, RejectionReason};
+use conflux_kernel::{
+    execute_elementwise, extract, extract_flows, FlowKernel, FlowRejectionReason, Kernel,
+    RejectionReason,
+};
 
 use crate::actor_exec;
 use crate::eval::{eval, EvalCtx};
@@ -51,6 +54,12 @@ pub struct Simulation {
     /// Used to explain a fallback with its specific, typed reason. Empty unless
     /// `mode` requests the kernel path.
     kernel_rejections: HashMap<String, RejectionReason>,
+    /// Accepted flow kernels by flow name, used to run the optimized flow path.
+    /// Empty unless `mode` requests the kernel path.
+    flow_kernels: HashMap<String, FlowKernel>,
+    /// Why each kernel-ineligible flow was rejected, by flow name. Empty unless
+    /// `mode` requests the kernel path.
+    flow_rejections: HashMap<String, FlowRejectionReason>,
 }
 
 impl Simulation {
@@ -103,6 +112,25 @@ impl Simulation {
             (HashMap::new(), HashMap::new())
         };
 
+        // Flow kernels are extracted the same way: accepted kernels to run the
+        // optimized path, rejections to explain a fallback. Empty under reference-only.
+        let (flow_kernels, flow_rejections) = if mode.requests_kernel() {
+            let report = extract_flows(&ir);
+            let kernels = report
+                .accepted
+                .into_iter()
+                .map(|k| (k.name.clone(), k))
+                .collect();
+            let rejections = report
+                .rejected
+                .into_iter()
+                .map(|r| (r.flow, r.reason))
+                .collect();
+            (kernels, rejections)
+        } else {
+            (HashMap::new(), HashMap::new())
+        };
+
         Simulation {
             ir,
             plan,
@@ -116,6 +144,8 @@ impl Simulation {
             mode,
             kernels,
             kernel_rejections,
+            flow_kernels,
+            flow_rejections,
         }
     }
 
@@ -361,7 +391,14 @@ impl Simulation {
 
         // Flows are their own phase after field rules: they move quantity between
         // cells of the post-field-rule field state.
-        let flows = flow_exec::step_flows(ir, &mut self.field_data, &params);
+        let flows = flow_exec::step_flows(
+            ir,
+            self.mode,
+            &self.flow_kernels,
+            &self.flow_rejections,
+            &mut self.field_data,
+            &params,
+        );
 
         // Actor rules update per-actor state, optionally sampling the current field
         // state at each actor's (pre-movement) position. They write only actor

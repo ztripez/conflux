@@ -11,6 +11,7 @@ mod eval;
 mod exec;
 mod field_equivalence;
 mod field_exec;
+mod flow_equivalence;
 mod flow_exec;
 mod graph_event_exec;
 mod graph_exec;
@@ -28,6 +29,9 @@ pub use field_equivalence::{
     check_field_equivalence, FieldEquivalenceReport, FieldKernelComparison, FieldPathOutcome,
     FieldRulePath,
 };
+pub use flow_equivalence::{
+    check_flow_equivalence, FlowEquivalenceReport, FlowKernelComparison, FlowPath, FlowPathOutcome,
+};
 pub use plan::ExecutionPlan;
 pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
@@ -41,8 +45,8 @@ pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
 pub use conflux_ir::AggregateOp;
-// Re-export the kernel rejection reason so consumers can match on the typed
-// fallback detail in `RuleFireReport::kernel_rejection`.
-pub use conflux_kernel::RejectionReason;
+// Re-export the kernel rejection reasons so consumers can match on the typed
+// fallback detail in `RuleFireReport::kernel_rejection` / `FlowFireReport::kernel_rejection`.
+pub use conflux_kernel::{FlowRejectionReason, RejectionReason};
 
 pub const CRATE_BOUNDARY: &str = "runtime planning and cpu reference execution";

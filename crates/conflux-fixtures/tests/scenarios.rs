@@ -3,8 +3,8 @@
 //! agent-written code have stable, named scenarios to check against.
 
 use conflux_core::{
-    col, lower, Authority, LowerError, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy,
-    TopologyKind,
+    cell, col, field_lit, lower, neighbor, Authority, EdgePolicy, Field, Flow, Grid2, LowerError,
+    Model, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy, TopologyKind,
 };
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
@@ -12,8 +12,9 @@ use conflux_planner::{plan, transfer_advisory, BackendChoice};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{
-    check_equivalence, AggregateOp, ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason,
-    FlowDestination, Simulation, Tolerance,
+    check_equivalence, check_flow_equivalence, AggregateOp, ComparisonStatus, ExecutionMode,
+    ExecutionPath, FallbackReason, FlowDestination, FlowPathOutcome, FlowRejectionReason,
+    Simulation, Tolerance,
 };
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
@@ -387,6 +388,169 @@ fn runoff_flow_moves_water_and_reports_boundary_loss() {
 
     // The flow report carries the moved channel's unit (provenance).
     assert_eq!(report.unit.as_deref(), Some("tons"));
+}
+
+#[test]
+fn runoff_flow_optimized_path_matches_the_reference() {
+    let ir = lower(&runoff_flow()).unwrap();
+
+    // The flow equivalence harness: the runoff flow is a kernel match.
+    let equivalence = check_flow_equivalence(&ir, Tolerance::default());
+    assert!(equivalence.all_within_tolerance());
+    let runoff = equivalence
+        .flows
+        .iter()
+        .find(|f| f.flow == "runoff")
+        .unwrap();
+    assert!(matches!(runoff.outcome, FlowPathOutcome::Kernel(_)));
+
+    let field = ir.field_index("Terrain").unwrap();
+
+    // Default mode is reference-only — a default run does not imply optimization.
+    let mut reference = Simulation::new(ir.clone());
+    let ref_step = reference.step();
+    assert_eq!(ref_step.flows[0].used_path, Some(ExecutionPath::Reference));
+    assert_eq!(ref_step.flows[0].fallback_reason, None);
+
+    // PreferCpuKernel runs the eligible flow on the optimized path, and the
+    // post-flow field state matches the reference (runoff amounts are f32-exact).
+    let mut prefer = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let prefer_step = prefer.step();
+    assert_eq!(
+        prefer_step.flows[0].used_path,
+        Some(ExecutionPath::CpuKernel)
+    );
+    assert_eq!(prefer_step.flows[0].kernel_rejection, None);
+    assert_eq!(reference.field_data(field)[0], prefer.field_data(field)[0]);
+}
+
+/// A flow whose amount reads a neighbor two cells away — bounded for the reference,
+/// but outside the flow kernel's stencil radius.
+fn over_wide_flow_model() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![8.0, 0.0, 4.0]);
+    let mut model = Model::new("over_wide_flow");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(neighbor("water", 2, 0, EdgePolicy::Wrap) * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    model
+}
+
+#[test]
+fn an_ineligible_flow_falls_back_or_is_refused_with_a_reason() {
+    let ir = lower(&over_wide_flow_model()).unwrap();
+
+    // The equivalence harness reports it as a fallback (not flow-kernel-eligible).
+    let equivalence = check_flow_equivalence(&ir, Tolerance::default());
+    match &equivalence.flows[0].outcome {
+        FlowPathOutcome::Fallback { reason } => assert!(reason.contains("stencil"), "{reason}"),
+        other => panic!("expected fallback, got {other:?}"),
+    }
+
+    // PreferCpuKernel: falls back to the reference (which runs fine) with the typed
+    // reason; the flow still moves quantity on the reference path.
+    let mut prefer = Simulation::with_mode(ir.clone(), ExecutionMode::PreferCpuKernel);
+    let prefer_flow = &prefer.step().flows[0];
+    assert_eq!(prefer_flow.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        prefer_flow.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
+    );
+    assert!(matches!(
+        prefer_flow.kernel_rejection,
+        Some(FlowRejectionReason::AmountStencilTooWide { .. })
+    ));
+    assert!(!prefer_flow.transfers.is_empty());
+
+    // RequireCpuKernel: refused — no movement this tick, never silently run.
+    let mut require = Simulation::with_mode(ir, ExecutionMode::RequireCpuKernel);
+    let require_flow = &require.step().flows[0];
+    assert_eq!(require_flow.used_path, None);
+    assert_eq!(
+        require_flow.fallback_reason,
+        Some(FallbackReason::RequiredKernelUnavailable)
+    );
+    assert!(require_flow.transfers.is_empty());
+    assert_eq!(require_flow.total_before, require_flow.total_after);
+}
+
+/// Two eligible flows moving the same `water` channel in opposite directions. Both
+/// read the frozen start-of-phase snapshot for their amounts but accumulate their
+/// debits/credits onto the live channel, so the optimized path must accumulate (not
+/// overwrite) to match the reference.
+fn two_flows_same_channel_model() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![8.0, 4.0, 2.0]);
+    let mut model = Model::new("two_flows_same_channel");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("east")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    model.add_flow(
+        Flow::new("west")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.25))
+            .to_neighbor(-1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    model
+}
+
+#[test]
+fn multiple_flows_on_one_channel_accumulate_and_match_reference() {
+    let ir = lower(&two_flows_same_channel_model()).unwrap();
+    let field = ir.field_index("Terrain").unwrap();
+
+    let mut reference = Simulation::new(ir.clone());
+    reference.step();
+
+    let mut prefer = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let prefer_step = prefer.step();
+
+    // Both flows ran on the optimized path...
+    assert!(prefer_step
+        .flows
+        .iter()
+        .all(|f| f.used_path == Some(ExecutionPath::CpuKernel)));
+    // ...and the second flow's deltas accumulated onto the first's live state rather
+    // than overwriting it, so the field matches the reference (f32-exact here).
+    assert_eq!(reference.field_data(field)[0], prefer.field_data(field)[0]);
+}
+
+#[test]
+fn a_wrap_flow_has_a_passing_equivalence_with_no_boundary_loss() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![6.0, 0.0, 0.0]);
+    let mut model = Model::new("wrap_flow");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("circulate")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Wrap)
+            .conserved(),
+    );
+    let ir = lower(&model).unwrap();
+
+    let equivalence = check_flow_equivalence(&ir, Tolerance::default());
+    assert!(equivalence.all_within_tolerance());
+    match &equivalence.flows[0].outcome {
+        FlowPathOutcome::Kernel(c) => assert_eq!(c.boundary_loss_diff, 0.0),
+        other => panic!("expected kernel match, got {other:?}"),
+    }
 }
 
 #[test]
