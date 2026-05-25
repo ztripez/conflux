@@ -35,12 +35,18 @@ require `report().iter().find(|x| x.name == ...)`. The scenario's contract test
 shows the friction. Name-based accessors (`field_channel`, `aggregate`,
 `projection`) mirroring `column` would make access uniform. (#196)
 
-### 3. The reserved `dt` parameter is a magic string → #197
+### 3. The reserved `dt` parameter is a magic string → #197 (resolved)
 
 Population growth reads the cadence step as `param("dt")` — a reserved,
 executor-supplied name that is rejected if *declared*, and undiscoverable from the
 builders. A typed `dt()` constructor producing the same `Expr` would make it
 self-documenting. (#197)
+
+**Resolved:** `conflux_core::dt()` reads the cadence step (`col("population") *
+(lit(1.0) + param("growth") * dt())`). It is pure sugar — it produces exactly the
+same `Expr` as `param("dt")`. The reserved name now has one source of truth,
+`conflux_ir::RESERVED_DT`, shared by `dt()` and the lowering gate that rejects a
+user-declared `dt`.
 
 ## Documented observations (intentional or too broad to change now)
 

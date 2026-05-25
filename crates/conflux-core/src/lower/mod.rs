@@ -37,8 +37,11 @@ mod events;
 // Dimensional checking over the lowered IR (the units-validation pass).
 mod dimension;
 
-/// The parameter name the executor reserves for the rule cadence.
-const RESERVED_DT: &str = "dt";
+/// The parameter name the executor reserves for the rule cadence. Defined once in
+/// `conflux-ir` (read by the [`dt`](conflux_ir::dt) constructor) and reused here
+/// as the lowering gate that rejects a user-declared `dt`, so the reserved name
+/// has a single source of truth.
+pub(crate) use conflux_ir::RESERVED_DT;
 
 /// An error found while lowering a [`Model`].
 #[derive(Debug, thiserror::Error, PartialEq)]
