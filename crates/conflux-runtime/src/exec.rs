@@ -208,6 +208,17 @@ impl Simulation {
         &self.field_data[field]
     }
 
+    /// Reads the current per-cell values of a field channel by name (row-major),
+    /// if both the field and the channel exist. The name-based mirror of
+    /// [`Simulation::column`] / [`Simulation::graph_node`] for fields, so callers
+    /// need not resolve the field and channel indices to read one channel out of
+    /// [`Simulation::field_data`].
+    pub fn field_channel(&self, field: &str, channel: &str) -> Option<&[f64]> {
+        let f = self.ir.field_index(field)?;
+        let c = self.ir.fields[f].channel_index(channel)?;
+        Some(&self.field_data[f][c])
+    }
+
     /// Reads the current per-actor values of an actor-set channel, if it exists.
     pub fn actor_channel(&self, actor_set: &str, channel: &str) -> Option<&[f64]> {
         let s = self.ir.actor_index(actor_set)?;
@@ -247,6 +258,13 @@ impl Simulation {
         crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data)
     }
 
+    /// Reads one region aggregate's report by name, if it exists. A thin name
+    /// lookup over [`Simulation::aggregate_report`] — it reuses the same single
+    /// evaluation, so callers need not `iter().find(...)` the report Vec.
+    pub fn aggregate(&self, name: &str) -> Option<crate::report::AggregateReport> {
+        self.aggregate_report().into_iter().find(|a| a.name == name)
+    }
+
     /// Evaluates every declared proximity query exactly against the current actor
     /// positions, returning a report per query (policy, per-source neighbors, and
     /// provenance). This reads positions only — a projection, never a mutation, and
@@ -263,6 +281,15 @@ impl Simulation {
     /// writes target state. Call it after `new()` or any `step()`/`run()`.
     pub fn projection_report(&self) -> Vec<crate::report::ProjectionReport> {
         crate::projection_exec::evaluate_projections(&self.ir, &self.field_data, &self.data)
+    }
+
+    /// Reads one upward projection's report by name, if it exists. A thin name
+    /// lookup over [`Simulation::projection_report`] — it reuses the same single
+    /// evaluation, so callers need not `iter().find(...)` the report Vec.
+    pub fn projection(&self, name: &str) -> Option<crate::report::ProjectionReport> {
+        self.projection_report()
+            .into_iter()
+            .find(|p| p.projection == name)
     }
 
     /// Advances the simulation `ticks` ticks, returning a report.
