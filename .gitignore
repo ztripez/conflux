@@ -7,3 +7,6 @@
 # Editor / OS noise
 *.swp
 .DS_Store
+
+# Claude Code local state (review worktrees, session scratch)
+/.claude
