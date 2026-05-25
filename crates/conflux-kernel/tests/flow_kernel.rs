@@ -95,6 +95,98 @@ fn the_amount_is_computed_in_f32() {
 }
 
 #[test]
+fn a_wrap_destination_credits_a_wrapped_cell_with_no_boundary_loss() {
+    // water = [8, 0, 4], move east with Wrap: cell 2 wraps to cell 0 instead of
+    // leaving the grid, so the total is conserved (no boundary loss).
+    let ir = lower(&flow_model(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Wrap)
+            .conserved(),
+    ))
+    .unwrap();
+    let kernel = &extract_flows(&ir).accepted[0];
+
+    let out = execute_flow(kernel, &[vec![8.0, 0.0, 4.0]]);
+    // cell 0 -> cell 1 (4); cell 2 -> cell 0 wrapped (2). [8-4+2, 0+4, 4-2].
+    assert_eq!(out.channel, vec![6.0, 4.0, 2.0]);
+    assert_eq!(out.boundary_loss, 0.0);
+    assert!(out
+        .transfers
+        .iter()
+        .all(|t| !matches!(t.destination, FlowKernelDestination::Boundary)));
+}
+
+#[test]
+fn an_amount_reading_a_within_radius_neighbor_is_accepted() {
+    let ir = lower(&flow_model(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(neighbor("water", 1, 0, EdgePolicy::Wrap) * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    ))
+    .unwrap();
+    let report = extract_flows(&ir);
+    assert_eq!(report.accepted_count(), 1);
+    assert_eq!(report.accepted[0].stencil_radius, 1);
+}
+
+#[test]
+fn the_amount_binds_the_correct_absolute_channel_index() {
+    // A two-channel field: amount = water * rate reads both, so the amount must bind
+    // `rate` at its absolute index (1), not channel 0.
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain
+        .stock("water", vec![10.0, 0.0])
+        .signal("rate", vec![0.5, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * cell("rate"))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    let ir = lower(&model).unwrap();
+    let kernel = &extract_flows(&ir).accepted[0];
+
+    // channels addressed by absolute index: [0]=water, [1]=rate.
+    let out = execute_flow(kernel, &[vec![10.0, 0.0], vec![0.5, 0.0]]);
+    // cell 0 emits 10 * 0.5 = 5 -> cell 1; cell 1 emits 0.
+    assert_eq!(out.channel, vec![5.0, 5.0]);
+}
+
+#[test]
+fn overdraw_is_reported_as_a_negative_source_not_clamped() {
+    // amount (10) exceeds the source (1): the source goes negative — instability is
+    // reported as data, never clamped to available source.
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("water", vec![1.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("drain")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(10.0))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .boundary_loss(),
+    );
+    let ir = lower(&model).unwrap();
+    let kernel = &extract_flows(&ir).accepted[0];
+
+    let out = execute_flow(kernel, &[vec![1.0]]);
+    assert_eq!(out.channel, vec![-9.0]); // 1 - 10, not clamped to 0
+    assert_eq!(out.boundary_loss, 10.0);
+}
+
+#[test]
 fn an_over_wide_amount_stencil_is_rejected() {
     let ir = lower(&flow_model(
         Flow::new("runoff")
