@@ -32,7 +32,7 @@ Named so they are not mistaken for stable contracts:
 - **GPU execution** (`conflux-wgsl` `gpu` feature) — emission is stable; execution is experimental and hardware-gated.
 - **Profile-guided trace** (`conflux-trace`) — optional research; there is no release compiler or runtime adaptive optimizer.
 - **Unit conversions** (`Conversion`) — declared and validated, but **not yet applied**; no expression invocation surface exists yet (`docs/PUBLISH_POLICY.md` and the units epic note this).
-- **Proximity index** — only the advisory *eligibility* report exists; there is no spatial-index backend (queries evaluate exactly on the CPU).
+- **Proximity index** — exact uniform-grid execution exists only for bounded-radius actor queries and is opt-in through `QueryExecutionMode`; the CPU scan remains the source of truth and `KNearest` remains scan-only until an exact expanding-ring strategy exists.
 - **Graph kernel** — only the advisory `graph_eligibility` report exists; there is no graph-kernel backend (graph rules and events run only on the CPU reference path).
 - **Events** — declared and materialized **report-only**: events appear in the step report but are never consumed, queued, or scheduled, and only graph-origin events are supported in this slice.
 - **Scale links / projections beyond region→table** — only the region→table relationship is supported; other combinations are rejected at lowering.

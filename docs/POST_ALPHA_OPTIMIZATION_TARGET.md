@@ -1,19 +1,18 @@
 # Post-Alpha — next optimized execution target
 
 A decision record for the first evidence-driven optimization slice after the flow
-and actor-rule track (#192). It starts the next slice, tracked in #217; it does
-**not** claim the implementation exists yet. The CPU reference path remains the
-source of truth.
+and actor-rule track (#192). The slice is tracked in #217. The exact CPU scan
+remains the source of truth; the indexed path is an opt-in execution strategy.
 
 ## Current evidence
 
-The current baseline command:
+At selection time, the baseline command:
 
 ```sh
 cargo run -p conflux-fixtures --example ecology_baseline
 ```
 
-shows the post-#192 state of the `regional_settlement_ecology` scenario:
+showed the post-#192 state of the `regional_settlement_ecology` scenario:
 
 | Domain | Coarse work in the scenario | Optimized path today |
 |---|---:|---|
@@ -55,24 +54,25 @@ actor positions on a shared host field. A uniform-grid index may prune candidate
 neighbors, but the final result must be filtered, ordered, and reported exactly like
 the CPU reference scan.
 
-## Required scope
+## Implemented scope
 
 - Keep `QueryIr` as the only semantic query model; an index is an execution strategy,
   never a new query domain.
 - Keep the exact CPU scan as the source of truth and the default execution path.
-- Add an opt-in indexed path only for index-eligible bounded-radius queries.
+- Add an opt-in indexed path only for index-eligible bounded-radius queries via
+  `QueryExecutionMode::PreferIndex` / `RequireIndex`.
 - Preserve exact distance semantics for the declared metric (`Chebyshev`,
   `Manhattan`, or `Euclidean`), inclusive radius checks, self policy, and stable
   `DistanceThenIndex` ordering.
 - Respect existing query timing: actor-rule query inputs use the same pre-movement
   positions as today, and read-only query reports continue to describe current
   simulation state.
-- Report the selected path and explicit fallback/refusal reason; no indexed fallback
-  may be silent.
-- Validate indexed results against the exact scan through an equivalence or contract
-  harness before treating the indexed path as accepted.
-- Update the ecology baseline once the path exists so availability and fallback are
-  visible beside the existing flow/actor-rule optimization status.
+- Report the requested / eligible / selected / used path and explicit
+  fallback/refusal reason; no indexed fallback may be silent.
+- Validate indexed results against the exact scan through contract tests comparing
+  full neighbor results.
+- Update the ecology baseline so query-index availability and fallback are visible
+  beside the existing flow/actor-rule optimization status.
 
 ## Non-goals
 

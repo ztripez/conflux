@@ -23,7 +23,9 @@
 use conflux_core::lower;
 use conflux_fixtures::regional_settlement_ecology;
 use conflux_kernel::{extract, extract_actor_rules, extract_fields, extract_flows};
-use conflux_runtime::{ExecutionMode, ExecutionPath, Simulation};
+use conflux_runtime::{
+    ExecutionMode, ExecutionPath, QueryExecutionMode, QueryExecutionPath, Simulation,
+};
 
 fn main() {
     let ir = lower(&regional_settlement_ecology()).expect("scenario lowers");
@@ -110,11 +112,11 @@ fn main() {
 
     // --- Coarse per-domain work + execution path -------------------------------
     // Work proxy = per-element evaluations the reference executor does per tick
-    // (`items x elements`). Path: which domains have an opt-in optimized CPU kernel
-    // today — table/field (elementwise/stencil) and, since epic #192, flows and
-    // actor rules; aggregates, proximity queries, graph rules, and graph events
-    // remain reference-only. Each domain's rules are classified against its own
-    // kernel-extraction report.
+    // (`items x elements`). Path: which domains have an opt-in optimized path today
+    // — table/field (elementwise/stencil), since epic #192 flows and actor rules,
+    // and since #217 bounded-radius proximity queries via an exact index;
+    // aggregates, graph rules, and graph events remain reference-only. Each domain's
+    // rules/queries are classified against its own extraction or selected report.
     let table_kernels = extract(&ir);
     let table_kernel_names: Vec<&str> = table_kernels
         .accepted
@@ -165,6 +167,12 @@ fn main() {
     let field_path = kernel_path(field_kernel, ir.field_rules.len());
     let flow_path = kernel_path(flow_kernel, ir.flows.len());
     let actor_path = kernel_path(actor_kernel, ir.actor_rules.len());
+    let query_indexed = Simulation::with_query_mode(ir.clone(), QueryExecutionMode::PreferIndex)
+        .query_report()
+        .into_iter()
+        .filter(|q| q.used_path == Some(QueryExecutionPath::UniformGridIndex))
+        .count();
+    let query_path = query_path(query_indexed, ir.queries.len());
 
     let mut work: Vec<(&str, usize, &str)> = vec![
         ("table rules", ir.rules.len() * rows, table_path),
@@ -179,7 +187,7 @@ fn main() {
         (
             "proximity queries",
             ir.queries.len() * actors * actors,
-            "reference only (index advisory only)",
+            query_path,
         ),
         (
             "graph rules",
@@ -200,7 +208,7 @@ fn main() {
 
     // --- Likely bottleneck domains ---------------------------------------------
     // Ranked by the coarse proxy; reference-only domains (no optimized path today)
-    // are the higher-payoff optimization candidates for #184.
+    // are the remaining optimization candidates.
     let mut ranked = work.clone();
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     println!("\nlikely bottleneck domains (coarse work, highest first):");
@@ -219,8 +227,26 @@ fn main() {
     // an eligible flow/actor rule runs on its kernel; an ineligible one falls back to
     // the reference (or is refused under RequireCpuKernel), always reported. The
     // default run above stays reference-only.
-    println!("\nselected execution (PreferCpuKernel) — flows and actor rules:");
-    let mut selected = Simulation::with_mode(ir.clone(), ExecutionMode::PreferCpuKernel);
+    println!(
+        "\nselected execution (PreferCpuKernel + PreferIndex) — queries, flows, and actor rules:"
+    );
+    let mut selected = Simulation::with_modes(
+        ir.clone(),
+        ExecutionMode::PreferCpuKernel,
+        QueryExecutionMode::PreferIndex,
+    );
+    for query in selected.query_report() {
+        let reason = query
+            .index_rejection
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_default();
+        println!(
+            "  query `{}`: {}",
+            query.query,
+            query_path_label(query.used_path, &reason)
+        );
+    }
     let selected_step = selected.step();
     for flow in &selected_step.flows {
         let reason = flow
@@ -249,9 +275,10 @@ fn main() {
 
     println!(
         "\nNote: a small bounded scenario, so raw counts are similar across domains.\n\
-         Flows and actor rules — the first optimization target (#184) — now have an\n\
-         opt-in optimized CPU path (epic #192); graph rules and proximity queries\n\
-         remain reference-only (advisory eligibility only)."
+         Flows and actor rules — the first optimization target (#184) — have an\n\
+         opt-in optimized CPU path (epic #192). Bounded-radius proximity queries\n\
+         now have an opt-in exact index path (#217); graph rules remain\n\
+         reference-only (advisory eligibility only)."
     );
 }
 
@@ -266,6 +293,16 @@ fn path_label(used_path: Option<ExecutionPath>, reason: &str) -> String {
     }
 }
 
+/// A short label for one query's selected execution path.
+fn query_path_label(used_path: Option<QueryExecutionPath>, reason: &str) -> String {
+    match used_path {
+        Some(QueryExecutionPath::UniformGridIndex) => "optimized (uniform-grid index)".to_string(),
+        Some(QueryExecutionPath::Reference) if reason.is_empty() => "reference scan".to_string(),
+        Some(QueryExecutionPath::Reference) => format!("fell back to scan ({reason})"),
+        None => format!("refused ({reason})"),
+    }
+}
+
 /// Classifies a domain's optimized-path status from how many of its rules are
 /// kernel-eligible.
 fn kernel_path(eligible: usize, total: usize) -> &'static str {
@@ -275,6 +312,20 @@ fn kernel_path(eligible: usize, total: usize) -> &'static str {
         "kernel-eligible (opt-in)"
     } else if eligible > 0 {
         "mixed: some kernel-eligible, some reference"
+    } else {
+        "reference only"
+    }
+}
+
+/// Classifies proximity-query optimized-path status from how many queries used the
+/// exact index under `PreferIndex`.
+fn query_path(indexed: usize, total: usize) -> &'static str {
+    if total == 0 {
+        "n/a"
+    } else if indexed == total {
+        "index-eligible (opt-in)"
+    } else if indexed > 0 {
+        "mixed: some index-eligible, some reference"
     } else {
         "reference only"
     }

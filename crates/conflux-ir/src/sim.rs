@@ -417,6 +417,20 @@ pub enum QueryLimit {
     KNearest(usize),
 }
 
+impl QueryLimit {
+    /// Returns the fixed inclusive radius for bounded-radius queries.
+    ///
+    /// `None` means the query has no fixed search radius (`KNearest`) and therefore
+    /// needs a different exact candidate-discovery strategy than simple fixed-radius
+    /// cell pruning.
+    pub fn within_radius(self) -> Option<f64> {
+        match self {
+            QueryLimit::Within(radius) => Some(radius),
+            QueryLimit::KNearest(_) => None,
+        }
+    }
+}
+
 /// Whether a same-set proximity query includes the source actor itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SelfPolicy {

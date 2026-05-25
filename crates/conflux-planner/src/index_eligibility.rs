@@ -29,15 +29,19 @@ fn eligibility(query: &QueryIr, ir: &SimIr) -> QueryIndexEligibility {
     // is a natural candidate; k-nearest has no a priori radius, so a grid would need
     // an expanding-ring strategy that is not yet specified.
     let mut rejections = Vec::new();
-    let candidate_index = match query.limit {
-        QueryLimit::Within(_) => CandidateIndex::UniformGrid,
-        QueryLimit::KNearest(_) => {
-            rejections.push(
-                "k-nearest has no fixed search radius; a uniform-grid index would need an \
+    let candidate_index = if query.limit.within_radius().is_some() {
+        CandidateIndex::UniformGrid
+    } else {
+        match query.limit {
+            QueryLimit::KNearest(_) => {
+                rejections.push(
+                    "k-nearest has no fixed search radius; a uniform-grid index would need an \
                  expanding-ring search strategy that is not yet specified"
-                    .to_string(),
-            );
-            CandidateIndex::None
+                        .to_string(),
+                );
+                CandidateIndex::None
+            }
+            QueryLimit::Within(_) => unreachable!("bounded-radius query already accepted"),
         }
     };
     let eligible = rejections.is_empty();

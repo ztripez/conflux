@@ -38,8 +38,10 @@ canonical scenario.
     channels; actor rules (reusing the table evaluator, optionally sampling field
     channels and consuming proximity-query results) and fixed-offset movements.
   - **Proximity queries** — declared exact sparse-neighbor queries over actors
-    (metric, radius / k-nearest, self policy, stable ordering), evaluated on the
-    CPU with no spatial index.
+    (metric, radius / k-nearest, self policy, stable ordering), evaluated by the
+    exact CPU scan by default. Bounded-radius queries also have an opt-in exact
+    uniform-grid index path; `KNearest` remains scan-only until an exact
+    expanding-ring strategy exists.
   - **Scale links & projections** — explicit cross-scale relationships with an
     authority policy; a projection carries an aggregate value up a region→table
     link to a target signal (report-only, with drift), and the optional projection
@@ -65,7 +67,8 @@ canonical scenario.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
   transfer notes, proximity-index eligibility, and graph-kernel eligibility) and
-  `conflux-trace` (optional, off the execution path).
+  `conflux-trace` (optional, off the execution path). The proximity-index
+  eligibility report now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
   and `conflux-wgsl` (WGSL emission; `wgpu` behind the `gpu` feature).
 
@@ -143,11 +146,11 @@ governed by `docs/RELEASE_CHECKLIST.md`.
 
 The reference-grade core is complete and frozen at `alpha-0`, and the first
 optimized execution track — flows and actor-rule execution (#192) — has landed. The
-current evidence-driven next slice is **exact proximity-query indexing for
-bounded-radius actor queries** (#217), recorded in
-`docs/POST_ALPHA_OPTIMIZATION_TARGET.md`.
+current post-Alpha slice is **exact proximity-query indexing for bounded-radius
+actor queries** (#217), recorded in `docs/POST_ALPHA_OPTIMIZATION_TARGET.md`: the
+exact CPU scan remains the source of truth and default, while eligible radius
+queries can opt into a uniform-grid index with explicit fallback/refusal reporting.
 
-That slice must keep the exact CPU scan as the source of truth, stay opt-in, and
-explain indexed execution or fallback for every query. Aggregates remain a later
-reference-only optimization candidate. Graph-rule kernels remain advisory only under
-the current hard boundary unless that boundary is explicitly reopened.
+Aggregates remain a later reference-only optimization candidate. Graph-rule kernels
+remain advisory only under the current hard boundary unless that boundary is
+explicitly reopened.

@@ -4,7 +4,10 @@ use conflux_core::{
     col, lower, ActorMovement, ActorRule, ActorSet, EdgePolicy, Field, Grid2, Model,
     ProximityQuery, QueryMetric,
 };
-use conflux_runtime::Simulation;
+use conflux_runtime::{
+    ActorRuleBlockedReason, ExecutionMode, QueryExecutionMode, QueryExecutionPath,
+    QueryFallbackReason, QueryIndexRejectionReason, Simulation,
+};
 
 /// A 3x1 `Terrain` hosting a 3-actor `Herd` in a row at (0,0),(1,0),(2,0), with a
 /// same-set "near" query (Chebyshev within 1, self excluded) declared.
@@ -148,6 +151,123 @@ fn report_records_query_input_provenance() {
     let text = report.to_string();
     assert!(text.contains("consumes n ="));
     assert!(text.contains("near"));
+}
+
+#[test]
+fn actor_rule_consumes_indexed_query_results_when_opted_in() {
+    let mut model = herd_model();
+    model.add_actor_rule(
+        ActorRule::new("crowd")
+            .on_actors("Herd")
+            .query_count("n", "near")
+            .propose("energy", col("n")),
+    );
+    let mut sim = Simulation::with_modes(
+        lower(&model).unwrap(),
+        ExecutionMode::ReferenceOnly,
+        QueryExecutionMode::PreferIndex,
+    );
+    let step = sim.step();
+    let rule = &step.actor_rules[0];
+
+    assert_eq!(
+        sim.actor_channel("Herd", "energy"),
+        Some(&[1.0, 2.0, 1.0][..])
+    );
+    assert_eq!(
+        rule.query_inputs[0].query_used_path,
+        Some(QueryExecutionPath::UniformGridIndex)
+    );
+    assert_eq!(rule.query_inputs[0].query_fallback_reason, None);
+    assert_eq!(rule.blocked_reason, None);
+}
+
+#[test]
+fn actor_rule_is_refused_when_required_query_index_is_unavailable() {
+    let mut model = herd_model();
+    model.add_proximity_query(
+        ProximityQuery::new("nearest")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .k_nearest(1)
+            .exclude_self(),
+    );
+    model.add_actor_rule(
+        ActorRule::new("nearest_energy")
+            .on_actors("Herd")
+            .query_count("n", "nearest")
+            .propose("energy", col("n")),
+    );
+
+    let mut sim = Simulation::with_modes(
+        lower(&model).unwrap(),
+        ExecutionMode::ReferenceOnly,
+        QueryExecutionMode::RequireIndex,
+    );
+    let step = sim.step();
+    let rule = &step.actor_rules[0];
+
+    assert_eq!(rule.used_path, None);
+    assert!(rule.actors.is_empty());
+    assert_eq!(
+        sim.actor_channel("Herd", "energy"),
+        Some(&[0.0, 0.0, 0.0][..])
+    );
+    assert!(matches!(
+        &rule.blocked_reason,
+        Some(ActorRuleBlockedReason::RequiredQueryIndexUnavailable {
+            query,
+            reason: QueryIndexRejectionReason::KNearestRequiresExpandingRing { k: 1 },
+        }) if query == "nearest"
+    ));
+}
+
+#[test]
+fn actor_rule_consumes_scan_fallback_for_k_nearest_under_prefer_index() {
+    let mut model = herd_model();
+    model.add_proximity_query(
+        ProximityQuery::new("nearest")
+            .from_actors("Herd")
+            .to_actors("Herd")
+            .k_nearest(1)
+            .exclude_self(),
+    );
+    model.add_actor_rule(
+        ActorRule::new("nearest_energy")
+            .on_actors("Herd")
+            .query_count("n", "nearest")
+            .propose("energy", col("n")),
+    );
+
+    let mut sim = Simulation::with_modes(
+        lower(&model).unwrap(),
+        ExecutionMode::ReferenceOnly,
+        QueryExecutionMode::PreferIndex,
+    );
+    let step = sim.step();
+    let rule = &step.actor_rules[0];
+
+    assert_eq!(
+        rule.used_path,
+        Some(conflux_runtime::ExecutionPath::Reference)
+    );
+    assert_eq!(
+        sim.actor_channel("Herd", "energy"),
+        Some(&[1.0, 1.0, 1.0][..])
+    );
+    assert_eq!(
+        rule.query_inputs[0].query_used_path,
+        Some(QueryExecutionPath::Reference)
+    );
+    assert_eq!(
+        rule.query_inputs[0].query_fallback_reason,
+        Some(QueryFallbackReason::NotIndexEligible)
+    );
+    assert_eq!(
+        rule.query_inputs[0].query_index_rejection,
+        Some(QueryIndexRejectionReason::KNearestRequiresExpandingRing { k: 1 })
+    );
+    assert_eq!(rule.blocked_reason, None);
 }
 
 #[test]

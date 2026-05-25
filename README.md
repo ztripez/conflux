@@ -83,7 +83,9 @@ tagged `alpha-0`: it freezes the reference-grade CPU semantics, proves the publi
 API with the `regional_settlement_ecology` scenario, and records the first
 optimization target from evidence. Since that checkpoint, the first optimized
 execution track (#192) added opt-in CPU paths for field-local **flows** and eligible
-**actor rules**, with visible fallback/equivalence reporting.
+**actor rules**, with visible fallback/equivalence reporting, and the post-Alpha
+query slice (#217) added an opt-in exact uniform-grid index path for bounded-radius
+**proximity queries**.
 
 The current implemented domains include 2D **fields** (local-kernel rules +
 field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**,
@@ -91,9 +93,9 @@ field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**
 **units & dimensions**, an explicit **graph** domain (topology, node/edge channels,
 and bounded-adjacency graph rules), and report-only **events** materialized from
 graph rules. For a concise snapshot of what is true now and the invariants you can
-rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). The current next
-optimization slice is exact bounded-radius proximity-query indexing (#217),
-recorded in
+rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). The current
+optimization decision record is exact bounded-radius proximity-query indexing
+(#217), recorded in
 [`docs/POST_ALPHA_OPTIMIZATION_TARGET.md`](docs/POST_ALPHA_OPTIMIZATION_TARGET.md).
 For which APIs are stable enough to build on versus experimental, see
 [`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview tag

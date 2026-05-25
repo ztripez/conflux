@@ -39,14 +39,12 @@ cargo run -p conflux-fixtures --example ecology_baseline
 `ecology_baseline` is a **stable, repeatable** report on the
 `regional_settlement_ecology` real scenario: domain sizes, rule/writer counts,
 per-tick report counts, a coarse per-domain work proxy (`items × elements`, no
-timings), the likely bottleneck domains, and — since epic #192 added the first
-optimized execution track — the flow and actor-rule optimization availability
-plus the selected-execution path each rule takes under `PreferCpuKernel`
-(optimized / reference / fallback). It distinguishes reference-only, eligible,
-optimized, and fallback cases; flows and actor rules (the #184 target) now show as
-eligible/optimized rather than the Alpha 0 reference-only. Measurement/visibility
-only and diffable across PRs; it changes no execution semantics (the default run
-is reference-only, optimized paths are opt-in and equivalence-checked).
+timings), the likely bottleneck domains, and optimization availability for flows,
+actor rules, and bounded-radius proximity queries. It prints selected execution
+under `PreferCpuKernel + PreferIndex`, distinguishing optimized, reference,
+fallback, and refused paths. Measurement/visibility only and diffable across PRs;
+it changes no execution semantics (the default run is reference-only, optimized
+paths are opt-in and equivalence/contract-checked).
 
 ## Scenarios
 

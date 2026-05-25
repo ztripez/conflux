@@ -40,13 +40,17 @@ pub use flow_equivalence::{
 pub use plan::ExecutionPlan;
 pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
-    ActorRuleFireReport, AggregateReport, AssessmentOutcome, AssessmentSummary, BridgeReport,
-    ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, FlowDestination, FlowFireReport,
-    FlowSummary, FlowTransfer, GraphEventInstance, GraphEventPayloadValue, GraphEventReport,
-    GraphNodeOutcome, GraphRuleFireReport, ProjectionBridgeReport, ProjectionReport, QueryNeighbor,
+    ActorRuleBlockedReason, ActorRuleFireReport, AggregateReport, AssessmentOutcome,
+    AssessmentSummary, BridgeReport, ComparisonStatus, FieldCellOutcome, FieldRuleFireReport,
+    FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, GraphEventInstance,
+    GraphEventPayloadValue, GraphEventReport, GraphNodeOutcome, GraphRuleFireReport,
+    ProjectionBridgeReport, ProjectionReport, QueryIndexRejectionReason, QueryNeighbor,
     QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
 };
-pub use selection::{ExecutionMode, ExecutionPath, FallbackReason};
+pub use selection::{
+    ExecutionMode, ExecutionPath, FallbackReason, QueryExecutionMode, QueryExecutionPath,
+    QueryFallbackReason,
+};
 
 // Re-export the aggregate operation so consumers can match on `AggregateReport`.
 pub use conflux_ir::AggregateOp;

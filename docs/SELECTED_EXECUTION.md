@@ -1,11 +1,12 @@
 # Reading the selected-execution report
 
-How to read which path each rule ran on, and why, when a model mixes the CPU
-reference path with the optional CPU-kernel path. Selected execution never hides a
-fallback and never redefines reference semantics: the reference (f64) is the
-source of truth, the kernel path (f32) is opt-in, and a kernel's equivalence is
-established by the equivalence harness within a declared tolerance — not recomputed
-each tick.
+How to read which path each rule or query ran on, and why, when a model mixes the
+CPU reference path with optional optimized paths. Selected execution never hides a
+fallback and never redefines reference semantics: the rule reference path (f64) and
+the exact proximity-query scan are the sources of truth. Numeric kernel paths (f32)
+are opt-in and validated by equivalence harnesses within declared tolerance; query
+indexes are exact and validated against the scan's neighbor sets, distances, self
+policy, and ordering.
 
 ## Execution modes
 
@@ -19,6 +20,19 @@ each tick.
 - **`RequireCpuKernel`** — kernel-eligible rules run on the kernel; an ineligible
   rule is **refused** (not silently run on the reference), so nothing is computed
   for it that tick.
+
+Proximity-query indexing is an independent opt-in. Use
+`Simulation::with_query_mode(ir, query_mode)` for query-only selection or
+`Simulation::with_modes(ir, mode, query_mode)` to combine rule kernels and query
+indexes:
+
+- **`QueryExecutionMode::ReferenceOnly`** (default) — every query uses the exact CPU
+  scan.
+- **`QueryExecutionMode::PreferIndex`** — index-eligible bounded-radius queries use
+  the exact uniform-grid index; ineligible queries fall back to the exact scan with a
+  typed reason.
+- **`QueryExecutionMode::RequireIndex`** — index-eligible queries use the index; an
+  ineligible query is refused instead of silently scanning.
 
 ## Per-rule fields (`RuleFireReport`)
 
@@ -80,3 +94,24 @@ let ok = check_equivalence(&ir, Tolerance::default()).all_within_tolerance();
 The harness runs each rule on both the reference (f64) and the kernel (f32) and
 compares per-row proposals within tolerance — never bit-for-bit. A rule that the
 harness cannot match is reported as a divergence, never silently accepted.
+
+## Per-query fields (`QueryReport`)
+
+Each query report carries:
+
+- `requested_mode` — the query mode requested.
+- `eligible_path` — `UniformGridIndex` when the requested mode found an eligible
+  bounded-radius query, otherwise `Reference`.
+- `selected_path` — the path policy chose given requested mode and eligibility.
+- `used_path` — the path actually evaluated; `None` means a required index was
+  unavailable, so no sources were evaluated.
+- `fallback_reason` — `NotIndexEligible` for prefer-mode scan fallback or
+  `RequiredIndexUnavailable` for require-mode refusal.
+- `index_rejection` — the typed reason there is no index path, e.g.
+  `KNearestRequiresExpandingRing`.
+
+The report's `exact` field is `true` for both evaluated paths — the scan and the
+uniform-grid index — because the index only prunes candidates before applying the
+same exact distance, self-policy, and stable ordering checks. A refused query has
+`used_path: None`, no source results, and `exact: false` because no exact result was
+evaluated.
