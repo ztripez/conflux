@@ -9,7 +9,8 @@
 
 use std::collections::HashMap;
 
-use conflux_ir::{ActorSetIr, QueryInput, SimIr};
+use conflux_ir::{ActorRuleIr, ActorSetIr, QueryInput, SimIr};
+use conflux_kernel::{execute_actor_rule, ActorKernel, ActorRejectionReason};
 
 use crate::eval::{eval, EvalCtx};
 use crate::exec::assess;
@@ -17,8 +18,9 @@ use crate::field_exec::resolve_neighbor;
 use crate::query_exec::evaluate_queries;
 use crate::report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
-    ActorRuleFireReport,
+    ActorRuleFireReport, QueryReport,
 };
+use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
 
 /// Materializes per-actor channel buffers, indexed `[set][channel][actor]`, from
 /// each actor set's declared initial values.
@@ -90,10 +92,17 @@ pub(crate) fn step_actor_movements(
 }
 
 /// Steps every actor rule firing on `tick`, committing accepted proposals into
-/// `actor_data` and returning a per-actor report.
+/// `actor_data` and returning a per-actor report. Each rule runs on the reference
+/// path, or — under a kernel-requesting `mode` — on the optimized actor kernel when
+/// eligible, with an explicit fallback/refusal otherwise (always reported). The
+/// reference path (f64) stays the source of truth; equivalence is the gate.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn step_actor_rules(
     ir: &SimIr,
     tick: u64,
+    mode: ExecutionMode,
+    actor_kernels: &HashMap<String, ActorKernel>,
+    actor_rejections: &HashMap<String, ActorRejectionReason>,
     actor_data: &mut [Vec<Vec<f64>>],
     field_data: &[Vec<Vec<f64>>],
     actor_positions: &[Vec<usize>],
@@ -110,9 +119,7 @@ pub(crate) fn step_actor_rules(
     let snapshot = actor_data.to_vec();
 
     // Proximity-query inputs are evaluated once, on the same pre-movement actor
-    // positions every rule reads. Movement runs in a later phase, so a rule always
-    // observes neighbor relationships as they were at the start of this tick — not
-    // after this tick's movement. Skipped entirely when no rule consumes a query.
+    // positions every rule reads. Skipped entirely when no rule consumes a query.
     let query_reports = if ir.actor_rules.iter().any(|r| !r.query_inputs.is_empty()) {
         evaluate_queries(ir, actor_positions)
     } else {
@@ -130,46 +137,12 @@ pub(crate) fn step_actor_rules(
         let target = rule.target;
         let dt = rule.cadence.period as f64;
 
-        // The expression reads actor channels plus any sampled host-field channels.
-        // Build a combined column set per rule: actor channels first, then one
-        // column per sample whose value at actor `a` is the host-field channel at
-        // that actor's current cell.
-        let mut names = channel_map(set);
-        let mut columns = snapshot[s].clone();
-        for &sample in &rule.samples {
-            let host_channel = &ir.fields[set.field].channels[sample];
-            let column: Vec<f64> = (0..set.count)
-                .map(|a| field_data[set.field][sample][actor_positions[s][a]])
-                .collect();
-            names.insert(host_channel.name.as_str(), columns.len());
-            columns.push(column);
-        }
+        // Provenance (describes the rule, independent of the path it runs on).
         let sampled: Vec<String> = rule
             .samples
             .iter()
             .map(|&c| ir.fields[set.field].channels[c].name.clone())
             .collect();
-
-        // Each query input becomes one readable column: the per-actor scalar
-        // reduction of that query's result for the actor as its own source. The
-        // query's source set is this rule's set (validated at lowering), so result
-        // `a` is actor `a`.
-        for input in &rule.query_inputs {
-            let report = &query_reports[input.query];
-            let column: Vec<f64> = (0..set.count)
-                .map(|a| {
-                    let neighbors = &report.sources[a].neighbors;
-                    match input.input {
-                        QueryInput::Count => neighbors.len() as f64,
-                        QueryInput::NearestDistance => {
-                            neighbors.first().map_or(f64::INFINITY, |n| n.distance)
-                        }
-                    }
-                })
-                .collect();
-            names.insert(input.binding.as_str(), columns.len());
-            columns.push(column);
-        }
         let query_inputs: Vec<ActorQueryInputBinding> = rule
             .query_inputs
             .iter()
@@ -180,16 +153,49 @@ pub(crate) fn step_actor_rules(
             })
             .collect();
 
-        let mut outcomes = Vec::with_capacity(set.count);
-        for actor in 0..set.count {
-            let ctx = EvalCtx {
-                columns_by_name: &names,
-                columns: &columns,
+        // Resolve the execution path from the requested mode and kernel eligibility.
+        let kernel = if mode.requests_kernel() {
+            actor_kernels.get(&rule.name)
+        } else {
+            None
+        };
+        let (_selected, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
+        let kernel_rejection = if mode.requests_kernel() && kernel.is_none() {
+            actor_rejections.get(&rule.name).cloned()
+        } else {
+            None
+        };
+
+        // Per-actor proposals: the reference evaluator (f64), the optimized actor
+        // kernel (f32), or none when a required kernel was unavailable (refused).
+        let proposals: Vec<f64> = match used_path {
+            None => Vec::new(),
+            Some(ExecutionPath::Reference) => reference_actor_proposals(
+                rule,
+                ir,
+                &snapshot[s],
+                field_data,
+                &actor_positions[s],
+                &query_reports,
                 params,
-                dt,
-                row: actor,
-            };
-            let proposed = eval(&rule.expr, &ctx);
+            ),
+            Some(ExecutionPath::CpuKernel) => {
+                let kernel = kernel.expect("kernel path selected only when a kernel exists");
+                execute_actor_rule(
+                    kernel,
+                    &snapshot[s],
+                    &field_data[set.field],
+                    &actor_positions[s],
+                )
+                .into_iter()
+                .map(|p| p as f64)
+                .collect()
+            }
+        };
+
+        // Assess and commit identically regardless of path.
+        let mut outcomes = Vec::with_capacity(proposals.len());
+        for (actor, &proposed) in proposals.iter().enumerate() {
             let old = snapshot[s][target][actor];
             let assessments = assess(&rule.assessments, old, proposed);
             let committed = assessments.iter().all(|a| a.passed);
@@ -213,9 +219,71 @@ pub(crate) fn step_actor_rules(
             sampled,
             query_inputs,
             actors: outcomes,
+            used_path,
+            fallback_reason,
+            kernel_rejection,
         });
     }
     reports
+}
+
+/// Computes one actor rule's per-actor proposals on the reference path (f64) from a
+/// frozen actor snapshot, the field state (for samples), and the pre-evaluated query
+/// reports. Shared by `step_actor_rules` and the equivalence harness, so the harness
+/// reference and the runtime reference cannot diverge.
+pub(crate) fn reference_actor_proposals(
+    rule: &ActorRuleIr,
+    ir: &SimIr,
+    actor_snapshot: &[Vec<f64>],
+    field_data: &[Vec<Vec<f64>>],
+    positions: &[usize],
+    query_reports: &[QueryReport],
+    params: &HashMap<&str, f64>,
+) -> Vec<f64> {
+    let set = &ir.actors[rule.actor_set];
+    let dt = rule.cadence.period as f64;
+
+    // The expression reads actor channels plus sampled host-field channels and any
+    // query bindings: actor channels first, then one column per sample, then queries.
+    let mut names = channel_map(set);
+    let mut columns = actor_snapshot.to_vec();
+    for &sample in &rule.samples {
+        let host_channel = &ir.fields[set.field].channels[sample];
+        let column: Vec<f64> = (0..set.count)
+            .map(|a| field_data[set.field][sample][positions[a]])
+            .collect();
+        names.insert(host_channel.name.as_str(), columns.len());
+        columns.push(column);
+    }
+    for input in &rule.query_inputs {
+        let report = &query_reports[input.query];
+        let column: Vec<f64> = (0..set.count)
+            .map(|a| {
+                let neighbors = &report.sources[a].neighbors;
+                match input.input {
+                    QueryInput::Count => neighbors.len() as f64,
+                    QueryInput::NearestDistance => {
+                        neighbors.first().map_or(f64::INFINITY, |n| n.distance)
+                    }
+                }
+            })
+            .collect();
+        names.insert(input.binding.as_str(), columns.len());
+        columns.push(column);
+    }
+
+    (0..set.count)
+        .map(|actor| {
+            let ctx = EvalCtx {
+                columns_by_name: &names,
+                columns: &columns,
+                params,
+                dt,
+                row: actor,
+            };
+            eval(&rule.expr, &ctx)
+        })
+        .collect()
 }
 
 fn channel_map(set: &ActorSetIr) -> HashMap<&str, usize> {

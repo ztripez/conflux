@@ -9,7 +9,7 @@ use conflux_ir::{
     AggregateOp, Assessment, Authority, ConservationPolicy, QueryInput, QueryLimit, QueryMetric,
     QueryOrdering, SelfPolicy,
 };
-use conflux_kernel::{FlowRejectionReason, RejectionReason};
+use conflux_kernel::{ActorRejectionReason, FlowRejectionReason, RejectionReason};
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
@@ -142,6 +142,36 @@ pub struct ActorRuleFireReport {
     /// reduction each binding came from.
     pub query_inputs: Vec<ActorQueryInputBinding>,
     pub actors: Vec<ActorOutcome>,
+    /// The path this rule ran on: `Reference` (default, source of truth),
+    /// `CpuKernel` (opt-in optimized path), or `None` when a required kernel was
+    /// unavailable and the rule was refused (no actors evaluated this tick).
+    pub used_path: Option<ExecutionPath>,
+    /// Why the rule did not run on the requested optimized path, if applicable.
+    pub fallback_reason: Option<FallbackReason>,
+    /// The specific, typed reason the rule has no kernel, when an optimized path was
+    /// requested but unavailable. `None` when a kernel ran or the mode requested none.
+    pub kernel_rejection: Option<ActorRejectionReason>,
+}
+
+impl ActorRuleFireReport {
+    /// A short Display suffix describing the execution path and — for a fallback or
+    /// refusal — the specific, typed reason. Empty for a plain reference run.
+    fn execution_note(&self) -> String {
+        let why = || match &self.kernel_rejection {
+            Some(reason) => reason.to_string(),
+            None => "not actor-kernel-eligible".to_string(),
+        };
+        match (self.used_path, self.fallback_reason) {
+            (Some(ExecutionPath::CpuKernel), _) => " [actor-kernel]".to_string(),
+            (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
+                format!(" [fell back to reference: {}]", why())
+            }
+            (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
+                format!(" [REFUSED: required kernel unavailable — {}]", why())
+            }
+            _ => String::new(),
+        }
+    }
 }
 
 /// One proximity-query value an actor rule consumed: the local binding name, the
@@ -688,8 +718,12 @@ impl fmt::Display for Report {
             for rule in &step.actor_rules {
                 writeln!(
                     f,
-                    "  actor rule `{}` -> {}.{} (dt = {})",
-                    rule.rule, rule.actor_set, rule.target_channel, rule.dt
+                    "  actor rule `{}` -> {}.{} (dt = {}){}",
+                    rule.rule,
+                    rule.actor_set,
+                    rule.target_channel,
+                    rule.dt,
+                    rule.execution_note()
                 )?;
                 for input in &rule.query_inputs {
                     writeln!(

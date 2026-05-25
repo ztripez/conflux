@@ -3,8 +3,9 @@
 //! agent-written code have stable, named scenarios to check against.
 
 use conflux_core::{
-    cell, col, field_lit, lower, neighbor, Authority, EdgePolicy, Field, Flow, Grid2, LowerError,
-    Model, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy, TopologyKind,
+    cell, col, field_lit, lit, lower, neighbor, ActorRule, ActorSet, Authority, EdgePolicy, Field,
+    Flow, Grid2, LowerError, Model, QueryLimit, QueryMetric, QueryOrdering, Rule, SelfPolicy,
+    TopologyKind,
 };
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
@@ -12,9 +13,9 @@ use conflux_planner::{plan, transfer_advisory, BackendChoice};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{
-    check_equivalence, check_flow_equivalence, AggregateOp, ComparisonStatus, ExecutionMode,
-    ExecutionPath, FallbackReason, FlowDestination, FlowPathOutcome, FlowRejectionReason,
-    Simulation, Tolerance,
+    check_actor_equivalence, check_equivalence, check_flow_equivalence, ActorPathOutcome,
+    ActorRejectionReason, AggregateOp, ComparisonStatus, ExecutionMode, ExecutionPath,
+    FallbackReason, FlowDestination, FlowPathOutcome, FlowRejectionReason, Simulation, Tolerance,
 };
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
@@ -574,6 +575,135 @@ fn herd_grazing_grazes_the_field_and_drifts_east() {
     assert_eq!(sim.actor_positions("Herd"), Some(&[1, 2][..]));
     assert_eq!(step.actor_movements[0].moves.len(), 2);
     assert!(step.actor_movements[0].moves.iter().all(|m| !m.rejected));
+}
+
+#[test]
+fn herd_grazing_actor_rule_optimized_path_matches_reference() {
+    let ir = lower(&herd_grazing()).unwrap();
+
+    // The actor equivalence harness: `graze` (samples grass, no query/param) is a
+    // kernel match.
+    let equivalence = check_actor_equivalence(&ir, Tolerance::default());
+    assert!(equivalence.all_within_tolerance());
+    let graze = equivalence
+        .rules
+        .iter()
+        .find(|r| r.rule == "graze")
+        .unwrap();
+    assert!(matches!(graze.outcome, ActorPathOutcome::Kernel(_)));
+
+    // Default mode is reference-only.
+    let mut reference = Simulation::new(ir.clone());
+    let ref_step = reference.step();
+    assert_eq!(
+        ref_step.actor_rules[0].used_path,
+        Some(ExecutionPath::Reference)
+    );
+    assert_eq!(ref_step.actor_rules[0].fallback_reason, None);
+
+    // PreferCpuKernel runs `graze` on the optimized path, and energy matches the
+    // reference (sampled grass [5,10] added to [0,0] is f32-exact).
+    let mut prefer = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let prefer_step = prefer.step();
+    let graze_fire = prefer_step
+        .actor_rules
+        .iter()
+        .find(|r| r.rule == "graze")
+        .unwrap();
+    assert_eq!(graze_fire.used_path, Some(ExecutionPath::CpuKernel));
+    assert_eq!(graze_fire.kernel_rejection, None);
+    assert_eq!(
+        reference.actor_channel("Herd", "energy"),
+        prefer.actor_channel("Herd", "energy")
+    );
+}
+
+#[test]
+fn an_actor_kernel_within_tolerance_need_not_be_bit_exact() {
+    // energy = energy * 0.1 (no samples): f32 `0.1` differs from f64 `0.1`, so the
+    // kernel proposal is within tolerance but not bit-exact — exercising the
+    // tolerance branch (and an eligible rule with no field samples).
+    let mut terrain = Field::new("Terrain", Grid2::new(1, 1));
+    terrain.stock("grass", vec![0.0]);
+    let herd = ActorSet::new("Herd", 1)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0)])
+        .stock("energy", vec![1.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("decay")
+            .on_actors("Herd")
+            .propose("energy", col("energy") * lit(0.1)),
+    );
+    let ir = lower(&model).unwrap();
+
+    let equivalence = check_actor_equivalence(&ir, Tolerance::default());
+    match &equivalence.rules[0].outcome {
+        ActorPathOutcome::Kernel(c) => {
+            assert!(c.within_tolerance);
+            assert!(c.max_abs_diff > 0.0, "f32 should differ from f64 here");
+        }
+        other => panic!("expected kernel match, got {other:?}"),
+    }
+}
+
+#[test]
+fn regional_ecology_actor_rules_mix_optimized_and_fallback_in_one_step() {
+    // The real scenario has both an eligible sampling rule (graze) and a
+    // query-consuming rule (alert); under PreferCpuKernel one step report shows both
+    // path choices.
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let mut prefer = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let step = prefer.step();
+
+    let graze = step.actor_rules.iter().find(|r| r.rule == "graze").unwrap();
+    assert_eq!(graze.used_path, Some(ExecutionPath::CpuKernel));
+    let alert = step.actor_rules.iter().find(|r| r.rule == "alert").unwrap();
+    assert_eq!(alert.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        alert.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
+    );
+}
+
+#[test]
+fn a_query_consuming_actor_rule_falls_back_or_is_refused() {
+    // herd_proximity's `alert` consumes a proximity query, so it is not actor-kernel
+    // eligible.
+    let ir = lower(&herd_proximity()).unwrap();
+
+    let equivalence = check_actor_equivalence(&ir, Tolerance::default());
+    match &equivalence.rules[0].outcome {
+        ActorPathOutcome::Fallback { reason } => assert!(reason.contains("query"), "{reason}"),
+        other => panic!("expected fallback, got {other:?}"),
+    }
+
+    // PreferCpuKernel: falls back to the reference (which runs the query) with the
+    // typed reason; the rule still proposes per actor on the reference path.
+    let mut prefer = Simulation::with_mode(ir.clone(), ExecutionMode::PreferCpuKernel);
+    let alert = prefer.step().actor_rules.into_iter().next().unwrap();
+    assert_eq!(alert.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        alert.fallback_reason,
+        Some(FallbackReason::NotKernelEligible)
+    );
+    assert!(matches!(
+        alert.kernel_rejection,
+        Some(ActorRejectionReason::ConsumesQuery { .. })
+    ));
+    assert!(!alert.actors.is_empty());
+
+    // RequireCpuKernel: refused — no actors evaluated this tick.
+    let mut require = Simulation::with_mode(ir, ExecutionMode::RequireCpuKernel);
+    let alert = require.step().actor_rules.into_iter().next().unwrap();
+    assert_eq!(alert.used_path, None);
+    assert_eq!(
+        alert.fallback_reason,
+        Some(FallbackReason::RequiredKernelUnavailable)
+    );
+    assert!(alert.actors.is_empty());
 }
 
 #[test]

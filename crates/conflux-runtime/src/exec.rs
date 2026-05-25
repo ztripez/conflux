@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use conflux_ir::{Assessment, SimIr, TableIr, ValueKind};
 use conflux_kernel::{
-    execute_elementwise, extract, extract_flows, FlowKernel, FlowRejectionReason, Kernel,
-    RejectionReason,
+    execute_elementwise, extract, extract_actor_rules, extract_flows, ActorKernel,
+    ActorRejectionReason, FlowKernel, FlowRejectionReason, Kernel, RejectionReason,
 };
 
 use crate::actor_exec;
@@ -60,6 +60,12 @@ pub struct Simulation {
     /// Why each kernel-ineligible flow was rejected, by flow name. Empty unless
     /// `mode` requests the kernel path.
     flow_rejections: HashMap<String, FlowRejectionReason>,
+    /// Accepted actor-rule kernels by rule name, used to run the optimized actor
+    /// path. Empty unless `mode` requests the kernel path.
+    actor_kernels: HashMap<String, ActorKernel>,
+    /// Why each kernel-ineligible actor rule was rejected, by rule name. Empty
+    /// unless `mode` requests the kernel path.
+    actor_rejections: HashMap<String, ActorRejectionReason>,
 }
 
 impl Simulation {
@@ -131,6 +137,24 @@ impl Simulation {
             (HashMap::new(), HashMap::new())
         };
 
+        // Actor-rule kernels: same up-front extraction, empty under reference-only.
+        let (actor_kernels, actor_rejections) = if mode.requests_kernel() {
+            let report = extract_actor_rules(&ir);
+            let kernels = report
+                .accepted
+                .into_iter()
+                .map(|k| (k.name.clone(), k))
+                .collect();
+            let rejections = report
+                .rejected
+                .into_iter()
+                .map(|r| (r.rule, r.reason))
+                .collect();
+            (kernels, rejections)
+        } else {
+            (HashMap::new(), HashMap::new())
+        };
+
         Simulation {
             ir,
             plan,
@@ -146,6 +170,8 @@ impl Simulation {
             kernel_rejections,
             flow_kernels,
             flow_rejections,
+            actor_kernels,
+            actor_rejections,
         }
     }
 
@@ -406,6 +432,9 @@ impl Simulation {
         let actor_rules = actor_exec::step_actor_rules(
             ir,
             tick,
+            self.mode,
+            &self.actor_kernels,
+            &self.actor_rejections,
             &mut self.actor_data,
             &self.field_data,
             &self.actor_positions,
