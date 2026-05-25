@@ -1,23 +1,29 @@
-//! Baseline measurement for the `regional_settlement_ecology` real scenario.
+//! Baseline + optimization-availability report for the `regional_settlement_ecology`
+//! real scenario.
 //!
 //! Run with: `cargo run -p conflux-fixtures --example ecology_baseline`
 //!
-//! Prints a **stable, repeatable** measurement of the scenario before any
-//! optimization work (Alpha 0, epic #179): domain sizes, rule/writer counts,
-//! per-tick report counts, a coarse per-domain work proxy, and the likely
-//! bottleneck domains ranked by that proxy and annotated with whether an optimized
-//! execution path exists today.
+//! Prints a **stable, repeatable** view of the scenario: domain sizes, rule/writer
+//! counts, per-tick report counts, a coarse per-domain work proxy with each domain's
+//! execution-path status, the likely bottleneck domains, and — since epic #192 added
+//! the first optimized execution track — the flow and actor-rule optimization
+//! availability plus the selected-execution path each rule takes under
+//! `PreferCpuKernel`.
 //!
-//! It is **measurement only** — it changes no execution semantics and reports **no
-//! timings** (so the output is diffable across PRs). The work proxy is a static
-//! element-evaluation count per tick (`items x elements`), not a benchmark; it
-//! exists to inform the first optimization-target decision (#184), where scaling
-//! and optimization payoff are weighed alongside it.
+//! **What changed since Alpha 0:** at the Alpha 0 baseline (#183) flows and actor
+//! rules were *reference-only* and were chosen as the first optimization target
+//! (#184). Epic #192 added their opt-in optimized CPU paths (flow #201/#202, actor
+//! #204/#205), so this report now shows them as eligible/optimized rather than
+//! reference-only.
+//!
+//! It is **measurement/visibility only** — no timings (the output is diffable across
+//! PRs), and it changes no execution semantics: the default run is reference-only,
+//! and the optimized paths shown are opt-in and equivalence-checked.
 
 use conflux_core::lower;
 use conflux_fixtures::regional_settlement_ecology;
-use conflux_kernel::{extract, extract_fields};
-use conflux_runtime::Simulation;
+use conflux_kernel::{extract, extract_actor_rules, extract_fields, extract_flows};
+use conflux_runtime::{ExecutionMode, ExecutionPath, Simulation};
 
 fn main() {
     let ir = lower(&regional_settlement_ecology()).expect("scenario lowers");
@@ -104,11 +110,11 @@ fn main() {
 
     // --- Coarse per-domain work + execution path -------------------------------
     // Work proxy = per-element evaluations the reference executor does per tick
-    // (`items x elements`). Path: where an optimized backend exists today
-    // (table/field elementwise/stencil kernels are opt-in; everything else is
-    // reference-only).
-    // Table and field kernels are extracted by separate passes; classify each
-    // domain's rules against its own kernel report.
+    // (`items x elements`). Path: which domains have an opt-in optimized CPU kernel
+    // today — table/field (elementwise/stencil) and, since epic #192, flows and
+    // actor rules; aggregates, proximity queries, graph rules, and graph events
+    // remain reference-only. Each domain's rules are classified against its own
+    // kernel-extraction report.
     let table_kernels = extract(&ir);
     let table_kernel_names: Vec<&str> = table_kernels
         .accepted
@@ -131,23 +137,45 @@ fn main() {
         .iter()
         .filter(|r| field_kernel_names.contains(&r.name.as_str()))
         .count();
+    // Flow and actor-rule kernels (added in epic #192) are extracted by their own
+    // passes, just like table/field.
+    let flow_kernels = extract_flows(&ir);
+    let flow_kernel_names: Vec<&str> = flow_kernels
+        .accepted
+        .iter()
+        .map(|k| k.name.as_str())
+        .collect();
+    let flow_kernel = ir
+        .flows
+        .iter()
+        .filter(|f| flow_kernel_names.contains(&f.name.as_str()))
+        .count();
+    let actor_kernels = extract_actor_rules(&ir);
+    let actor_kernel_names: Vec<&str> = actor_kernels
+        .accepted
+        .iter()
+        .map(|k| k.name.as_str())
+        .collect();
+    let actor_kernel = ir
+        .actor_rules
+        .iter()
+        .filter(|r| actor_kernel_names.contains(&r.name.as_str()))
+        .count();
     let table_path = kernel_path(table_kernel, ir.rules.len());
     let field_path = kernel_path(field_kernel, ir.field_rules.len());
+    let flow_path = kernel_path(flow_kernel, ir.flows.len());
+    let actor_path = kernel_path(actor_kernel, ir.actor_rules.len());
 
     let mut work: Vec<(&str, usize, &str)> = vec![
         ("table rules", ir.rules.len() * rows, table_path),
         ("field rules", ir.field_rules.len() * cells, field_path),
-        ("flows", ir.flows.len() * cells, "reference only"),
+        ("flows", ir.flows.len() * cells, flow_path),
         (
             "aggregates",
             aggregate_cells,
             "reference only (report projection)",
         ),
-        (
-            "actor rules",
-            ir.actor_rules.len() * actors,
-            "reference only",
-        ),
+        ("actor rules", ir.actor_rules.len() * actors, actor_path),
         (
             "proximity queries",
             ir.queries.len() * actors * actors,
@@ -185,12 +213,57 @@ fn main() {
         };
         println!("  {}. {domain:<18} {evals:>4} evals   [{flag}]", i + 1);
     }
+
+    // --- Selected execution under PreferCpuKernel ------------------------------
+    // The actual per-rule path the runtime takes when the optimized path is opt-in:
+    // an eligible flow/actor rule runs on its kernel; an ineligible one falls back to
+    // the reference (or is refused under RequireCpuKernel), always reported. The
+    // default run above stays reference-only.
+    println!("\nselected execution (PreferCpuKernel) — flows and actor rules:");
+    let mut selected = Simulation::with_mode(ir.clone(), ExecutionMode::PreferCpuKernel);
+    let selected_step = selected.step();
+    for flow in &selected_step.flows {
+        let reason = flow
+            .kernel_rejection
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_default();
+        println!(
+            "  flow `{}`: {}",
+            flow.flow,
+            path_label(flow.used_path, &reason)
+        );
+    }
+    for rule in &selected_step.actor_rules {
+        let reason = rule
+            .kernel_rejection
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_default();
+        println!(
+            "  actor rule `{}`: {}",
+            rule.rule,
+            path_label(rule.used_path, &reason)
+        );
+    }
+
     println!(
-        "\nNote: this is a small bounded scenario, so raw counts are similar across\n\
-         domains. The #184 decision weighs per-element cost and scaling (e.g.\n\
-         proximity queries are O(n^2); field/graph rules are O(elements)) and\n\
-         optimization payoff (reference-only domains have the most headroom)."
+        "\nNote: a small bounded scenario, so raw counts are similar across domains.\n\
+         Flows and actor rules — the first optimization target (#184) — now have an\n\
+         opt-in optimized CPU path (epic #192); graph rules and proximity queries\n\
+         remain reference-only (advisory eligibility only)."
     );
+}
+
+/// A short label for one rule's selected-execution path: optimized, plain
+/// reference, a reported fallback (with reason), or a refusal (with reason).
+fn path_label(used_path: Option<ExecutionPath>, reason: &str) -> String {
+    match used_path {
+        Some(ExecutionPath::CpuKernel) => "optimized (cpu-kernel)".to_string(),
+        Some(ExecutionPath::Reference) if reason.is_empty() => "reference".to_string(),
+        Some(ExecutionPath::Reference) => format!("fell back to reference ({reason})"),
+        None => format!("refused ({reason})"),
+    }
 }
 
 /// Classifies a domain's optimized-path status from how many of its rules are
