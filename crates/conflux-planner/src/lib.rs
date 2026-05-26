@@ -20,6 +20,11 @@
 //! only. No graph kernel is implemented and the CPU reference path stays the single
 //! source of truth.
 //!
+//! It also reports *aggregate-optimization eligibility* for declared region
+//! aggregates — which aggregates could reuse a precomputed region selection and the
+//! exact shape of that selection — without changing aggregate meaning or bridge
+//! timing.
+//!
 //! And it reports *flow-optimization eligibility* for declared flows — which
 //! field-local flows could be backed by an optimized CPU flow kernel, the candidate
 //! shape, and the rejection reasons — again advisory only; the reference flow
@@ -36,6 +41,7 @@
 //! report.
 
 mod actor_eligibility;
+mod aggregate_eligibility;
 mod backend;
 mod cost;
 mod flow_eligibility;
@@ -47,16 +53,18 @@ mod report;
 mod transfer;
 
 pub use actor_eligibility::actor_eligibility;
+pub use aggregate_eligibility::aggregate_eligibility;
 pub use flow_eligibility::flow_eligibility;
 pub use graph_eligibility::graph_eligibility;
 pub use index_eligibility::index_eligibility;
 pub use plan::plan;
 pub use report::{
-    ActorCandidateShape, ActorRuleEligibility, ActorRuleEligibilityReport, ApproximationStatus,
-    BackendChoice, CandidateIndex, CostHint, FlowCandidateShape, FlowEligibility,
-    FlowEligibilityReport, FusionGroup, GraphCandidateShape, GraphEligibilityReport,
-    GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport, IndexRebuildInputs,
-    OptimizationReport, QueryIndexEligibility, RulePlan, TransferAdvisory,
+    ActorCandidateShape, ActorRuleEligibility, ActorRuleEligibilityReport, AggregateCandidateShape,
+    AggregateEligibility, AggregateEligibilityReport, ApproximationStatus, BackendChoice,
+    CandidateIndex, CostHint, FlowCandidateShape, FlowEligibility, FlowEligibilityReport,
+    FusionGroup, GraphCandidateShape, GraphEligibilityReport, GraphRuleEligibility,
+    GraphTriggerEligibility, IndexEligibilityReport, IndexRebuildInputs, OptimizationReport,
+    QueryIndexEligibility, RulePlan, TransferAdvisory,
 };
 pub use transfer::transfer_advisory;
 
