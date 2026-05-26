@@ -15,6 +15,7 @@ use conflux_kernel::{
 };
 
 use crate::actor_exec;
+use crate::aggregate_plan::AggregatePlan;
 use crate::eval::{eval, EvalCtx};
 use crate::field_exec;
 use crate::flow_exec;
@@ -22,8 +23,8 @@ use crate::graph_event_exec;
 use crate::graph_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
-    AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport, Report, RowOutcome,
-    RuleFireReport, StepReport,
+    AggregateReport, AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport,
+    Report, RowOutcome, RuleFireReport, StepReport,
 };
 use crate::selection::{resolve_path, ExecutionMode, ExecutionPath, QueryExecutionMode};
 
@@ -69,6 +70,10 @@ pub struct Simulation {
     /// Why each kernel-ineligible actor rule was rejected, by rule name. Empty
     /// unless `mode` requests the kernel path.
     actor_rejections: HashMap<String, ActorRejectionReason>,
+    /// Precomputed region cell/weight selections for aggregate evaluation. Built
+    /// once at construction and reused for every evaluation — never rebuilt from
+    /// region masks.
+    aggregate_plan: AggregatePlan,
 }
 
 impl Simulation {
@@ -175,6 +180,8 @@ impl Simulation {
             (HashMap::new(), HashMap::new())
         };
 
+        let aggregate_plan = AggregatePlan::build(&ir);
+
         Simulation {
             ir,
             plan,
@@ -193,6 +200,7 @@ impl Simulation {
             flow_rejections,
             actor_kernels,
             actor_rejections,
+            aggregate_plan,
         }
     }
 
@@ -276,7 +284,7 @@ impl Simulation {
     /// state only; it is a projection, not a mutation. Call it after `new()` or any
     /// `step()`/`run()` to summarize the field state at that point.
     pub fn aggregate_report(&self) -> Vec<crate::report::AggregateReport> {
-        crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data)
+        crate::aggregate_eval::evaluate_aggregates(&self.ir, &self.field_data, &self.aggregate_plan)
     }
 
     /// Reads one region aggregate's report by name, if it exists. A thin name
@@ -306,7 +314,12 @@ impl Simulation {
     /// drift between them. This is a read-only observation — it never reconciles or
     /// writes target state. Call it after `new()` or any `step()`/`run()`.
     pub fn projection_report(&self) -> Vec<crate::report::ProjectionReport> {
-        crate::projection_exec::evaluate_projections(&self.ir, &self.field_data, &self.data)
+        crate::projection_exec::evaluate_projections(
+            &self.ir,
+            &self.field_data,
+            &self.data,
+            &self.aggregate_plan,
+        )
     }
 
     /// Reads one upward projection's report by name, if it exists. A thin name
@@ -345,6 +358,7 @@ impl Simulation {
             &params,
             &self.field_data,
             &mut self.data,
+            &self.aggregate_plan,
         );
 
         // Disjoint field borrows: read IR/plan, mutate state.
@@ -551,9 +565,15 @@ pub(crate) fn prepare_rule_snapshot(
     params: &HashMap<&str, f64>,
     field_data: &[Vec<Vec<f64>>],
     table_data: &mut [Vec<Vec<f64>>],
+    aggregate_plan: &AggregatePlan,
 ) -> (Vec<BridgeReport>, Vec<ProjectionBridgeReport>) {
-    let bridges = write_bridges(ir, field_data, table_data);
-    let projection_bridges = write_projection_bridges(ir, field_data, table_data);
+    let aggregates = if !ir.bridges.is_empty() || !ir.projection_bridges.is_empty() {
+        crate::aggregate_eval::evaluate_aggregates(ir, field_data, aggregate_plan)
+    } else {
+        Vec::new()
+    };
+    let bridges = write_bridges(ir, &aggregates, table_data);
+    let projection_bridges = write_projection_bridges(ir, &aggregates, table_data);
     if !bridges.is_empty() || !projection_bridges.is_empty() {
         // Bridges changed signals; derived columns reading them are now stale.
         recompute_derived(ir, plan, table_data, params);
@@ -567,13 +587,12 @@ pub(crate) fn prepare_rule_snapshot(
 /// the projection is source-authoritative and the target signal has a single writer.
 pub(crate) fn write_projection_bridges(
     ir: &SimIr,
-    field_data: &[Vec<Vec<f64>>],
+    aggregates: &[AggregateReport],
     table_data: &mut [Vec<Vec<f64>>],
 ) -> Vec<ProjectionBridgeReport> {
     if ir.projection_bridges.is_empty() {
         return Vec::new();
     }
-    let aggregates = crate::aggregate_eval::evaluate_aggregates(ir, field_data);
     let mut reports = Vec::with_capacity(ir.projection_bridges.len());
     for bridge in &ir.projection_bridges {
         let projection = &ir.projections[bridge.projection];
@@ -600,13 +619,12 @@ pub(crate) fn write_projection_bridges(
 /// (it reuses the aggregate evaluator).
 pub(crate) fn write_bridges(
     ir: &SimIr,
-    field_data: &[Vec<Vec<f64>>],
+    aggregates: &[AggregateReport],
     table_data: &mut [Vec<Vec<f64>>],
 ) -> Vec<BridgeReport> {
     if ir.bridges.is_empty() {
         return Vec::new();
     }
-    let aggregates = crate::aggregate_eval::evaluate_aggregates(ir, field_data);
     let mut reports = Vec::with_capacity(ir.bridges.len());
     for bridge in &ir.bridges {
         let value = aggregates[bridge.aggregate].value;

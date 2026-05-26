@@ -13,6 +13,8 @@ use std::fmt;
 use conflux_ir::SimIr;
 use conflux_kernel::{execute_elementwise, extract};
 
+use crate::aggregate_plan::AggregatePlan;
+
 use crate::exec::Simulation;
 
 /// Allowed difference between the reference and kernel proposals. A row passes
@@ -117,6 +119,7 @@ pub fn check_equivalence(ir: &SimIr, tolerance: Tolerance) -> EquivalenceReport 
     // harness applies the same bridge writes (and derived refresh) `step()` does.
     let plan = crate::plan::ExecutionPlan::build(ir);
     let params = crate::exec::param_map(ir);
+    let aggregate_plan = AggregatePlan::build(ir);
 
     let mut sim = Simulation::new(ir.clone());
     for _ in 0..max_period {
@@ -126,7 +129,14 @@ pub fn check_equivalence(ir: &SimIr, tolerance: Tolerance) -> EquivalenceReport 
         let field_snapshot: Vec<Vec<Vec<f64>>> = (0..ir.fields.len())
             .map(|f| sim.field_data(f).to_vec())
             .collect();
-        crate::exec::prepare_rule_snapshot(ir, &plan, &params, &field_snapshot, &mut snapshots);
+        crate::exec::prepare_rule_snapshot(
+            ir,
+            &plan,
+            &params,
+            &field_snapshot,
+            &mut snapshots,
+            &aggregate_plan,
+        );
         let step = sim.step();
         for fire in &step.rules {
             if first_fire.contains_key(&fire.rule) {
