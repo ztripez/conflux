@@ -181,7 +181,7 @@ fn main() {
         (
             "aggregates",
             aggregate_cells,
-            "reference only (report projection)",
+            "exact precomputed region selection",
         ),
         ("actor rules", ir.actor_rules.len() * actors, actor_path),
         (
@@ -277,8 +277,10 @@ fn main() {
         "\nNote: a small bounded scenario, so raw counts are similar across domains.\n\
          Flows and actor rules — the first optimization target (#184) — have an\n\
          opt-in optimized CPU path (epic #192). Bounded-radius proximity queries\n\
-         now have an opt-in exact index path (#217); graph rules remain\n\
-         reference-only (advisory eligibility only)."
+         now have an opt-in exact index path (#217). Aggregate region selections\n\
+         are precomputed at simulation construction and reused for every evaluation\n\
+         and bridge-write path (#221). Graph rules remain reference-only (advisory\n\
+         eligibility only)."
     );
 }
 

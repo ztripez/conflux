@@ -180,6 +180,10 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 - **Proximity-query index** — exact uniform-grid pruning for bounded-radius actor
   queries, opt-in; `KNearest` falls back/refuses until an exact expanding-ring
   strategy exists.
+- **Aggregate precomputed selection** — region `(cell, weight)` lists are precomputed
+  once at simulation construction and reused for every aggregate evaluation and
+  bridge-write path; unconditional (no opt-in mode) because lowering guarantees
+  valid region masks.
 - **GPU / WGSL** — emission is always available and inspectable; execution is
   behind the optional `gpu` feature (wgpu) and skips gracefully without a GPU.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the

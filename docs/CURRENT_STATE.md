@@ -145,12 +145,13 @@ governed by `docs/RELEASE_CHECKLIST.md`.
 ## Next
 
 The reference-grade core is complete and frozen at `alpha-0`, and the first
-optimized execution track — flows and actor-rule execution (#192) — has landed. The
-current post-Alpha slice is **exact proximity-query indexing for bounded-radius
-actor queries** (#217), recorded in `docs/POST_ALPHA_OPTIMIZATION_TARGET.md`: the
-exact CPU scan remains the source of truth and default, while eligible radius
-queries can opt into a uniform-grid index with explicit fallback/refusal reporting.
+optimized execution track — flows and actor-rule execution (#192) — has landed.
+Proximity-query indexing (#217) added an opt-in exact index path for bounded-radius
+queries. Aggregate evaluation now uses precomputed region `(cell, weight)`
+selections built once at simulation construction, avoiding repeated mask-to-list
+conversion. Bridge preparation evaluates aggregates once per tick and feeds both
+aggregate and projection bridges from that single evaluation.
+Aggregate reports and bridge timing are preserved unchanged.
 
-Aggregates remain a later reference-only optimization candidate. Graph-rule kernels
-remain advisory only under the current hard boundary unless that boundary is
-explicitly reopened.
+Graph-rule kernels remain advisory only under the current hard boundary unless
+that boundary is explicitly reopened.
