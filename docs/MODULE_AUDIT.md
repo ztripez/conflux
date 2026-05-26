@@ -120,3 +120,10 @@ only.
 None created: no split is warranted yet. Re-run this audit (or split per the
 triggers above) when one of the triggers fires. This document is referenced from
 `AGENTS.md` so reviewers can check pressure before new responsibilities land.
+
+### Post-merge notes
+
+- After PR #221 (aggregate runtime), `crates/conflux-runtime/src/aggregate_plan.rs`
+  was added as a new internal module (~82 lines). It is focused (one job: precompute
+  region selections) and adds no pressure to existing modules. No split trigger
+  fires.
