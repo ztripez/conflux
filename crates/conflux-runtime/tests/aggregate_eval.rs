@@ -1,7 +1,8 @@
 //! CPU reference evaluation of region aggregates.
 
 use conflux_core::{
-    cell, col, field_lit, lit, lower, Aggregate, Field, FieldRule, Grid2, Model, Region,
+    cell, col, field_lit, lit, lower, Aggregate, Bridge, Field, FieldRule, Grid2, Model,
+    Projection, ProjectionBridge, Region, ScaleLink, Table,
 };
 use conflux_runtime::{AggregateOp, AggregateReport, Simulation};
 
@@ -122,4 +123,102 @@ fn aggregates_use_materialized_state_after_a_step() {
 
     sim.run(1); // height -> [2,3,4,5]
     assert_eq!(report_named(&sim.aggregate_report(), "h_sum").value, 5.0); // 2+3
+}
+
+/// A model with an aggregate bridge and a projection bridge reading the same
+/// aggregate. Proves that both bridges share one aggregate evaluation per tick
+/// rather than evaluating the aggregate independently.
+#[test]
+fn aggregate_bridge_and_projection_bridge_share_one_evaluation_per_tick() {
+    // Build model: Terrain.yield aggregates via basin into both a bridge and a
+    // projection bridge, so both write the same aggregate value to table signals.
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("yield", vec![10.0, 20.0]);
+    let mut settlement = Table::new("Settlement", 1);
+    settlement
+        .signal("agg_signal", vec![0.0])
+        .signal("proj_signal", vec![0.0]);
+
+    let mut model = Model::new("shared");
+    model.add_field(terrain);
+    model.add_region(
+        Region::new("basin")
+            .on_field("Terrain")
+            .mask(vec![true, true]),
+    );
+    model.add_aggregate(Aggregate::sum("basin_yield", "basin", "yield"));
+    model.add_table(settlement);
+    model.add_bridge(Bridge::new("basin_yield").to_signal("Settlement", "agg_signal"));
+    model.add_scale_link(
+        ScaleLink::new("up")
+            .from_region("basin")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model.add_projection(
+        Projection::new("yield_up")
+            .over_link("up")
+            .of_aggregate("basin_yield")
+            .to_signal("proj_signal"),
+    );
+    model.add_projection_bridge(ProjectionBridge::new("yield_up"));
+
+    let mut sim = Simulation::new(lower(&model).unwrap());
+    let step = sim.step();
+
+    // Both bridges received the same aggregate value (sum over basin = 10+20 = 30).
+    assert_eq!(step.bridges.len(), 1);
+    assert_eq!(step.bridges[0].value, 30.0);
+    assert_eq!(step.projection_bridges.len(), 1);
+    assert_eq!(step.projection_bridges[0].value, 30.0);
+    assert_eq!(sim.column("Settlement", "agg_signal"), Some(&[30.0][..]));
+    assert_eq!(sim.column("Settlement", "proj_signal"), Some(&[30.0][..]));
+
+    // After a field rule bumps yield, both bridges track the new aggregate value
+    // from the same evaluation.
+    let mut model2 = Model::new("shared_bumped");
+    let mut terrain2 = Field::new("Terrain", Grid2::new(2, 1));
+    terrain2.stock("yield", vec![10.0, 20.0]);
+    model2.add_field(terrain2);
+    model2.add_region(
+        Region::new("basin")
+            .on_field("Terrain")
+            .mask(vec![true, true]),
+    );
+    model2.add_aggregate(Aggregate::sum("basin_yield", "basin", "yield"));
+    model2.add_field_rule(
+        FieldRule::new("bump")
+            .on_field("Terrain")
+            .propose("yield", cell("yield") + field_lit(5.0)),
+    );
+    let mut settlement2 = Table::new("Settlement", 1);
+    settlement2
+        .signal("agg_signal", vec![0.0])
+        .signal("proj_signal", vec![0.0]);
+    model2.add_table(settlement2);
+    model2.add_bridge(Bridge::new("basin_yield").to_signal("Settlement", "agg_signal"));
+    model2.add_scale_link(
+        ScaleLink::new("up")
+            .from_region("basin")
+            .to_table("Settlement")
+            .source_authoritative(),
+    );
+    model2.add_projection(
+        Projection::new("yield_up")
+            .over_link("up")
+            .of_aggregate("basin_yield")
+            .to_signal("proj_signal"),
+    );
+    model2.add_projection_bridge(ProjectionBridge::new("yield_up"));
+
+    let mut sim2 = Simulation::new(lower(&model2).unwrap());
+    // Tick 1: yield = [10,20], aggregate = 30, both bridges write 30.
+    // Then field rule bumps yield -> [15,25].
+    sim2.step();
+    // Tick 2: yield = [15,25], aggregate = 40, both bridges share the same 40.
+    let step2 = sim2.step();
+    assert_eq!(step2.bridges[0].value, 40.0);
+    assert_eq!(step2.projection_bridges[0].value, 40.0);
+    assert_eq!(sim2.column("Settlement", "agg_signal"), Some(&[40.0][..]));
+    assert_eq!(sim2.column("Settlement", "proj_signal"), Some(&[40.0][..]));
 }

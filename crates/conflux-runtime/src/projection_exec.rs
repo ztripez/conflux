@@ -14,6 +14,7 @@
 use conflux_ir::SimIr;
 
 use crate::aggregate_eval::evaluate_aggregates;
+use crate::aggregate_plan::AggregatePlan;
 use crate::report::ProjectionReport;
 
 /// Evaluates every declared projection against the materialized field state (for
@@ -23,13 +24,14 @@ pub(crate) fn evaluate_projections(
     ir: &SimIr,
     field_data: &[Vec<Vec<f64>>],
     table_data: &[Vec<Vec<f64>>],
+    aggregate_plan: &AggregatePlan,
 ) -> Vec<ProjectionReport> {
     if ir.projections.is_empty() {
         return Vec::new();
     }
     // Reuse the aggregate evaluator for the projected value — no duplicated
     // reduction logic. Indexed by aggregate, matching `ProjectionIr::aggregate`.
-    let aggregates = evaluate_aggregates(ir, field_data);
+    let aggregates = evaluate_aggregates(ir, field_data, aggregate_plan);
 
     ir.projections
         .iter()

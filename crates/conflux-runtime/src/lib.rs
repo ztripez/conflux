@@ -7,6 +7,7 @@
 mod actor_equivalence;
 mod actor_exec;
 mod aggregate_eval;
+mod aggregate_plan;
 mod equivalence;
 mod eval;
 mod exec;
