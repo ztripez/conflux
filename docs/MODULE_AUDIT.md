@@ -4,9 +4,12 @@ A god-module-prevention pass after the MVP ladder (issue #24, Phase 1). The poin
 is explicit ownership and a named **split trigger** for each high-risk module
 *before* responsibilities accrete by inertia — not refactoring for aesthetics.
 
-Verdict summary: **no split is needed now.** All four watched modules are
-cohesive; `exec.rs` carries the most responsibilities and is the one to watch.
-Sizes below are whole-file line counts (including in-file tests) as of this audit.
+Verdict summary: **no split is needed now.** The watched modules are cohesive;
+`exec.rs` carries the most execution-loop responsibility and is still one to
+watch. The runtime report surface crossed the large-file trigger after the
+proximity-query index report fields landed and has been split into a small module
+root plus report-family submodules. Sizes below are whole-file line counts
+(including in-file tests) as of each audit entry.
 
 ## `crates/conflux-core/src/lower/` — module (`mod.rs` + `fields.rs`)
 
@@ -73,6 +76,27 @@ Verdict: **no action.** Healthy; it is an assembler, not an analysis dump.
 Split trigger: behavioral, not size — if `plan()` starts doing analysis inline
 instead of delegating, move that logic into a new analysis module. Keep `plan.rs`
 an assembler.
+
+## `crates/conflux-runtime/src/report.rs` + `report/` — split after #217
+
+Responsibilities: runtime report DTOs and their `Display` rendering. The root
+`report.rs` now owns only the run/tick envelopes (`Report`, `StepReport`), the
+shared assessment outcome, the unit display helper, and the top-level `Report`
+renderer. Report-family DTOs live in focused submodules:
+table/field rule DTOs in `report/rules.rs`, plus `report/flow.rs`,
+`report/actor.rs`, `report/query.rs`, `report/graph.rs`, and
+`report/projection.rs`.
+
+Verdict: **split complete.** The trigger was the post-#217 runtime report file
+reaching ~997 lines after query execution-path provenance was added. The split is
+structural only: public report types are re-exported from `report.rs`, so the
+public API remains unchanged.
+
+Split trigger: if the root `Report` renderer grows with another domain's
+formatting, extract `report/display.rs`. If any family submodule crosses ~500
+lines or mixes execution logic with DTO/Display concerns, split that family into
+`types.rs` + `display.rs` or a narrower family module. Keep report modules DTO +
+Display only; analysis and execution stay in sibling runtime modules.
 
 ## `crates/conflux-planner/src/report.rs` — ~620 lines  ⚠ watch
 
