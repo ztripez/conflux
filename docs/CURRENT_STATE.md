@@ -142,6 +142,32 @@ semantic domain — it is about trust, usability, and measurement. What landed:
 Alpha 0 is a checkpoint, not a public crates.io release; promotion to a release is
 governed by `docs/RELEASE_CHECKLIST.md`.
 
+## Checkpoint: `alpha-1-runtime`
+
+This tag marks the post-Alpha runtime optimization checkpoint (epic #223): the CPU
+reference path remains the source of truth, and the first measured, opt-in and
+internal optimized execution paths have landed since Alpha 0. What changed:
+
+- **Flows and actor-rule CPU kernels** — opt-in `PreferCpuKernel` path for eligible
+  flow and actor-rule execution, with typed fallback/refusal reporting and
+  equivalence verification against the reference (#192, PRs #203–#213).
+- **Exact proximity-query indexing** — opt-in `PreferIndex` / `RequireIndex` path
+  for bounded-radius actor queries using a uniform-grid candidate-pruning index
+  (#217, PRs #217–#218).
+- **Aggregate precomputed region selection** — unconditional internal optimization:
+  region `(cell, weight)` lists are precomputed once at simulation construction and
+  reused for every aggregate evaluation and bridge write; bridge preparation
+  evaluates aggregates once per tick and feeds both aggregate and projection
+  bridges from that single evaluation (#221, PRs #220–#222).
+- **Module hygiene** — runtime report was split from a 997-line file into per-family
+  submodules (#219); planner report was likewise split into per-family submodules
+  as the aggregate eligibility report family landed (#220).
+- **Planner eligibility reports** — added aggregate-optimization eligibility report
+  naming `PrecomputedRegionSelection` as the candidate shape (#220).
+
+Alpha 1 is a checkpoint, not a public crates.io release; promotion to a release
+remains governed by `docs/RELEASE_CHECKLIST.md`.
+
 ## Next
 
 The reference-grade core is complete and frozen at `alpha-0`, and the first
