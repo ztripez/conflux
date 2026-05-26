@@ -77,8 +77,11 @@ projected) on the CPU reference path. Units attach to all value-bearing domains.
   proximity-query results); actor movements shift positions by a fixed offset with
   an explicit edge policy.
 - **Proximity queries** — declared exact sparse-neighbor queries over actors
-  (metric, radius / k-nearest, self policy, stable ordering, exact-only). Evaluated
-  on the CPU with no spatial index; actor rules consume `query_count` /
+  (metric, radius / k-nearest, self policy, stable ordering, exact-only). The exact
+  CPU scan is the default and semantic source of truth. Bounded-radius queries can
+  opt into an exact uniform-grid index that only prunes candidates; final distance
+  filtering and ordering still match the scan. `KNearest` remains scan-only until an
+  exact expanding-ring index strategy exists. Actor rules consume `query_count` /
   `nearest_distance`.
 - **Scale links & projections** — explicit cross-scale relationships with an
   authority policy (`SourceAuthoritative` / `TargetAuthoritative` / `ReportOnly`).
@@ -123,7 +126,8 @@ this fixed order:
 5. **Flows** — move quantity between cells of the post-field-rule state.
 6. **Actor rules** — update per-actor state, sampling field state at each actor's
    pre-movement cell and consuming query results from the same pre-movement
-   positions.
+   positions. Query inputs use the declared query execution mode: exact scan by
+   default, or the opt-in exact index for eligible bounded-radius queries.
 7. **Actor movements** — shift actor positions over the host field.
 8. **Graph phase** — graph rules propose per-node stock writes against a frozen
    start-of-tick graph snapshot, then report-only graph event triggers materialize
@@ -138,12 +142,15 @@ report-only and mutate nothing.
 
 ## Reference path is the source of truth
 
-The CPU reference path (f64) defines semantics. Optimized paths — the CPU kernel
-backend (f32) and the GPU/WGSL backend — must prove equivalence to it within a
-declared tolerance via the equivalence harness; they are never compared
-bit-for-bit. Kernel/optimized execution is opt-in via the execution mode; a
-default run is reference-only. Instability and out-of-envelope proposals are
-reported as data, never clamped.
+The CPU reference path (f64) defines rule semantics, and the exact proximity-query
+scan defines query semantics. Optimized paths — the CPU kernel backend (f32), the
+GPU/WGSL backend, and the exact uniform-grid query index — must preserve those
+reference results or report a fallback/refusal. Numeric kernels prove equivalence
+within a declared tolerance via the equivalence harness; they are never compared
+bit-for-bit. Query indexes are exact, so their contract coverage compares the full
+neighbor sets, distances, self policy, and ordering against the scan. Kernel/index
+execution is opt-in via explicit execution modes; a default run is reference-only.
+Instability and out-of-envelope proposals are reported as data, never clamped.
 
 ## Report surfaces
 
@@ -154,7 +161,8 @@ reported as data, never clamped.
   with units).
 - **Read-only projections** — `aggregate_report`, `query_report`,
   `projection_report` summarize current state with provenance (including units and,
-  for projections, drift) without mutating.
+  for projections, drift) without mutating. Query reports also carry the requested /
+  selected / used query path plus fallback/refusal details for the opt-in index.
 - **Equivalence report** — per rule, matched kernel run vs fallback to reference,
   with the reason.
 - **Planner reports** — backend choice + cost hints, fusion candidates, transfer
@@ -169,6 +177,9 @@ reported as data, never clamped.
 
 - **CPU reference** — the source of truth; always available.
 - **CPU kernel** — bounded elementwise/stencil kernels, equivalence-checked; opt-in.
+- **Proximity-query index** — exact uniform-grid pruning for bounded-radius actor
+  queries, opt-in; `KNearest` falls back/refuses until an exact expanding-ring
+  strategy exists.
 - **GPU / WGSL** — emission is always available and inspectable; execution is
   behind the optional `gpu` feature (wgpu) and skips gracefully without a GPU.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the
@@ -182,9 +193,9 @@ reported as data, never clamped.
 
 No custom DSL parser. No GPU/shader code outside `conflux-wgsl`. No Residency
 dependency outside `conflux-residency`. No applied/automatic optimizer (planning is
-advisory). No silent clamps, implicit `dt` accumulation, or hidden full-state
-readbacks. No engine/ECS integration. The graph and event domains exist, but there
-is **no graph-kernel backend** — graph rules and events run only on the CPU
-reference path — and events are report-only, with no queue, consumption, or
-scheduling. Units are validation metadata, not a runtime numeric domain, and there
-is no automatic unit conversion.
+advisory). No silent clamps, implicit `dt` accumulation, hidden full-state
+readbacks, or approximate proximity search. No engine/ECS integration. The graph
+and event domains exist, but there is **no graph-kernel backend** — graph rules and
+events run only on the CPU reference path — and events are report-only, with no
+queue, consumption, or scheduling. Units are validation metadata, not a runtime
+numeric domain, and there is no automatic unit conversion.

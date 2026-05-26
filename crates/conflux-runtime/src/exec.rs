@@ -25,7 +25,7 @@ use crate::report::{
     AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport, Report, RowOutcome,
     RuleFireReport, StepReport,
 };
-use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
+use crate::selection::{resolve_path, ExecutionMode, ExecutionPath, QueryExecutionMode};
 
 /// A simulation instance holding lowered IR, the execution plan, and live state.
 pub struct Simulation {
@@ -46,6 +46,9 @@ pub struct Simulation {
     graph_edge_data: Vec<Vec<Vec<f64>>>,
     /// The caller-declared execution mode (default [`ExecutionMode::ReferenceOnly`]).
     mode: ExecutionMode,
+    /// The caller-declared proximity-query execution mode (default
+    /// [`QueryExecutionMode::ReferenceOnly`]).
+    query_mode: QueryExecutionMode,
     /// Accepted CPU kernels by rule name, used to run the selected kernel path.
     /// Empty unless `mode` requests the kernel path, so reference-only runs are
     /// unaffected.
@@ -72,13 +75,30 @@ impl Simulation {
     /// Builds a simulation from lowered IR in the default reference-only execution
     /// mode, initialising state and derived columns.
     pub fn new(ir: SimIr) -> Self {
-        Self::with_mode(ir, ExecutionMode::ReferenceOnly)
+        Self::with_modes(
+            ir,
+            ExecutionMode::ReferenceOnly,
+            QueryExecutionMode::ReferenceOnly,
+        )
     }
 
     /// Builds a simulation with an explicit execution `mode`. Under a mode that
     /// requests the CPU-kernel path, accepted kernels are extracted up front so the
     /// runtime can run the selected path; reference-only runs extract nothing.
     pub fn with_mode(ir: SimIr, mode: ExecutionMode) -> Self {
+        Self::with_modes(ir, mode, QueryExecutionMode::ReferenceOnly)
+    }
+
+    /// Builds a simulation with an explicit proximity-query execution `query_mode`
+    /// and default reference-only rule execution.
+    pub fn with_query_mode(ir: SimIr, query_mode: QueryExecutionMode) -> Self {
+        Self::with_modes(ir, ExecutionMode::ReferenceOnly, query_mode)
+    }
+
+    /// Builds a simulation with explicit rule and proximity-query execution modes.
+    /// Rule kernels and query indexes are independent opt-ins: requesting one does
+    /// not silently request the other.
+    pub fn with_modes(ir: SimIr, mode: ExecutionMode, query_mode: QueryExecutionMode) -> Self {
         let plan = ExecutionPlan::build(&ir);
         let mut data = Vec::with_capacity(ir.tables.len());
         for table in &ir.tables {
@@ -166,6 +186,7 @@ impl Simulation {
             graph_node_data,
             graph_edge_data,
             mode,
+            query_mode,
             kernels,
             kernel_rejections,
             flow_kernels,
@@ -265,13 +286,18 @@ impl Simulation {
         self.aggregate_report().into_iter().find(|a| a.name == name)
     }
 
-    /// Evaluates every declared proximity query exactly against the current actor
-    /// positions, returning a report per query (policy, per-source neighbors, and
-    /// provenance). This reads positions only — a projection, never a mutation, and
-    /// it uses no spatial index. Call it after `new()` or any `step()`/`run()` to
-    /// summarize neighbor relationships at that point.
+    /// Evaluates every declared proximity query against the current actor positions,
+    /// returning a report per query (policy, per-source neighbors, and provenance).
+    /// By default this uses the exact CPU scan; a simulation built with
+    /// [`Simulation::with_query_mode`] / [`Simulation::with_modes`] may use an
+    /// opt-in exact index for eligible bounded-radius queries. This is a projection,
+    /// never a mutation.
     pub fn query_report(&self) -> Vec<crate::report::QueryReport> {
-        crate::query_exec::evaluate_queries(&self.ir, &self.actor_positions)
+        crate::query_exec::evaluate_queries_with_mode(
+            &self.ir,
+            &self.actor_positions,
+            self.query_mode,
+        )
     }
 
     /// Evaluates every declared upward projection against the current materialized
@@ -460,6 +486,7 @@ impl Simulation {
             ir,
             tick,
             self.mode,
+            self.query_mode,
             &self.actor_kernels,
             &self.actor_rejections,
             &mut self.actor_data,

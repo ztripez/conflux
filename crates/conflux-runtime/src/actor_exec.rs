@@ -15,12 +15,12 @@ use conflux_kernel::{execute_actor_rule, ActorKernel, ActorRejectionReason};
 use crate::eval::{eval, EvalCtx};
 use crate::exec::assess;
 use crate::field_exec::resolve_neighbor;
-use crate::query_exec::evaluate_queries;
+use crate::query_exec::evaluate_queries_with_mode;
 use crate::report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
-    ActorRuleFireReport, QueryReport,
+    ActorRuleBlockedReason, ActorRuleFireReport, QueryReport,
 };
-use crate::selection::{resolve_path, ExecutionMode, ExecutionPath};
+use crate::selection::{resolve_path, ExecutionMode, ExecutionPath, QueryExecutionMode};
 
 /// Materializes per-actor channel buffers, indexed `[set][channel][actor]`, from
 /// each actor set's declared initial values.
@@ -101,6 +101,7 @@ pub(crate) fn step_actor_rules(
     ir: &SimIr,
     tick: u64,
     mode: ExecutionMode,
+    query_mode: QueryExecutionMode,
     actor_kernels: &HashMap<String, ActorKernel>,
     actor_rejections: &HashMap<String, ActorRejectionReason>,
     actor_data: &mut [Vec<Vec<f64>>],
@@ -121,7 +122,7 @@ pub(crate) fn step_actor_rules(
     // Proximity-query inputs are evaluated once, on the same pre-movement actor
     // positions every rule reads. Skipped entirely when no rule consumes a query.
     let query_reports = if ir.actor_rules.iter().any(|r| !r.query_inputs.is_empty()) {
-        evaluate_queries(ir, actor_positions)
+        evaluate_queries_with_mode(ir, actor_positions, query_mode)
     } else {
         Vec::new()
     };
@@ -146,10 +147,16 @@ pub(crate) fn step_actor_rules(
         let query_inputs: Vec<ActorQueryInputBinding> = rule
             .query_inputs
             .iter()
-            .map(|qi| ActorQueryInputBinding {
-                binding: qi.binding.clone(),
-                query: ir.queries[qi.query].name.clone(),
-                input: qi.input,
+            .map(|qi| {
+                let report = &query_reports[qi.query];
+                ActorQueryInputBinding {
+                    binding: qi.binding.clone(),
+                    query: ir.queries[qi.query].name.clone(),
+                    input: qi.input,
+                    query_used_path: report.used_path,
+                    query_fallback_reason: report.fallback_reason,
+                    query_index_rejection: report.index_rejection,
+                }
             })
             .collect();
 
@@ -166,9 +173,20 @@ pub(crate) fn step_actor_rules(
             None
         };
 
+        let blocked_reason = if used_path.is_some() {
+            required_query_block(rule, ir, &query_reports)
+        } else {
+            None
+        };
+        let effective_used_path = if blocked_reason.is_some() {
+            None
+        } else {
+            used_path
+        };
+
         // Per-actor proposals: the reference evaluator (f64), the optimized actor
-        // kernel (f32), or none when a required kernel was unavailable (refused).
-        let proposals: Vec<f64> = match used_path {
+        // kernel (f32), or none when a required path/input was unavailable (refused).
+        let proposals: Vec<f64> = match effective_used_path {
             None => Vec::new(),
             Some(ExecutionPath::Reference) => reference_actor_proposals(
                 rule,
@@ -219,12 +237,33 @@ pub(crate) fn step_actor_rules(
             sampled,
             query_inputs,
             actors: outcomes,
-            used_path,
+            used_path: effective_used_path,
             fallback_reason,
             kernel_rejection,
+            blocked_reason,
         });
     }
     reports
+}
+
+fn required_query_block(
+    rule: &ActorRuleIr,
+    ir: &SimIr,
+    query_reports: &[QueryReport],
+) -> Option<ActorRuleBlockedReason> {
+    rule.query_inputs.iter().find_map(|qi| {
+        let report = &query_reports[qi.query];
+        report.index_rejection.and_then(|reason| {
+            if report.used_path.is_none() {
+                Some(ActorRuleBlockedReason::RequiredQueryIndexUnavailable {
+                    query: ir.queries[qi.query].name.clone(),
+                    reason,
+                })
+            } else {
+                None
+            }
+        })
+    })
 }
 
 /// Computes one actor rule's per-actor proposals on the reference path (f64) from a

@@ -21,7 +21,7 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: Alpha 0 (post-MVP, ladder complete)
+## Current stage: Post-Alpha optimization slices
 
 The MVP ladder (MVP0–MVP7) is complete: guardrails, CPU reference path, kernel IR
 extraction, kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL
@@ -29,14 +29,19 @@ backend, advisory optimization/planning reports (`conflux-planner`), and trace
 artifacts + profile-guided recommendation research (`conflux-trace`). Several
 domains landed past the ladder: 2D fields, regions/aggregates/bridges, flows,
 actors and proximity queries, multiscale scale-links/projections, units, and the
-graph and report-only event domains.
+graph and report-only event domains. Alpha 0 (#179) froze the reference-grade CPU
+contracts, proved the public API on `regional_settlement_ecology`, measured the
+baseline, and chose the first optimized execution target from evidence. The first
+post-Alpha optimization track (#192) added opt-in CPU paths for flows and eligible
+actor rules.
 
-The project is now in **Alpha 0** (epic #179): freeze the CPU reference contracts,
-prove the public API on one real end-to-end scenario, measure it, and choose the
-first optimized execution target from evidence — without adding a new semantic
-domain. `docs/MVP_LADDER.md` records the original order; the current factual state
-is `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE_SNAPSHOT.md`. New work is scoped
-against the boundaries below before starting.
+The current post-Alpha optimization slice (#217) is exact bounded-radius
+proximity-query indexing: the exact CPU scan remains the source of truth and
+default, while eligible radius queries can opt into a uniform-grid index with
+explicit fallback/refusal reporting. `docs/MVP_LADDER.md` records the original
+order; the current factual state is `docs/CURRENT_STATE.md` and
+`docs/ARCHITECTURE_SNAPSHOT.md`. New work is scoped against the boundaries below
+before starting.
 
 Hard boundary (still in force):
 
