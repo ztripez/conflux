@@ -14,6 +14,7 @@ crates/
   conflux-core/      # public model authoring API + the single lowering gate
   conflux-kernel/    # bounded numeric kernel IR + CPU kernel executor
   conflux-runtime/   # CPU reference execution, scheduler, reports, equivalence
+  conflux-bevy/      # Bevy adapter (manual stepping + report resources)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
   conflux-residency/ # the only bridge to Residency (buffer movement / transfer)
   conflux-planner/   # advisory optimization & planning reports (reads backends)
@@ -36,6 +37,9 @@ crates/
 - **conflux-runtime** owns the CPU reference path (`Simulation`: lower → plan →
   step → report), the report types, the read-only report projections (aggregates,
   queries, projections), and the reference-vs-kernel equivalence harness.
+- **conflux-bevy** is an engine adapter. It owns Bevy resources, messages, and
+  systems for manually stepping a `Simulation` and surfacing Conflux reports into a
+  Bevy world. Bevy concepts do not enter Conflux core crates.
 - **conflux-wgsl** lowers an accepted kernel to an inspectable WGSL compute shader
   and its resource requirements. Actual GPU execution is behind the optional `gpu`
   feature (off by default); the emitter side needs no `wgpu`.
@@ -192,14 +196,17 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   rewrites the IR, fuses kernels, or changes execution.
 - **Trace / profile-guided** — optional research; normal execution never requires a
   trace, and there is no release compiler or runtime adaptive optimizer.
+- **Bevy adapter** — phase-0 manual-step adapter via `conflux-bevy`; report and
+  diagnostic resources only, no ECS rewrite of Conflux actors.
 
 ## Current non-goals
 
 No custom DSL parser. No GPU/shader code outside `conflux-wgsl`. No Residency
 dependency outside `conflux-residency`. No applied/automatic optimizer (planning is
 advisory). No silent clamps, implicit `dt` accumulation, hidden full-state
-readbacks, or approximate proximity search. No engine/ECS integration. The graph
-and event domains exist, but there is **no graph-kernel backend** — graph rules and
-events run only on the CPU reference path — and events are report-only, with no
-queue, consumption, or scheduling. Units are validation metadata, not a runtime
-numeric domain, and there is no automatic unit conversion.
+readbacks, or approximate proximity search. No engine/ECS concepts in Conflux core
+crates; engine integration must stay in adapter crates such as `conflux-bevy`. The
+graph and event domains exist, but there is **no graph-kernel backend** — graph
+rules and events run only on the CPU reference path — and events are report-only,
+with no queue, consumption, or scheduling. Units are validation metadata, not a
+runtime numeric domain, and there is no automatic unit conversion.

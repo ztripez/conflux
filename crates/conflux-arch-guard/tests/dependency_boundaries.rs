@@ -25,9 +25,13 @@ const FORBIDDEN_IN_CORE: &[&str] = &[
     "conflux-wgsl",
     "conflux-planner",
     "conflux-trace",
+    "conflux-bevy",
     "wgpu",
     "residency-core",
 ];
+
+/// Workspace crates other than the adapter must stay free of Bevy dependencies.
+const BEVY_ADAPTER_CRATE: &str = "conflux-bevy";
 
 fn workspace_manifest() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/conflux-arch-guard; the workspace root is two
@@ -55,22 +59,7 @@ fn metadata() -> Value {
     serde_json::from_slice(&output.stdout).expect("cargo metadata emits valid JSON")
 }
 
-/// The dependency kind: `null` for a normal dependency, otherwise `"dev"` /
-/// `"build"`.
-fn kind_label(dep: &Value) -> &str {
-    match dep.get("kind") {
-        Some(Value::String(s)) => s,
-        _ => "normal",
-    }
-}
-
-#[test]
-fn crate_dependency_boundaries_hold() {
-    let metadata = metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("metadata has a packages array");
-
+fn collect_boundary_violations(packages: &[Value]) -> Vec<String> {
     let mut violations: Vec<String> = Vec::new();
 
     for pkg in packages {
@@ -116,6 +105,22 @@ fn crate_dependency_boundaries_hold() {
                 ));
             }
 
+            // Bevy is an engine adapter concern only. No Conflux crate may grow a
+            // direct or indirect engine API except the adapter crate itself.
+            if is_bevy_dependency(dep_name) && name != BEVY_ADAPTER_CRATE {
+                violations.push(format!(
+                    "`{name}` depends on Bevy crate `{dep_name}` ({kind}); Bevy dependencies are allowed only in conflux-bevy"
+                ));
+            }
+
+            // Other Conflux crates may not depend on the Bevy adapter either, or
+            // they would import engine integration through the adapter boundary.
+            if dep_name == BEVY_ADAPTER_CRATE && name != BEVY_ADAPTER_CRATE {
+                violations.push(format!(
+                    "`{name}` depends on `{dep_name}` ({kind}); Bevy adapter code is allowed only in conflux-bevy"
+                ));
+            }
+
             // conflux-trace may depend on other Conflux crates only as
             // dev-dependencies (any non-dev kind — normal or build — is a drift).
             if name == "conflux-trace" && kind != "dev" && dep_name.starts_with("conflux-") {
@@ -151,11 +156,76 @@ fn crate_dependency_boundaries_hold() {
         }
     }
 
+    violations
+}
+
+/// The dependency kind: `null` for a normal dependency, otherwise `"dev"` /
+/// `"build"`.
+fn kind_label(dep: &Value) -> &str {
+    match dep.get("kind") {
+        Some(Value::String(s)) => s,
+        _ => "normal",
+    }
+}
+
+#[test]
+fn crate_dependency_boundaries_hold() {
+    let metadata = metadata();
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("metadata has a packages array");
+
+    let violations = collect_boundary_violations(packages);
+
     assert!(
         violations.is_empty(),
         "crate dependency-boundary violations:\n  - {}",
         violations.join("\n  - ")
     );
+}
+
+#[test]
+fn bevy_dependencies_are_allowed_only_in_the_adapter() {
+    let packages = vec![package(
+        "conflux-runtime",
+        &[dep("bevy_ecs", "normal", false)],
+    )];
+
+    let violations = collect_boundary_violations(&packages);
+
+    assert!(violations.iter().any(|violation| {
+        violation.contains("conflux-runtime")
+            && violation.contains("bevy_ecs")
+            && violation.contains("allowed only in conflux-bevy")
+    }));
+}
+
+#[test]
+fn bevy_dependencies_are_allowed_inside_the_adapter() {
+    let packages = vec![package("conflux-bevy", &[dep("bevy_ecs", "normal", false)])];
+
+    let violations = collect_boundary_violations(&packages);
+
+    assert!(
+        violations.is_empty(),
+        "unexpected violations: {violations:?}"
+    );
+}
+
+#[test]
+fn other_conflux_crates_may_not_depend_on_the_bevy_adapter() {
+    let packages = vec![package(
+        "conflux-planner",
+        &[dep("conflux-bevy", "normal", false)],
+    )];
+
+    let violations = collect_boundary_violations(&packages);
+
+    assert!(violations.iter().any(|violation| {
+        violation.contains("conflux-planner")
+            && violation.contains("conflux-bevy")
+            && violation.contains("allowed only in conflux-bevy")
+    }));
 }
 
 /// True when the package's `gpu` feature enables the optional `wgpu` dependency
@@ -172,4 +242,31 @@ fn gpu_feature_gates_wgpu(pkg: &Value) -> bool {
                 .filter_map(|v| v.as_str())
                 .any(|s| s == "dep:wgpu")
         })
+}
+
+fn is_bevy_dependency(dep_name: &str) -> bool {
+    dep_name == "bevy" || dep_name.starts_with("bevy_")
+}
+
+fn package(name: &str, dependencies: &[Value]) -> Value {
+    let dependencies = Value::Array(dependencies.to_vec());
+    let mut package = serde_json::Map::new();
+    package.insert("name".to_string(), Value::String(name.to_string()));
+    package.insert("dependencies".to_string(), dependencies);
+    Value::Object(package)
+}
+
+fn dep(name: &str, kind: &str, optional: bool) -> Value {
+    let mut dependency = serde_json::Map::new();
+    dependency.insert("name".to_string(), Value::String(name.to_string()));
+    dependency.insert(
+        "kind".to_string(),
+        if kind == "normal" {
+            Value::Null
+        } else {
+            Value::String(kind.to_string())
+        },
+    );
+    dependency.insert("optional".to_string(), Value::Bool(optional));
+    Value::Object(dependency)
 }

@@ -24,6 +24,7 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-wgsl` `gpu` execution | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); skips gracefully without a GPU. |
 | `conflux-residency` | **Experimental / release-blocked** | The bridge to Residency; release-blocked by the `residency-core` git dependency (see `docs/PUBLISH_POLICY.md`). |
 | `conflux-trace` | **Experimental (research)** | Trace schema + profile-guided recommendations. Off the execution path; normal runs never require it. |
+| `conflux-bevy` | **Experimental adapter** | Phase-0 Bevy integration: manual stepping and report/diagnostic resources. Bevy types are adapter-only and may change while the boundary is proven. |
 
 ## Explicitly experimental surfaces
 
@@ -36,6 +37,7 @@ Named so they are not mistaken for stable contracts:
 - **Graph kernel** — only the advisory `graph_eligibility` report exists; there is no graph-kernel backend (graph rules and events run only on the CPU reference path).
 - **Events** — declared and materialized **report-only**: events appear in the step report but are never consumed, queued, or scheduled, and only graph-origin events are supported in this slice.
 - **Scale links / projections beyond region→table** — only the region→table relationship is supported; other combinations are rejected at lowering.
+- **Bevy adapter** (`conflux-bevy`) — experimental phase-0 adapter. It is not a stable engine API, does not make Conflux actors into Bevy entities, and requires Bevy/Rust versions isolated to that adapter crate.
 
 ## Report contracts are stronger than incidental examples
 

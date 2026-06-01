@@ -62,18 +62,12 @@ crates/
   conflux-core/      # public model API: domains, stocks, signals, rules
   conflux-ir/        # lowered simulation IR
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
+  conflux-bevy/      # Bevy adapter (manual stepping + report resources)
   conflux-planner/   # advisory optimization & planning reports (reads backends)
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution
   conflux-trace/     # trace artifacts + profile-guided recommendations (research)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
-```
-
-Future crates:
-
-```text
-crates/
-  conflux-bevy/      # Bevy integration
 ```
 
 ## Status
@@ -85,7 +79,9 @@ optimization target from evidence. Since that checkpoint, the first optimized
 execution track (#192) added opt-in CPU paths for field-local **flows** and eligible
 **actor rules**, with visible fallback/equivalence reporting, and the post-Alpha
 query slice (#217) added an opt-in exact uniform-grid index path for bounded-radius
-**proximity queries**.
+**proximity queries**. The Bevy adapter phase 0 (#43) adds `conflux-bevy`, an
+adapter-only crate for manual stepping and report/diagnostic resources; Bevy
+dependencies remain mechanically forbidden outside that adapter.
 
 The current implemented domains include 2D **fields** (local-kernel rules +
 field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**,
@@ -172,6 +168,7 @@ cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
 cargo run -p conflux-planner --example optimization_report
 cargo run -p conflux-trace --example profile_guided
 cargo run -p conflux-fixtures --example baseline_report
+cargo run -p conflux-bevy --example regional_settlement_ecology
 ```
 
 `baseline_report` is a visibility-only smoke command: it runs every canonical
@@ -184,3 +181,8 @@ Every canonical scenario — what domain behavior it proves, which public APIs i
 exercises, and which report surfaces it asserts — is catalogued in
 [`docs/SCENARIOS.md`](docs/SCENARIOS.md). The fixtures are contracts, not an
 alternative API.
+
+For engine integration, see [`docs/BEVY_ADAPTER_PHASE0.md`](docs/BEVY_ADAPTER_PHASE0.md)
+and the adapter boundary in
+[`docs/BEVY_ADAPTER_BOUNDARY.md`](docs/BEVY_ADAPTER_BOUNDARY.md). Godot remains
+parked until the Bevy adapter boundary is proven.

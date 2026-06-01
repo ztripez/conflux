@@ -65,6 +65,10 @@ the **only** crate allowed to depend on `residency-core`.
   recommendation pass. It is off the execution path (normal runs never produce or
   require a trace), depends on no other Conflux crate, and imports transfer
   summaries as plain totals rather than depending on Residency.
+- Engine integrations are adapter crates. `conflux-bevy` is the only crate allowed
+  to depend on Bevy crates; it maps Conflux models/reports into Bevy resources and
+  messages without moving Bevy concepts into Conflux core crates. See
+  `docs/BEVY_ADAPTER_BOUNDARY.md`.
 
 This keeps the ownership split below enforceable by the dependency graph.
 
@@ -85,6 +89,7 @@ enforced rules:
 - `conflux-trace` may depend on other Conflux crates only as dev-dependencies.
 - `conflux-planner` may read the backend report crates but not depend directly on
   `wgpu` or `residency-core`.
+- Bevy crates may appear only in `conflux-bevy`.
 
 Add a rule to that test when a new boundary needs enforcing; do not rely on
 convention alone.
