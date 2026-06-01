@@ -71,6 +71,9 @@ canonical scenario.
   eligibility report now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
   and `conflux-wgsl` (WGSL emission; `wgpu` behind the `gpu` feature).
+- **Bevy adapter**: `conflux-bevy` is adapter-only. It maps a `Simulation` and its
+  reports into Bevy resources/messages for manual stepping; Bevy dependencies are
+  mechanically forbidden outside the adapter crate.
 
 ### Invariants locked in
 
@@ -179,5 +182,8 @@ conversion. Bridge preparation evaluates aggregates once per tick and feeds both
 aggregate and projection bridges from that single evaluation.
 Aggregate reports and bridge timing are preserved unchanged.
 
+The next integration track is proving the Bevy adapter boundary (#43): manual
+stepping and report/diagnostic resources in `conflux-bevy`, with no Bevy concepts
+in core simulation crates. Godot remains parked until that boundary is proven.
 Graph-rule kernels remain advisory only under the current hard boundary unless
 that boundary is explicitly reopened.

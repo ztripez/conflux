@@ -83,7 +83,7 @@ impl FlowFireReport {
     /// A short Display suffix describing the execution path and — for a fallback or
     /// refusal — the specific, typed reason. Empty for a plain reference run, so
     /// reference-only reports do not imply optimization happened.
-    pub(super) fn execution_note(&self) -> String {
+    pub fn execution_note(&self) -> String {
         let why = || match &self.kernel_rejection {
             Some(reason) => reason.to_string(),
             None => "not flow-kernel-eligible".to_string(),

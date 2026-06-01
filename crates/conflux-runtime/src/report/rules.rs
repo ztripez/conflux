@@ -79,7 +79,7 @@ impl RuleFireReport {
     /// A short Display suffix describing the execution path and — for a fallback —
     /// the specific, typed reason the kernel was unavailable. Empty for a plain
     /// reference run, so reference-only reports do not imply optimization happened.
-    pub(super) fn execution_note(&self) -> String {
+    pub fn execution_note(&self) -> String {
         // The specific extraction reason, if known, else a coarse phrase.
         let why = || match &self.kernel_rejection {
             Some(reason) => reason.to_string(),

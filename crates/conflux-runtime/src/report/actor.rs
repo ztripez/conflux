@@ -62,7 +62,7 @@ pub struct ActorRuleFireReport {
 impl ActorRuleFireReport {
     /// A short Display suffix describing the execution path and — for a fallback or
     /// refusal — the specific, typed reason. Empty for a plain reference run.
-    pub(super) fn execution_note(&self) -> String {
+    pub fn execution_note(&self) -> String {
         let why = || match &self.kernel_rejection {
             Some(reason) => reason.to_string(),
             None => "not actor-kernel-eligible".to_string(),

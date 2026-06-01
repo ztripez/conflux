@@ -21,7 +21,7 @@ Residency owns the movement of buffer-backed data.
 See `docs/BOUNDARIES.md` for the full ownership split and the lists of things
 that are forbidden in Conflux core.
 
-## Current stage: Post-Alpha optimization slices
+## Current stage: Bevy adapter phase 0
 
 The MVP ladder (MVP0–MVP7) is complete: guardrails, CPU reference path, kernel IR
 extraction, kernel CPU backend + equivalence harness, Residency bridge, GPU/WGSL
@@ -31,17 +31,19 @@ domains landed past the ladder: 2D fields, regions/aggregates/bridges, flows,
 actors and proximity queries, multiscale scale-links/projections, units, and the
 graph and report-only event domains. Alpha 0 (#179) froze the reference-grade CPU
 contracts, proved the public API on `regional_settlement_ecology`, measured the
-baseline, and chose the first optimized execution target from evidence. The first
-post-Alpha optimization track (#192) added opt-in CPU paths for flows and eligible
-actor rules.
+baseline, and chose the first optimized execution target from evidence. Alpha 1
+(#223) recorded the first post-Alpha optimized runtime checkpoint: opt-in CPU
+paths for flows and eligible actor rules (#192), opt-in exact bounded-radius
+proximity-query indexing (#217), and internal aggregate precomputed region
+selection (#221).
 
-The current post-Alpha optimization slice (#217) is exact bounded-radius
-proximity-query indexing: the exact CPU scan remains the source of truth and
-default, while eligible radius queries can opt into a uniform-grid index with
-explicit fallback/refusal reporting. `docs/MVP_LADDER.md` records the original
-order; the current factual state is `docs/CURRENT_STATE.md` and
-`docs/ARCHITECTURE_SNAPSHOT.md`. New work is scoped against the boundaries below
-before starting.
+The current integration slice (#43) is Bevy adapter phase 0. Engine integrations
+are adapters: Conflux owns model meaning, runtime execution, and reports; Bevy owns
+ECS resources/messages/schedules/UI. Keep Bevy dependencies and Bevy types inside
+`conflux-bevy`; Godot remains parked until this adapter boundary is proven.
+`docs/MVP_LADDER.md` records the original order; the current factual state is
+`docs/CURRENT_STATE.md` and `docs/ARCHITECTURE_SNAPSHOT.md`. New work is scoped
+against the boundaries below before starting.
 
 Hard boundary (still in force):
 
@@ -71,6 +73,9 @@ Dependency boundaries, enforced by the crate graph:
 - `conflux-trace` is a standalone schema + recommendation crate: it depends on no
   other Conflux crate, imports transfer summaries as plain totals (never
   Residency directly), and is off the execution path.
+- Bevy dependencies are allowed **only** in `conflux-bevy`; Bevy resources,
+  messages, systems, schedules, UI, and engine integration code must not enter core
+  simulation crates.
 
 These dependency rules are enforced mechanically (not just by review) by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`, which fails CI on drift
@@ -108,6 +113,7 @@ crates/
   conflux-core/      # public model API: domains, stocks, signals, rules
   conflux-ir/        # lowered simulation IR
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
+  conflux-bevy/      # Bevy adapter (manual stepping + report resources)
   conflux-planner/   # advisory optimization & planning reports (reads backends)
   conflux-residency/ # bridge to Residency (the only crate that depends on it)
   conflux-runtime/   # scheduler, reports, CPU reference execution

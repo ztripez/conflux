@@ -52,6 +52,11 @@ jobs:
       - name: Ecology baseline measurement smoke
         run: cargo run -p conflux-fixtures --example ecology_baseline
 
+      # Adapter smoke: proves the Bevy adapter can manually step the canonical
+      # ecology scenario and surface report resources without rendering/UI.
+      - name: Bevy adapter ecology smoke
+        run: cargo run -p conflux-bevy --example regional_settlement_ecology
+
   docs:
     name: docs
     runs-on: ubuntu-latest

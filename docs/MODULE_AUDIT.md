@@ -127,3 +127,7 @@ triggers above) when one of the triggers fires. This document is referenced from
   was added as a new internal module (~82 lines). It is focused (one job: precompute
   region selections) and adds no pressure to existing modules. No split trigger
   fires.
+- The Bevy phase-0 adapter starts split by responsibility in `crates/conflux-bevy`:
+  `resources.rs`, `messages.rs`, `systems.rs`, `diagnostics.rs`, and `plugin.rs`.
+  Keep those modules adapter-only. Split `diagnostics.rs` if it starts mirroring
+  full Conflux report families instead of summarizing them.

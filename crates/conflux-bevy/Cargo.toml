@@ -1,0 +1,19 @@
+[package]
+name = "conflux-bevy"
+version = "0.1.0"
+description = "Bevy adapter for manually stepping Conflux simulations and surfacing reports."
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+bevy_app = { version = "0.18.1", default-features = false }
+bevy_ecs = { version = "0.18.1", default-features = false }
+conflux-core.workspace = true
+conflux-ir.workspace = true
+conflux-runtime.workspace = true
+
+[dev-dependencies]
+conflux-fixtures.workspace = true
