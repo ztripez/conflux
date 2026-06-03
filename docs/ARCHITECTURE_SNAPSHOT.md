@@ -189,7 +189,12 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   bridge-write path; unconditional (no opt-in mode) because lowering guarantees
   valid region masks.
 - **GPU / WGSL** — emission is always available and inspectable; execution is
-  behind the optional `gpu` feature (wgpu) and skips gracefully without a GPU.
+  behind the optional `gpu` feature (wgpu). Hardware checks report an explicit
+  no-adapter skip when no GPU is reachable; they do not silently imply GPU work
+  ran.
+  The current GPU backend pass is scoped in `docs/GPU_BACKEND_PASS.md`; it keeps
+  GPU correctness work in `conflux-wgsl` and does not add runtime GPU selected
+  execution.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the
   CPU-side `FakeBackend` drives sync cycles today.
 - **Planner** — advisory only. It explains available backends and costs and never
