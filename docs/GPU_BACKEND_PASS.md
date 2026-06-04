@@ -99,6 +99,8 @@ The excluded scopes are tracked explicitly so they are not lost:
 ## Acceptance for this boundary
 
 - Docs distinguish current implementation from planned GPU hardening.
+- Planner reports distinguish WGSL-lowerable table/field kernels from kernels
+  actually dispatched on GPU.
 - `conflux-wgsl` remains the shader-lowering boundary.
 - `conflux-residency` remains the only Conflux crate depending on
   `residency-core`.

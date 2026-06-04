@@ -1,5 +1,7 @@
 use std::fmt;
 
+use super::TableGpuRejection;
+
 /// An advisory optimization report for a model.
 ///
 /// MVP6 boundary: everything here is *advisory*. The planner reads the IR and the
@@ -12,6 +14,12 @@ pub struct OptimizationReport {
     pub rules: Vec<RulePlan>,
     /// Advisory fusion groups: sets of rules that *could* fuse. Never fused here.
     pub fusion: Vec<FusionGroup>,
+    /// Advisory GPU capability for table and field kernels.
+    ///
+    /// This distinguishes WGSL-lowerable rules from rules actually run on a GPU.
+    /// The planner never dispatches GPU work, so its entries report
+    /// `executed_on_gpu == false`.
+    pub gpu: super::GpuCapabilityReport,
 }
 
 /// The plan for a single rule: the backend it can use, its rough cost, and the
@@ -26,18 +34,25 @@ pub struct RulePlan {
     pub unsupported: Vec<String>,
 }
 
-/// The most optimized backend available to a rule, with the reason any
-/// more-optimized path is unavailable.
+/// The most optimized advisory backend capability available to a table rule, with
+/// the reason any more-optimized path is unavailable.
 ///
-/// The ladder is reference → CPU kernel → GPU; a rule lands at the highest rung
-/// it qualifies for, and the lower rungs remain as fallbacks.
+/// The ladder is reference → CPU kernel → WGSL-lowerable GPU capability; a rule
+/// lands at the highest rung it qualifies for, and the lower rungs remain as
+/// fallbacks. This enum does not mean the runtime dispatched GPU work.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BackendChoice {
     /// Not kernel-eligible; runs on the simulation reference path.
-    Reference { reason: String },
-    /// Kernel-eligible but not GPU-lowerable; runs on the CPU kernel backend.
-    CpuKernel { gpu_rejection: String },
-    /// Lowerable to the GPU (WGSL) backend, the most optimized path available.
+    Reference {
+        /// Typed reason the rule cannot enter the bounded table-kernel subset.
+        reason: TableGpuRejection,
+    },
+    /// Kernel-eligible but not WGSL-lowerable; runs on the CPU kernel backend.
+    CpuKernel {
+        /// Typed reason the rule cannot lower to WGSL.
+        gpu_rejection: TableGpuRejection,
+    },
+    /// Lowerable to WGSL. This is GPU capability, not proof of GPU execution.
     Gpu,
 }
 
@@ -47,7 +62,7 @@ impl BackendChoice {
         match self {
             BackendChoice::Reference { .. } => "simulation reference",
             BackendChoice::CpuKernel { .. } => "CPU kernel",
-            BackendChoice::Gpu => "GPU (WGSL)",
+            BackendChoice::Gpu => "GPU (WGSL-lowerable)",
         }
     }
 }
@@ -122,6 +137,7 @@ impl fmt::Display for OptimizationReport {
                 writeln!(f, "      unsupported: {note}")?;
             }
         }
+        write!(f, "{}", self.gpu)?;
         writeln!(f, "fusion candidates: {}", self.fusion.len())?;
         for group in &self.fusion {
             writeln!(

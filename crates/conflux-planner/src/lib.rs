@@ -25,6 +25,10 @@
 //! exact shape of that selection — without changing aggregate meaning or bridge
 //! timing.
 //!
+//! It reports *GPU capability* for table and field kernels — whether each rule is
+//! WGSL-lowerable, plus structured rejection reasons — while separately recording
+//! that the planner did not run anything on a GPU.
+//!
 //! And it reports *flow-optimization eligibility* for declared flows — which
 //! field-local flows could be backed by an optimized CPU flow kernel, the candidate
 //! shape, and the rejection reasons — again advisory only; the reference flow
@@ -46,6 +50,7 @@ mod backend;
 mod cost;
 mod flow_eligibility;
 mod fusion;
+mod gpu_eligibility;
 mod graph_eligibility;
 mod index_eligibility;
 mod plan;
@@ -55,16 +60,18 @@ mod transfer;
 pub use actor_eligibility::actor_eligibility;
 pub use aggregate_eligibility::aggregate_eligibility;
 pub use flow_eligibility::flow_eligibility;
+pub use gpu_eligibility::gpu_capability;
 pub use graph_eligibility::graph_eligibility;
 pub use index_eligibility::index_eligibility;
 pub use plan::plan;
 pub use report::{
     ActorCandidateShape, ActorRuleEligibility, ActorRuleEligibilityReport, AggregateCandidateShape,
     AggregateEligibility, AggregateEligibilityReport, ApproximationStatus, BackendChoice,
-    CandidateIndex, CostHint, FlowCandidateShape, FlowEligibility, FlowEligibilityReport,
-    FusionGroup, GraphCandidateShape, GraphEligibilityReport, GraphRuleEligibility,
-    GraphTriggerEligibility, IndexEligibilityReport, IndexRebuildInputs, OptimizationReport,
-    QueryIndexEligibility, RulePlan, TransferAdvisory,
+    CandidateIndex, CostHint, FieldGpuCapability, FieldGpuRejection, FlowCandidateShape,
+    FlowEligibility, FlowEligibilityReport, FusionGroup, GpuCapabilityReport, GraphCandidateShape,
+    GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport,
+    IndexRebuildInputs, OptimizationReport, QueryIndexEligibility, RulePlan, TableGpuCapability,
+    TableGpuRejection, TransferAdvisory,
 };
 pub use transfer::transfer_advisory;
 

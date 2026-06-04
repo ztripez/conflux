@@ -170,8 +170,8 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 - **Equivalence report** — per rule, matched kernel run vs fallback to reference,
   with the reason.
 - **Planner reports** — backend choice + cost hints, fusion candidates, transfer
-  advisories, proximity-index eligibility, and graph-kernel eligibility (all
-  advisory).
+  advisories, GPU capability for table/field WGSL lowering, proximity-index
+  eligibility, and graph-kernel eligibility (all advisory).
 - **Trace + recommendations** — optional, off the execution path.
 - **Baseline report** — `cargo run -p conflux-fixtures --example baseline_report`
   prints the report shape for every canonical scenario in one place (visibility
@@ -192,6 +192,9 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   behind the optional `gpu` feature (wgpu). Hardware checks report an explicit
   no-adapter skip when no GPU is reachable; they do not silently imply GPU work
   ran.
+  Planner GPU capability reports use this distinction too: `WGSL-lowerable=true`
+  means an emitter accepted the kernel, while `executed_on_gpu=false` means the
+  planner did not dispatch runtime GPU work.
   The current GPU backend pass is scoped in `docs/GPU_BACKEND_PASS.md`; it keeps
   GPU correctness work in `conflux-wgsl` and does not add runtime GPU selected
   execution.

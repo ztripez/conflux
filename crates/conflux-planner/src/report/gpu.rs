@@ -1,0 +1,179 @@
+use std::fmt;
+
+use conflux_kernel::{FieldRejectionReason, RejectionReason};
+use conflux_wgsl::WgslError;
+
+/// Advisory GPU capability for table and field kernels.
+///
+/// This report is about capability only: whether a rule can be lowered to WGSL.
+/// It is not an execution report, does not imply GPU dispatch, and is always
+/// produced without mutating the IR or selecting a runtime backend.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GpuCapabilityReport {
+    /// Table-rule GPU capability entries, in IR rule order.
+    pub table_rules: Vec<TableGpuCapability>,
+    /// Field-rule GPU capability entries, in IR field-rule order.
+    pub field_rules: Vec<FieldGpuCapability>,
+}
+
+/// Advisory GPU capability for one table rule.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableGpuCapability {
+    /// Source table rule name.
+    pub rule: String,
+    /// Source table name.
+    pub table: String,
+    /// True when the table rule extracted as a kernel and lowered to WGSL.
+    pub wgsl_lowerable: bool,
+    /// True only when a runtime GPU path actually dispatched this rule.
+    ///
+    /// The planner never dispatches work, so entries produced by
+    /// [`crate::plan`] are always `false`.
+    pub executed_on_gpu: bool,
+    /// Structured reason the table rule is not WGSL-lowerable, when rejected.
+    pub rejection: Option<TableGpuRejection>,
+}
+
+/// Advisory GPU capability for one field rule.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldGpuCapability {
+    /// Source field rule name.
+    pub rule: String,
+    /// Source field name.
+    pub field: String,
+    /// Source grid size as `(width, height)`.
+    pub grid: (usize, usize),
+    /// Bounded stencil radius accepted by the field-kernel extractor.
+    pub stencil_radius: Option<i32>,
+    /// True when the field rule extracted as a bounded field kernel and lowered to
+    /// WGSL.
+    pub wgsl_lowerable: bool,
+    /// True only when a runtime GPU path actually dispatched this field rule.
+    ///
+    /// The planner never dispatches work, so entries produced by
+    /// [`crate::plan`] are always `false`.
+    pub executed_on_gpu: bool,
+    /// Structured reason the field rule is not WGSL-lowerable, when rejected.
+    pub rejection: Option<FieldGpuRejection>,
+}
+
+/// Why a table rule is not WGSL-lowerable.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TableGpuRejection {
+    /// The rule did not extract into the bounded table-kernel subset.
+    NotKernelLowerable {
+        /// Typed kernel-extraction rejection reason.
+        reason: RejectionReason,
+    },
+    /// The rule extracted as a table kernel, but WGSL lowering rejected it.
+    WgslRejected {
+        /// Typed WGSL-lowering rejection reason.
+        reason: WgslError,
+    },
+}
+
+/// Why a field rule is not WGSL-lowerable.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldGpuRejection {
+    /// The rule did not extract into the bounded field-kernel subset.
+    NotFieldKernelLowerable {
+        /// Typed field-kernel extraction rejection reason.
+        reason: FieldRejectionReason,
+    },
+    /// The rule extracted as a bounded field kernel, but WGSL lowering rejected it.
+    WgslRejected {
+        /// Typed WGSL-lowering rejection reason.
+        reason: WgslError,
+    },
+}
+
+impl GpuCapabilityReport {
+    /// Returns how many table and field rules are WGSL-lowerable.
+    pub fn wgsl_lowerable_count(&self) -> usize {
+        self.table_rules
+            .iter()
+            .filter(|rule| rule.wgsl_lowerable)
+            .count()
+            + self
+                .field_rules
+                .iter()
+                .filter(|rule| rule.wgsl_lowerable)
+                .count()
+    }
+
+    /// Returns how many table and field rules were actually dispatched on a GPU.
+    pub fn executed_on_gpu_count(&self) -> usize {
+        self.table_rules
+            .iter()
+            .filter(|rule| rule.executed_on_gpu)
+            .count()
+            + self
+                .field_rules
+                .iter()
+                .filter(|rule| rule.executed_on_gpu)
+                .count()
+    }
+}
+
+impl fmt::Display for TableGpuRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TableGpuRejection::NotKernelLowerable { reason } => {
+                write!(f, "not a bounded table kernel: {reason}")
+            }
+            TableGpuRejection::WgslRejected { reason } => write!(f, "WGSL rejected: {reason}"),
+        }
+    }
+}
+
+impl fmt::Display for FieldGpuRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FieldGpuRejection::NotFieldKernelLowerable { reason } => {
+                write!(f, "not a bounded field kernel: {reason}")
+            }
+            FieldGpuRejection::WgslRejected { reason } => write!(f, "WGSL rejected: {reason}"),
+        }
+    }
+}
+
+impl fmt::Display for GpuCapabilityReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "gpu capability: {} WGSL-lowerable, {} actually run on GPU (advisory)",
+            self.wgsl_lowerable_count(),
+            self.executed_on_gpu_count()
+        )?;
+        for rule in &self.table_rules {
+            write!(
+                f,
+                "  TABLE `{}` on `{}`: WGSL-lowerable={}, executed_on_gpu={}",
+                rule.rule, rule.table, rule.wgsl_lowerable, rule.executed_on_gpu
+            )?;
+            if let Some(rejection) = &rule.rejection {
+                write!(f, " ({rejection})")?;
+            }
+            writeln!(f)?;
+        }
+        for rule in &self.field_rules {
+            write!(
+                f,
+                "  FIELD `{}` on `{}`: WGSL-lowerable={}, executed_on_gpu={}",
+                rule.rule, rule.field, rule.wgsl_lowerable, rule.executed_on_gpu
+            )?;
+            if let Some(radius) = rule.stencil_radius {
+                write!(
+                    f,
+                    " [grid {}x{}, radius {radius}]",
+                    rule.grid.0, rule.grid.1
+                )?;
+            }
+            if let Some(rejection) = &rule.rejection {
+                write!(f, " ({rejection})")?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
