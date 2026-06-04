@@ -9,7 +9,7 @@ use conflux_core::{
 };
 use conflux_fixtures::*;
 use conflux_kernel::{diagnose_elementwise, execute_elementwise, extract, RejectionReason};
-use conflux_planner::{plan, transfer_advisory, BackendChoice};
+use conflux_planner::{plan, transfer_advisory, BackendChoice, FieldGpuRejection};
 use conflux_residency::residency_core::{FakeBackend, SyncGraph};
 use conflux_residency::sync_kernel_output;
 use conflux_runtime::{
@@ -20,6 +20,7 @@ use conflux_runtime::{
 use conflux_trace::{
     recommend, AssessmentSummary, HardwareProfile, RanOn, RecommendationKind, RuleTrace, Trace,
 };
+use conflux_wgsl::WgslError;
 
 #[test]
 fn all_scenarios_have_stable_names_and_lower() {
@@ -145,6 +146,31 @@ fn gpu_eligible_numeric_reaches_the_gpu_backend() {
     let wgsl = conflux_wgsl::lower_kernels(&kernels.accepted);
     assert_eq!(wgsl.rejected_count(), 0);
     assert!(wgsl.accepted.iter().any(|m| m.kernel == "combine"));
+}
+
+#[test]
+fn regional_ecology_field_rule_reports_typed_wgsl_capability_without_gpu_execution() {
+    let ir = lower(&regional_settlement_ecology()).unwrap();
+    let report = plan(&ir);
+
+    let grow_crop = report
+        .gpu
+        .field_rules
+        .iter()
+        .find(|rule| rule.rule == "grow_crop")
+        .expect("regional ecology exposes field GPU capability in planner report");
+
+    assert_eq!(grow_crop.field, "Terrain");
+    assert_eq!(grow_crop.grid, (2, 2));
+    assert_eq!(grow_crop.stencil_radius, Some(0));
+    assert!(!grow_crop.executed_on_gpu);
+    assert!(!grow_crop.wgsl_lowerable);
+    match &grow_crop.rejection {
+        Some(FieldGpuRejection::WgslRejected {
+            reason: WgslError::NonFiniteDiagnosticBound { value, .. },
+        }) => assert!(value.is_infinite()),
+        other => panic!("expected typed field WGSL diagnostic-bound rejection, got {other:?}"),
+    }
 }
 
 #[test]

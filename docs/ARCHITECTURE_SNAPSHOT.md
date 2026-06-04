@@ -40,9 +40,10 @@ crates/
 - **conflux-bevy** is an engine adapter. It owns Bevy resources, messages, and
   systems for manually stepping a `Simulation` and surfacing Conflux reports into a
   Bevy world. Bevy concepts do not enter Conflux core crates.
-- **conflux-wgsl** lowers an accepted kernel to an inspectable WGSL compute shader
-  and its resource requirements. Actual GPU execution is behind the optional `gpu`
-  feature (off by default); the emitter side needs no `wgpu`.
+- **conflux-wgsl** lowers accepted table and bounded 2D field kernels to
+  inspectable WGSL compute shaders and resource requirements. Optional GPU
+  execution/equivalence helpers live behind the off-by-default `gpu` feature; the
+  emitter side needs no `wgpu`.
 - **conflux-residency** is the only crate that depends on `residency-core`. It maps
   kernel column buffers to Residency descriptors and drives a sync cycle, embedding
   Residency's transfer report.
@@ -180,7 +181,8 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 ## Planner / backend status
 
 - **CPU reference** — the source of truth; always available.
-- **CPU kernel** — bounded elementwise/stencil kernels, equivalence-checked; opt-in.
+- **CPU kernel** — bounded elementwise/stencil kernels, equivalence-checked;
+  table/field CPU kernel execution is opt-in where runtime modes expose it.
 - **Proximity-query index** — exact uniform-grid pruning for bounded-radius actor
   queries, opt-in; `KNearest` falls back/refuses until an exact expanding-ring
   strategy exists.
@@ -188,16 +190,17 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   once at simulation construction and reused for every aggregate evaluation and
   bridge-write path; unconditional (no opt-in mode) because lowering guarantees
   valid region masks.
-- **GPU / WGSL** — emission is always available and inspectable; execution is
-  behind the optional `gpu` feature (wgpu). Hardware checks report an explicit
-  no-adapter skip when no GPU is reachable; they do not silently imply GPU work
-  ran.
+- **GPU / WGSL** — emission is always available and inspectable for accepted
+  table kernels and bounded 2D field kernels; execution is experimental and
+  behind the optional `gpu` feature (wgpu). Hardware checks compare GPU buffers
+  against CPU contracts and report explicit match, mismatch, or no-adapter skip;
+  they do not silently imply GPU work ran.
   Planner GPU capability reports use this distinction too: `WGSL-lowerable=true`
   means an emitter accepted the kernel, while `executed_on_gpu=false` means the
   planner did not dispatch runtime GPU work.
   The current GPU backend pass is scoped in `docs/GPU_BACKEND_PASS.md`; it keeps
   GPU correctness work in `conflux-wgsl` and does not add runtime GPU selected
-  execution.
+  execution or Residency-backed GPU resource ownership.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the
   CPU-side `FakeBackend` drives sync cycles today.
 - **Planner** — advisory only. It explains available backends and costs and never
