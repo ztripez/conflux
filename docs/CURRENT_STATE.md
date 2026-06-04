@@ -64,8 +64,11 @@ canonical scenario.
 - **Bounded numeric kernel extraction + equivalence**: elementwise table kernels
   and field-stencil kernels each run through both the reference (f64) and the CPU
   kernel path (f32), compared within a declared tolerance, never bit-for-bit.
-  WGSL/GPU hardware checks remain limited to the optional `conflux-wgsl` `gpu`
-  feature and are being hardened under #238.
+  `conflux-wgsl` also lowers accepted table and bounded 2D field kernels to
+  deterministic WGSL modules. Its optional `gpu` feature provides
+  hardware-gated table and field CPU/GPU equivalence helpers; they report
+  `match`, `mismatch`, or `skipped: no adapter` and are not part of default
+  runtime execution.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
   transfer notes, GPU capability for table/field WGSL lowering, proximity-index
@@ -75,7 +78,8 @@ canonical scenario.
   dispatch. The proximity-index
   eligibility report now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
-  and `conflux-wgsl` (WGSL emission; `wgpu` behind the `gpu` feature).
+  and `conflux-wgsl` (WGSL emission plus optional, experimental `wgpu`
+  correctness checks behind the `gpu` feature).
 - **Bevy adapter**: `conflux-bevy` is adapter-only. It maps a `Simulation` and its
   reports into Bevy resources/messages for manual stepping; Bevy dependencies are
   mechanically forbidden outside the adapter crate.
@@ -120,11 +124,11 @@ planning is optional research. There is no graph-kernel backend — graph rules 
 events run only on the CPU reference path. Enforced mechanically by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
 
-The tracked GPU backend pass (#238) does not change those boundaries: it is
-scoped to harden `conflux-wgsl` correctness for table and field kernels while
-deferring runtime GPU selected execution, Residency-backed persistent GPU
-resources, flow/actor/query/graph/event GPU backends, fusion, and engine GPU
-integration. See `docs/GPU_BACKEND_PASS.md`.
+The tracked GPU backend pass (#238) does not change those boundaries: it hardened
+`conflux-wgsl` correctness for table and bounded field kernels while deferring
+runtime GPU selected execution, Residency-backed persistent GPU resources,
+flow/actor/query/graph/event GPU backends, fusion, and engine GPU integration.
+See `docs/GPU_BACKEND_PASS.md`.
 
 ## Checkpoint: `alpha-0`
 

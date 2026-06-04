@@ -27,6 +27,10 @@ Cut a preview tag only when all of the following hold.
       under `RUSTDOCFLAGS=-D warnings` (the `docs` job).
 - [ ] The optional `gpu` feature compiles: `cargo check -p conflux-wgsl
       --features gpu` (the `gpu-feature` job).
+- [ ] The optional WGSL correctness helpers remain buildable and hardware-free in
+      CI: `cargo test -p conflux-wgsl --features gpu` must pass without requiring
+      an adapter. This command exercises comparison, validation, and no-adapter
+      runner seams; it is not proof that hardware executed.
 - [ ] The serde-free trace path compiles: `cargo check -p conflux-trace
       --no-default-features` (in the `workspace` job).
 - [ ] The baseline report runs over every canonical scenario (the `workspace`
@@ -82,6 +86,9 @@ Everything in Tier 1, **plus**:
 - [ ] Cross-check `docs/API_STABILITY.md`: no experimental surface (GPU execution,
       profile-guided trace, unit conversions, proximity index, scale links beyond
       region→table) is presented as a stable guarantee in README or crate docs.
+- [ ] GPU wording distinguishes three states everywhere it appears:
+      WGSL-lowerable, hardware-check executed, and runtime-selected execution.
+      Only the first two exist today, and hardware checks are experimental.
 - [ ] Current non-goals (see `AGENTS.md` and the snapshot's "Current non-goals")
       are not contradicted by release copy.
 
@@ -104,6 +111,9 @@ cargo run -p conflux-residency --example residency_bridge
 cargo run -p conflux-planner --example optimization_report
 cargo run -p conflux-trace --example profile_guided
 cargo run -p conflux-fixtures --example baseline_report
-# GPU path (skips gracefully without an adapter):
+# Optional table GPU correctness example (experimental; prints MATCH/MISMATCH or
+# SKIP when no adapter is reachable):
 cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
+# Optional GPU-feature unit contracts (hardware-free comparison/validation seams):
+cargo test -p conflux-wgsl --features gpu
 ```

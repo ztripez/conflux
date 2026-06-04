@@ -25,9 +25,10 @@ cargo run -p conflux-fixtures --example baseline_report
 
 `baseline_report` runs **every** scenario in `ALL_SCENARIOS` and prints the
 current report shape in one place — structure, reference execution,
-kernel/equivalence, planner backend choices and fallback reasons, diagnostic
-violation counts, transfer advisories, and (where present) region/aggregate,
-flow, actor, query, projection, graph/event, and unit output. It is
+kernel/equivalence, planner backend choices and fallback reasons, advisory GPU
+capability (`WGSL-lowerable` versus `executed_on_gpu`), diagnostic violation
+counts, transfer advisories, and (where present) region/aggregate, field GPU
+eligibility, flow, actor, query, projection, graph/event, and unit output. It is
 visibility-only: no timings, no benchmark, and it changes no behavior.
 
 ## Measure the real scenario
@@ -58,7 +59,7 @@ Every entry below is a key in `ALL_SCENARIOS`.
 | `unstable_population` | An out-of-range proposal is rejected and the raw value preserved (no clamp); also kernel-diagnosed. | `Rule`, `Assessment::range` | rejected proposal with raw value; kernel range diagnostic |
 | `resource_reserve` | Elementwise column arithmetic is kernel-eligible and matches the reference within tolerance. | `Table::stock`, `Rule` | kernel acceptance + equivalence; in-range diagnostics |
 | `param_rule_fallback` | A rule reading a parameter is kernel-rejected with a reason and planned to the reference. | `Rule`, `param` | kernel `ReadsParameter` rejection; planner `Reference` |
-| `gpu_eligible_numeric` | A clean f32 kernel reaches the GPU/WGSL backend and lowers to WGSL. | `Table::stock`, `Rule` | planner `Gpu`; WGSL lowering accepted |
+| `gpu_eligible_numeric` | A clean f32 table kernel is reported as GPU/WGSL-capable without claiming runtime GPU execution. | `Table::stock`, `Rule` | planner `Gpu`; GPU capability `WGSL-lowerable=true`, `executed_on_gpu=false`; WGSL lowering accepted |
 | `transfer_dominated_rule` | A 1-op kernel's buffer round-trip dominates compute (keep-resident signal). | `Table::stock`, `Rule` | Residency transfer + planner transfer advisory `transfer_dominates` |
 | `trace_hotspot_case` | A cheap vs expensive rule yields hotspot + backend-headroom recommendations. | `Table::stock`, `Rule` | `conflux-trace` `recommend` (hotspot, backend headroom) |
 | `derived_kernel_case` | A kernel-eligible rule reads a materialized derived column (not raw initial). | `Table::derived`, `Rule` | kernel reads recomputed derived buffer |
@@ -69,6 +70,7 @@ Every entry below is a key in `ALL_SCENARIOS`.
 | Scenario | Proves | Public APIs | Report surfaces asserted |
 |---|---|---|---|
 | `watershed_yield` | Field derived channel → boolean regions → named aggregates (sum/mean) → field-to-table bridge feeding a table rule. | `Field`, `Region`, `Aggregate`, `Bridge`, `Rule` | aggregate values + provenance; bridge value |
+| `regional_settlement_ecology` | Real end-to-end model spanning field/table/actors/projections/graph/events; its field rule also appears in advisory field GPU capability. | Most public domain APIs | typed field GPU capability rejection (`WGSL-lowerable=false`, `executed_on_gpu=false`) for the current diagnostic-bound shape; plus aggregate/flow/actor/query/projection/graph/event/unit reports |
 | `runoff_flow` | Field-local flow moves a quantity one cell with `Reject` edge; interior conserved, boundary loss reported; carries the moved unit. | `Field`, `Flow`, `EdgePolicy`, `Unit` | flow transfers, conservation summary, moved-channel unit |
 
 ### Actor scenarios

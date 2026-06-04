@@ -20,8 +20,8 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-runtime` equivalence harness | **Stable-enough** | `check_equivalence` / tolerance compares reference vs kernel within a declared tolerance. |
 | `conflux-kernel` | **Stable-enough (bounded subset)** | Kernel IR + CPU executor for the supported elementwise/stencil subset; rejection reasons are typed. Anything outside the subset is reported, not silently handled. |
 | `conflux-planner` reports | **Advisory (shape may evolve)** | The *advisory-only* guarantee is firm (never rewrites the IR or changes execution); the exact report shapes may change as backends evolve. |
-| `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic. |
-| `conflux-wgsl` `gpu` execution | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); skips gracefully without a GPU. |
+| `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic for accepted table kernels and bounded 2D field kernels. |
+| `conflux-wgsl` `gpu` execution/equivalence | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); table and field CPU/GPU equivalence helpers skip gracefully without a GPU and report mismatches explicitly. They do not make runtime GPU execution automatic. |
 | `conflux-residency` | **Experimental / release-blocked** | The bridge to Residency; release-blocked by the `residency-core` git dependency (see `docs/PUBLISH_POLICY.md`). |
 | `conflux-trace` | **Experimental (research)** | Trace schema + profile-guided recommendations. Off the execution path; normal runs never require it. |
 | `conflux-bevy` | **Experimental adapter** | Phase-0 Bevy integration: manual stepping and report/diagnostic resources. Bevy types are adapter-only and may change while the boundary is proven. |
@@ -30,7 +30,10 @@ pre-release guide, not a SemVer guarantee.
 
 Named so they are not mistaken for stable contracts:
 
-- **GPU execution** (`conflux-wgsl` `gpu` feature) — emission is stable; execution is experimental and hardware-gated.
+- **GPU execution/equivalence** (`conflux-wgsl` `gpu` feature) — emission is
+  stable-enough; actual GPU dispatch remains experimental, hardware-gated, and
+  scoped to `conflux-wgsl` correctness helpers. Runtime execution is still
+  reference/CPU-selected only unless a future explicit GPU execution mode lands.
 - **Profile-guided trace** (`conflux-trace`) — optional research; there is no release compiler or runtime adaptive optimizer.
 - **Unit conversions** (`Conversion`) — declared and validated, but **not yet applied**; no expression invocation surface exists yet (`docs/PUBLISH_POLICY.md` and the units epic note this).
 - **Proximity index** — exact uniform-grid execution exists only for bounded-radius actor queries and is opt-in through `QueryExecutionMode`; the CPU scan remains the source of truth and `KNearest` remains scan-only until an exact expanding-ring strategy exists.

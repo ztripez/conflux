@@ -1,27 +1,31 @@
 # GPU backend pass boundary
 
-This document scopes the GPU backend pass tracked by
-[#238](https://github.com/ztripez/conflux/issues/238). It is an execution
-contract for the workstream, not a claim that every item here is already
-implemented. The factual description of what exists on `main` remains
-[`ARCHITECTURE_SNAPSHOT.md`](ARCHITECTURE_SNAPSHOT.md) and
-[`CURRENT_STATE.md`](CURRENT_STATE.md).
+This document records the GPU backend pass tracked by
+[#238](https://github.com/ztripez/conflux/issues/238). It is a boundary and
+contract record for what landed in `conflux-wgsl` and `conflux-planner`, not a
+promise of automatic runtime GPU execution. The factual description of all
+current architecture remains [`ARCHITECTURE_SNAPSHOT.md`](ARCHITECTURE_SNAPSHOT.md)
+and [`CURRENT_STATE.md`](CURRENT_STATE.md).
 
 ## Goal
 
 Make `conflux-wgsl` a hardware-gated correctness backend for bounded table and
 field kernels while preserving the existing execution and dependency boundaries.
 
-The pass is correctness-first:
+The pass is correctness-first. On `main`, it provides:
 
-- harden the optional `conflux-wgsl` `gpu` execution helper for table kernels;
-- promote table CPU/GPU equivalence from example-only plumbing into reusable,
+- hardened optional `conflux-wgsl` `gpu` execution helpers for table kernels;
+- reusable table CPU/GPU equivalence instead of example-only plumbing, with
   hardware-gated contract helpers;
-- add WGSL lowering for bounded field-stencil kernels;
-- add field CPU/GPU equivalence smoke coverage when hardware is available, with
-  unavailable hardware reported as an explicit skipped hardware check;
-- surface advisory GPU eligibility for table and field kernels without implying
+- WGSL lowering for bounded field-stencil kernels;
+- field CPU/GPU equivalence helpers with deterministic comparison, validation,
+  invalid-cell, and no-adapter runner-seam coverage; callers can use the helper
+  for hardware checks, but no standalone field smoke example exists yet;
+- advisory GPU eligibility for table and field kernels without implying
   automatic runtime execution.
+
+The runtime still does not dispatch rules on GPU. Planner reports and fixture
+output use `executed_on_gpu=false` for planner-produced capability entries.
 
 ## Ownership split
 
@@ -98,7 +102,7 @@ The excluded scopes are tracked explicitly so they are not lost:
 
 ## Acceptance for this boundary
 
-- Docs distinguish current implementation from planned GPU hardening.
+- Docs distinguish current implementation from deferred runtime/resource GPU work.
 - Planner reports distinguish WGSL-lowerable table/field kernels from kernels
   actually dispatched on GPU.
 - `conflux-wgsl` remains the shader-lowering boundary.
