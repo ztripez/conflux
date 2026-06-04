@@ -15,6 +15,8 @@ mod report;
 
 #[cfg(feature = "gpu")]
 mod gpu;
+#[cfg(feature = "gpu")]
+mod gpu_equivalence;
 
 pub use emit::{emit_wgsl, WgslError};
 pub use field_emit::emit_field_wgsl;
@@ -31,6 +33,11 @@ pub use gpu::{
     check_field_gpu_equivalence, compare_field_gpu_proposals, run_field_on_gpu, run_on_gpu,
     FieldGpuComparison, FieldGpuEquivalenceOutcome, FieldGpuEquivalenceReport, FieldGpuRun,
     FieldGpuRunMetadata, FieldGpuTolerance, GpuError, GpuExecutor, GpuRun, GpuRunMetadata,
+};
+#[cfg(feature = "gpu")]
+pub use gpu_equivalence::{
+    compare_buffers, compare_elementwise_table_on_gpu, BufferComparison, BufferMismatch,
+    EquivalenceTolerance, GpuEquivalenceReport, GpuEquivalenceStatus,
 };
 
 /// Describes the crate-level ownership boundary for the Conflux WGSL backend.

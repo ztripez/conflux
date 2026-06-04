@@ -137,6 +137,18 @@ pub enum GpuError {
     /// GPU output or diagnostic readback failed after dispatch submission.
     #[error("GPU readback failed: {0}")]
     Readback(String),
+    /// The CPU reference inputs supplied to an equivalence helper cannot execute
+    /// the kernel safely.
+    #[error("invalid CPU reference input: {0}")]
+    InvalidCpuReferenceInput(String),
+    /// A CPU/GPU equivalence tolerance is NaN, infinite, or negative.
+    #[error("invalid equivalence tolerance: absolute={absolute}, relative={relative}; both must be finite and non-negative")]
+    InvalidEquivalenceTolerance {
+        /// Absolute tolerance supplied by the caller.
+        absolute: f32,
+        /// Relative tolerance supplied by the caller.
+        relative: f32,
+    },
 }
 
 /// Dispatch/accounting metadata for a GPU run.
