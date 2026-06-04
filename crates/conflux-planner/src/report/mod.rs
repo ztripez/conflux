@@ -8,6 +8,7 @@ mod actor;
 mod aggregate;
 mod core;
 mod flow;
+mod gpu;
 mod graph;
 mod index;
 
@@ -17,6 +18,10 @@ pub use core::{
     BackendChoice, CostHint, FusionGroup, OptimizationReport, RulePlan, TransferAdvisory,
 };
 pub use flow::{FlowCandidateShape, FlowEligibility, FlowEligibilityReport};
+pub use gpu::{
+    FieldGpuCapability, FieldGpuRejection, GpuCapabilityReport, TableGpuCapability,
+    TableGpuRejection,
+};
 pub use graph::{
     GraphCandidateShape, GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility,
 };

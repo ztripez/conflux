@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use conflux_kernel::KernelReport;
 use conflux_wgsl::WgslReport;
 
-use crate::report::BackendChoice;
+use crate::report::{BackendChoice, TableGpuRejection};
 
 /// Determines the backend choice for every rule, keyed by rule name.
 ///
@@ -21,10 +21,10 @@ pub(crate) fn backend_choices(
     wgsl: &WgslReport,
 ) -> HashMap<String, BackendChoice> {
     let gpu_ok: HashSet<&str> = wgsl.accepted.iter().map(|m| m.kernel.as_str()).collect();
-    let gpu_rejection: HashMap<&str, String> = wgsl
+    let gpu_rejection: HashMap<&str, _> = wgsl
         .rejected
         .iter()
-        .map(|r| (r.kernel.as_str(), r.reason.to_string()))
+        .map(|r| (r.kernel.as_str(), r.reason.clone()))
         .collect();
 
     let mut choices = HashMap::new();
@@ -33,14 +33,11 @@ pub(crate) fn backend_choices(
         let choice = if gpu_ok.contains(name) {
             BackendChoice::Gpu
         } else {
+            let Some(reason) = gpu_rejection.get(name).cloned() else {
+                panic!("accepted kernel `{name}` was not classified by WGSL lowering")
+            };
             BackendChoice::CpuKernel {
-                // `plan` lowers every accepted kernel, so a non-`gpu_ok` kernel is
-                // always in `gpu_rejection`. The fallback is a defensive guard for
-                // a caller that passes a `WgslReport` built from other kernels.
-                gpu_rejection: gpu_rejection
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| "kernel was not offered to the GPU backend".to_string()),
+                gpu_rejection: TableGpuRejection::WgslRejected { reason },
             }
         };
         choices.insert(kernel.name.clone(), choice);
@@ -49,7 +46,9 @@ pub(crate) fn backend_choices(
         choices.insert(
             rejected.rule.clone(),
             BackendChoice::Reference {
-                reason: rejected.reason.to_string(),
+                reason: TableGpuRejection::NotKernelLowerable {
+                    reason: rejected.reason.clone(),
+                },
             },
         );
     }

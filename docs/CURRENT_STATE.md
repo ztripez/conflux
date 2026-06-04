@@ -68,8 +68,11 @@ canonical scenario.
   feature and are being hardened under #238.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
-  transfer notes, proximity-index eligibility, and graph-kernel eligibility) and
-  `conflux-trace` (optional, off the execution path). The proximity-index
+  transfer notes, GPU capability for table/field WGSL lowering, proximity-index
+  eligibility, and graph-kernel eligibility) and `conflux-trace` (optional, off
+  the execution path). The GPU capability report distinguishes WGSL-lowerable
+  rules from rules actually run on GPU; planner-produced entries do not imply GPU
+  dispatch. The proximity-index
   eligibility report now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
   and `conflux-wgsl` (WGSL emission; `wgpu` behind the `gpu` feature).

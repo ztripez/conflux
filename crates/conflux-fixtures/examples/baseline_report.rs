@@ -340,6 +340,31 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
             println!("        unsupported: {note}");
         }
     }
+    for table in &plan.gpu.table_rules {
+        println!(
+            "    gpu capability table `{}`: WGSL-lowerable={}, executed_on_gpu={}",
+            table.rule, table.wgsl_lowerable, table.executed_on_gpu
+        );
+        if let Some(rejection) = &table.rejection {
+            println!("        gpu rejection: {rejection}");
+        }
+    }
+    for field in &plan.gpu.field_rules {
+        println!(
+            "    gpu capability field `{}`: WGSL-lowerable={}, executed_on_gpu={} grid={}x{} radius={}",
+            field.rule,
+            field.wgsl_lowerable,
+            field.executed_on_gpu,
+            field.grid.0,
+            field.grid.1,
+            field
+                .stencil_radius
+                .map_or_else(|| "n/a".to_string(), |radius| radius.to_string())
+        );
+        if let Some(rejection) = &field.rejection {
+            println!("        gpu rejection: {rejection}");
+        }
+    }
 
     // Transfer advisory per accepted kernel (a real Residency sync).
     for kernel in &kernels.accepted {

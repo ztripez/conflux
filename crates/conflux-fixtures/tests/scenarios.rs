@@ -116,10 +116,9 @@ fn param_rule_fallback_is_rejected_with_reason_and_planned_to_reference() {
     let report = plan(&ir);
     let leak_plan = report.rules.iter().find(|r| r.rule == "leak").unwrap();
     match &leak_plan.backend {
-        // `BackendChoice::Reference` carries only a rendered reason string, so this
-        // intentionally substring-matches the Display form; the typed variant is
-        // asserted at the kernel layer above.
-        BackendChoice::Reference { reason } => assert!(reason.contains("parameter"), "{reason}"),
+        BackendChoice::Reference { reason } => {
+            assert!(reason.to_string().contains("parameter"), "{reason}")
+        }
         other => panic!("expected Reference, got {other:?}"),
     }
 }
@@ -131,6 +130,15 @@ fn gpu_eligible_numeric_reaches_the_gpu_backend() {
     let report = plan(&ir);
     let combine = report.rules.iter().find(|r| r.rule == "combine").unwrap();
     assert_eq!(combine.backend, BackendChoice::Gpu);
+    let gpu_capability = report
+        .gpu
+        .table_rules
+        .iter()
+        .find(|r| r.rule == "combine")
+        .expect("fixture exposes table GPU capability in planner report");
+    assert_eq!(gpu_capability.table, "Cell");
+    assert!(gpu_capability.wgsl_lowerable);
+    assert!(!gpu_capability.executed_on_gpu);
 
     // And it lowers cleanly to WGSL.
     let kernels = extract(&ir);

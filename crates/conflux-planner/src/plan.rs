@@ -13,6 +13,7 @@ use conflux_wgsl::lower_kernels;
 use crate::backend::backend_choices;
 use crate::cost::cost_hint;
 use crate::fusion::fusion_groups;
+use crate::gpu_eligibility::gpu_capability_from_rule_plans_and_reports;
 use crate::report::{BackendChoice, OptimizationReport, RulePlan};
 
 /// Produces the advisory optimization report for a lowered simulation.
@@ -22,7 +23,7 @@ pub fn plan(ir: &SimIr) -> OptimizationReport {
     let choices = backend_choices(&kernels, &wgsl);
     let fusion = fusion_groups(&kernels);
 
-    let rules = ir
+    let rules: Vec<RulePlan> = ir
         .rules
         .iter()
         .map(|rule| {
@@ -41,8 +42,9 @@ pub fn plan(ir: &SimIr) -> OptimizationReport {
             }
         })
         .collect();
+    let gpu = gpu_capability_from_rule_plans_and_reports(ir, &rules);
 
-    OptimizationReport { rules, fusion }
+    OptimizationReport { rules, fusion, gpu }
 }
 
 /// The more-optimized backend(s) a rule cannot use, each with the reason. A rule
@@ -52,7 +54,7 @@ fn unsupported_paths(backend: &BackendChoice) -> Vec<String> {
     match backend {
         BackendChoice::Gpu => Vec::new(),
         BackendChoice::CpuKernel { gpu_rejection } => {
-            vec![format!("GPU (WGSL) backend: {gpu_rejection}")]
+            vec![format!("GPU (WGSL-lowerable) capability: {gpu_rejection}")]
         }
         BackendChoice::Reference { reason } => {
             vec![format!("CPU kernel backend: {reason}")]

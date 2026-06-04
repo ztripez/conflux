@@ -1,5 +1,9 @@
-use conflux_core::{col, lit, lower, param, Model, Rule, Table};
-use conflux_planner::{plan, BackendChoice, CostHint};
+use conflux_core::{
+    cell, col, field_lit, lit, lower, neighbor, param, EdgePolicy, Field, FieldRule, Grid2, Model,
+    Rule, Table,
+};
+use conflux_planner::{plan, BackendChoice, CostHint, FieldGpuRejection, TableGpuRejection};
+use conflux_wgsl::WgslError;
 
 /// A model exercising all three backend tiers on one table at one cadence:
 /// - `combine` (value = value + scratch) -> GPU: a clean f32 kernel.
@@ -53,14 +57,17 @@ fn explains_backend_choice_per_rule() {
 
     match by_name("overflow").backend {
         BackendChoice::CpuKernel { gpu_rejection } => {
-            assert!(gpu_rejection.contains("not finite"), "{gpu_rejection}");
+            assert!(
+                gpu_rejection.to_string().contains("not finite"),
+                "{gpu_rejection}"
+            );
         }
         other => panic!("expected CpuKernel, got {other:?}"),
     }
 
     match by_name("external").backend {
         BackendChoice::Reference { reason } => {
-            assert!(reason.contains("parameter"), "{reason}");
+            assert!(reason.to_string().contains("parameter"), "{reason}");
         }
         other => panic!("expected Reference, got {other:?}"),
     }
@@ -78,7 +85,7 @@ fn lists_unsupported_paths_with_reasons() {
     let overflow = &by_name("overflow").unsupported;
     assert_eq!(overflow.len(), 1);
     assert!(
-        overflow[0].starts_with("GPU (WGSL) backend:"),
+        overflow[0].starts_with("GPU (WGSL-lowerable) capability:"),
         "{overflow:?}"
     );
 
@@ -182,7 +189,7 @@ fn report_display_is_stable_and_inspectable() {
     let text = report.to_string();
     assert!(
         text.contains(
-            "RULE `combine` on `Cell` -> GPU (WGSL) [4 rows, 1 ops/row, 2 input buffer(s)]"
+            "RULE `combine` on `Cell` -> GPU (WGSL-lowerable) [4 rows, 1 ops/row, 2 input buffer(s)]"
         ),
         "{text}"
     );
@@ -194,5 +201,141 @@ fn report_display_is_stable_and_inspectable() {
         text.contains("RULE `external` on `Cell` -> simulation reference"),
         "{text}"
     );
+    assert!(
+        text.contains("gpu capability: 1 WGSL-lowerable, 0 actually run on GPU (advisory)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("TABLE `combine` on `Cell`: WGSL-lowerable=true, executed_on_gpu=false"),
+        "{text}"
+    );
     assert!(text.contains("fusion candidates: 1"), "{text}");
+}
+
+#[test]
+fn reports_table_gpu_capability_without_claiming_execution() {
+    let report = plan_for(&mixed_model());
+    assert_eq!(report.gpu.table_rules.len(), 3);
+    assert_eq!(report.gpu.table_rules[0].rule, "combine");
+    assert_eq!(report.gpu.table_rules[1].rule, "overflow");
+    assert_eq!(report.gpu.table_rules[2].rule, "external");
+    assert_eq!(report.gpu.table_rules[0].table, "Cell");
+    assert_eq!(report.gpu.table_rules[1].table, "Cell");
+    assert_eq!(report.gpu.table_rules[2].table, "Cell");
+    assert!(
+        report
+            .gpu
+            .table_rules
+            .iter()
+            .all(|rule| !rule.executed_on_gpu),
+        "planner-produced table capability must not claim GPU execution"
+    );
+
+    let by_name = |name: &str| {
+        report
+            .gpu
+            .table_rules
+            .iter()
+            .find(|r| r.rule == name)
+            .unwrap()
+    };
+
+    let combine = by_name("combine");
+    assert!(combine.wgsl_lowerable);
+    assert!(!combine.executed_on_gpu);
+    assert!(combine.rejection.is_none());
+
+    let overflow = by_name("overflow");
+    assert!(!overflow.wgsl_lowerable);
+    assert!(!overflow.executed_on_gpu);
+    match &overflow.rejection {
+        Some(TableGpuRejection::WgslRejected {
+            reason: WgslError::NonFiniteLiteral { value, .. },
+        }) => assert_eq!(*value, 1e40),
+        other => panic!("expected typed WGSL rejection, got {other:?}"),
+    }
+
+    let external = by_name("external");
+    match &external.rejection {
+        Some(TableGpuRejection::NotKernelLowerable { reason }) => {
+            assert!(reason.to_string().contains("parameter"));
+        }
+        other => panic!("expected typed kernel rejection, got {other:?}"),
+    }
+}
+
+#[test]
+fn reports_field_stencil_gpu_capability_without_claiming_execution() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 3));
+    terrain
+        .stock("height", vec![0.0; 9])
+        .signal("rain", vec![1.0; 9]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field_rule(FieldRule::new("diffuse").on_field("Terrain").propose(
+        "height",
+        (neighbor("height", -1, 0, EdgePolicy::Wrap)
+            + neighbor("height", 1, 0, EdgePolicy::Wrap)
+            + cell("rain"))
+            * field_lit(0.25),
+    ));
+
+    let report = plan_for(&model);
+    assert!(report.rules.is_empty(), "field rules are not table plans");
+    let field = &report.gpu.field_rules[0];
+    assert_eq!(field.rule, "diffuse");
+    assert_eq!(field.field, "Terrain");
+    assert_eq!(field.grid, (3, 3));
+    assert_eq!(field.stencil_radius, Some(1));
+    assert!(field.wgsl_lowerable);
+    assert!(!field.executed_on_gpu);
+    assert!(field.rejection.is_none());
+}
+
+#[test]
+fn reports_field_gpu_rejections_as_structured_reasons() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 3));
+    terrain.stock("height", vec![0.0; 9]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field_rule(
+        FieldRule::new("far")
+            .on_field("Terrain")
+            .propose("height", neighbor("height", 2, 0, EdgePolicy::Reject)),
+    );
+
+    let report = plan_for(&model);
+    let field = &report.gpu.field_rules[0];
+    assert!(!field.wgsl_lowerable);
+    assert!(!field.executed_on_gpu);
+    assert!(matches!(
+        field.rejection,
+        Some(FieldGpuRejection::NotFieldKernelLowerable { .. })
+    ));
+}
+
+#[test]
+fn reports_field_wgsl_rejections_as_structured_reasons() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 3));
+    terrain.stock("height", vec![0.0; 9]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_field_rule(
+        FieldRule::new("overflow_field")
+            .on_field("Terrain")
+            .propose("height", cell("height") + field_lit(1e40)),
+    );
+
+    let report = plan_for(&model);
+    let field = &report.gpu.field_rules[0];
+    assert_eq!(field.rule, "overflow_field");
+    assert_eq!(field.field, "Terrain");
+    assert!(!field.wgsl_lowerable);
+    assert!(!field.executed_on_gpu);
+    match &field.rejection {
+        Some(FieldGpuRejection::WgslRejected {
+            reason: WgslError::NonFiniteLiteral { value, .. },
+        }) => assert_eq!(*value, 1e40),
+        other => panic!("expected typed field WGSL rejection, got {other:?}"),
+    }
 }
