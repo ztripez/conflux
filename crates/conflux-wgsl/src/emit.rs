@@ -10,35 +10,85 @@
 //! surface as data rather than being dropped. The form mirrors
 //! [`conflux_kernel::diagnose_elementwise`] exactly so the two backends agree.
 
-use conflux_kernel::{Assessment, Kernel, KernelExpr, ScalarType};
+use conflux_kernel::{Assessment, FieldKernelShape, Kernel, KernelExpr, ScalarType};
 
 use crate::module::{Access, BindingRequirement, BindingSource, ShaderModule};
 
-const WORKGROUP_SIZE: u32 = 64;
-const ENTRY_POINT: &str = "main";
+pub(crate) const WORKGROUP_SIZE: u32 = 64;
+pub(crate) const ENTRY_POINT: &str = "main";
 /// WGSL variable name for the generated diagnostic output buffer.
-const DIAG_VAR: &str = "v_diagnostics";
+pub(crate) const DIAG_VAR: &str = "v_diagnostics";
 
 /// Why a kernel cannot lower to the WGSL backend.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
 pub enum WgslError {
+    /// A kernel uses a scalar type outside the current f32-only WGSL subset.
     #[error(
         "kernel `{kernel}` uses scalar type {scalar:?}; the WGSL backend supports only f32 in MVP5"
     )]
-    UnsupportedScalarType { kernel: String, scalar: ScalarType },
+    UnsupportedScalarType {
+        /// Name of the kernel that could not lower.
+        kernel: String,
+        /// Scalar type carried by the rejected kernel.
+        scalar: ScalarType,
+    },
+    /// A kernel expression contains a literal that cannot be represented as a
+    /// finite f32 WGSL literal.
     #[error(
         "kernel `{kernel}` contains a literal ({value}) that is not finite as f32; WGSL has no \
          inf/NaN literal"
     )]
-    NonFiniteLiteral { kernel: String, value: f64 },
+    NonFiniteLiteral {
+        /// Name of the kernel that could not lower.
+        kernel: String,
+        /// Literal value that becomes infinite or NaN after f32 narrowing.
+        value: f64,
+    },
+    /// A kernel diagnostic bound cannot be represented as a finite f32 WGSL
+    /// literal.
     #[error(
         "kernel `{kernel}` has a diagnostic bound ({value}) that is not finite as f32; WGSL has no \
          inf/NaN literal to emit it"
     )]
-    NonFiniteDiagnosticBound { kernel: String, value: f64 },
+    NonFiniteDiagnosticBound {
+        /// Name of the kernel that could not lower.
+        kernel: String,
+        /// Diagnostic bound that becomes infinite or NaN after f32 narrowing.
+        value: f64,
+    },
+    /// A field kernel uses a data-access shape outside the current Field2D-only
+    /// WGSL subset.
+    #[error("field kernel `{kernel}` uses unsupported shape {shape:?}")]
+    UnsupportedFieldShape {
+        /// Name of the field kernel that could not lower.
+        kernel: String,
+        /// Data-access shape carried by the rejected field kernel.
+        shape: FieldKernelShape,
+    },
+    /// A field expression references a channel binding index that is outside the
+    /// kernel's channel-binding list.
+    #[error(
+        "field kernel `{kernel}` references channel binding {channel}, but only {available_channels} channel bindings exist"
+    )]
+    InvalidFieldChannel {
+        /// Name of the field kernel that could not lower.
+        kernel: String,
+        /// Invalid binding index referenced by the field expression.
+        channel: usize,
+        /// Number of channel bindings available on the field kernel.
+        available_channels: usize,
+    },
 }
 
 /// Lowers one elementwise kernel to a WGSL compute shader module.
+///
+/// # Errors
+///
+/// Returns [`WgslError::UnsupportedScalarType`] when the kernel does not use f32,
+/// [`WgslError::NonFiniteLiteral`] when the expression contains a literal that
+/// cannot be emitted as a finite f32 WGSL literal, or
+/// [`WgslError::NonFiniteDiagnosticBound`] when a diagnostic bound cannot be
+/// emitted as a finite f32 WGSL literal.
 pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
     if kernel.scalar_type != ScalarType::F32 {
         return Err(WgslError::UnsupportedScalarType {
@@ -139,7 +189,7 @@ fn emit_body(kernel: &Kernel, var_for: &impl Fn(usize) -> String) -> String {
 /// `wgsl_diagnostic_semantics_match_cpu` test pins that equivalence for finite
 /// values without needing a GPU. For a non-finite `out`, `Finite` is the only
 /// check that agrees across backends (WGSL `max`/`NaN` is implementation-defined).
-fn diagnostic_expr(assessment: Assessment) -> String {
+pub(crate) fn diagnostic_expr(assessment: Assessment) -> String {
     match assessment {
         // Finite -> 0.0, non-finite -> 1.0. WGSL has no isFinite; `out * 0.0`
         // is 0.0 for any finite value but NaN for inf/NaN, and `NaN == 0.0` is
@@ -293,7 +343,7 @@ fn binop(
 }
 
 /// Maps a kernel scalar type to its WGSL type name.
-fn wgsl_scalar(scalar: ScalarType) -> &'static str {
+pub(crate) fn wgsl_scalar(scalar: ScalarType) -> &'static str {
     match scalar {
         ScalarType::F32 => "f32",
         ScalarType::U32 => "u32",
@@ -304,12 +354,12 @@ fn wgsl_scalar(scalar: ScalarType) -> &'static str {
 /// kernel's working precision. Non-finite values are rejected before emission
 /// (see `check_finite_literals` / `check_finite_diagnostics`), so `{:?}` always
 /// yields a WGSL-legal decimal or exponent form (e.g. `1.0`, `0.5`, `1e30`).
-fn wgsl_literal(value: f64) -> String {
+pub(crate) fn wgsl_literal(value: f64) -> String {
     format!("{:?}", value as f32)
 }
 
 /// Sanitizes a column name into a stable WGSL identifier.
-fn var_name(name: &str) -> String {
+pub(crate) fn var_name(name: &str) -> String {
     let mut out = String::from("v_");
     for c in name.chars() {
         if c.is_ascii_alphanumeric() || c == '_' {
