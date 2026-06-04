@@ -20,6 +20,7 @@ pub use module::{Access, BindingRequirement, BindingSource, ShaderModule};
 pub use report::{lower_kernels, RejectedShader, WgslReport};
 
 #[cfg(feature = "gpu")]
-pub use gpu::{run_on_gpu, GpuError, GpuRun};
+pub use gpu::{run_on_gpu, GpuError, GpuExecutor, GpuRun, GpuRunMetadata};
 
+/// Describes the crate-level ownership boundary for the Conflux WGSL backend.
 pub const CRATE_BOUNDARY: &str = "wgsl compute backend for bounded numeric kernels";
