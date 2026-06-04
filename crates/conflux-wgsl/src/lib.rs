@@ -15,6 +15,8 @@ mod report;
 
 #[cfg(feature = "gpu")]
 mod gpu;
+#[cfg(feature = "gpu")]
+mod gpu_equivalence;
 
 pub use emit::{emit_wgsl, WgslError};
 pub use field_emit::emit_field_wgsl;
@@ -28,6 +30,11 @@ pub use report::{
 
 #[cfg(feature = "gpu")]
 pub use gpu::{run_on_gpu, GpuError, GpuExecutor, GpuRun, GpuRunMetadata};
+#[cfg(feature = "gpu")]
+pub use gpu_equivalence::{
+    compare_buffers, compare_elementwise_table_on_gpu, BufferComparison, BufferMismatch,
+    EquivalenceTolerance, GpuEquivalenceReport, GpuEquivalenceStatus,
+};
 
 /// Describes the crate-level ownership boundary for the Conflux WGSL backend.
 pub const CRATE_BOUNDARY: &str = "wgsl compute backend for bounded numeric kernels";
