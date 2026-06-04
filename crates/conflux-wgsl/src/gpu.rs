@@ -11,6 +11,15 @@ use conflux_kernel::ScalarType;
 
 use crate::module::{Access, BindingSource, ShaderModule};
 
+#[path = "gpu_field.rs"]
+mod gpu_field;
+
+pub use gpu_field::{
+    check_field_gpu_equivalence, compare_field_gpu_proposals, run_field_on_gpu, FieldGpuComparison,
+    FieldGpuEquivalenceOutcome, FieldGpuEquivalenceReport, FieldGpuRun, FieldGpuRunMetadata,
+    FieldGpuTolerance,
+};
+
 const F32_SIZE: usize = std::mem::size_of::<f32>();
 
 /// Errors from the wgpu execution path. Absence of a GPU adapter is not an
@@ -53,11 +62,59 @@ pub enum GpuError {
         /// Minimum number of rows required by the shader module.
         required: usize,
     },
+    /// A field-channel-backed binding refers to a channel that was not supplied.
+    #[error("missing field channel {channel} (`{name}`) for binding {binding}")]
+    MissingFieldChannel {
+        /// The WGSL binding index that requested the missing channel.
+        binding: u32,
+        /// The required channel index in the caller-provided channel slice.
+        channel: usize,
+        /// The source channel name recorded by the emitted shader metadata.
+        name: String,
+    },
+    /// A supplied field channel does not contain enough cells for the shader's
+    /// declared grid.
+    #[error(
+        "field channel {channel} (`{name}`) for binding {binding} has {actual} cells; need at least {required}"
+    )]
+    ShortFieldChannel {
+        /// The WGSL binding index that reads the short channel.
+        binding: u32,
+        /// The channel index in the caller-provided channel slice.
+        channel: usize,
+        /// The source channel name recorded by the emitted shader metadata.
+        name: String,
+        /// Number of cells supplied by the caller.
+        actual: usize,
+        /// Minimum number of cells required by the field shader module.
+        required: usize,
+    },
     /// The shader has no single read-write column binding that can serve as the
     /// proposed output column.
     #[error("invalid output binding: {reason}")]
     InvalidOutputBinding {
         /// Human-readable explanation of the output binding problem.
+        reason: String,
+    },
+    /// The field shader does not have the single validity binding required for
+    /// comparing computable and uncomputable cells.
+    #[error("invalid field validity binding: {reason}")]
+    InvalidValidityBinding {
+        /// Human-readable explanation of the validity binding problem.
+        reason: String,
+    },
+    /// A field shader wrote a validity flag other than exactly `0` or `1`.
+    #[error("invalid field validity flag {flag} at cell {cell}; expected 0 or 1")]
+    InvalidValidityFlag {
+        /// Cell index whose validity flag was invalid.
+        cell: usize,
+        /// Raw validity flag read back from the GPU.
+        flag: u32,
+    },
+    /// The caller supplied a non-finite or negative field GPU comparison tolerance.
+    #[error("invalid field GPU tolerance: {reason}")]
+    InvalidFieldGpuTolerance {
+        /// Human-readable explanation of the tolerance problem.
         reason: String,
     },
     /// The element count, diagnostic count, or workgroup calculation overflowed
@@ -235,28 +292,10 @@ impl GpuExecutor {
             })
             .collect();
 
-        let layout_entries: Vec<wgpu::BindGroupLayoutEntry> = module
-            .bindings
-            .iter()
-            .map(|b| wgpu::BindGroupLayoutEntry {
-                binding: b.binding,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage {
-                        read_only: b.access == Access::Read,
-                    },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            })
-            .collect();
-        let bind_group_layout =
-            self.device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &layout_entries,
-                });
+        let bind_group_layout = create_storage_bind_group_layout(
+            &self.device,
+            module.bindings.iter().map(|b| (b.binding, b.access)),
+        );
         let bind_entries: Vec<wgpu::BindGroupEntry> = module
             .bindings
             .iter()
@@ -272,24 +311,8 @@ impl GpuExecutor {
             entries: &bind_entries,
         });
 
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: None,
-                layout: Some(&pipeline_layout),
-                module: &shader,
-                entry_point: &module.entry_point,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        self.pop_shader_error_scope()?;
+        let pipeline =
+            create_compute_pipeline(self, &shader, &bind_group_layout, &module.entry_point)?;
 
         let output_staging = staging_buffer(&self.device, plan.metadata.output_bytes);
         let diag_staging = plan.diag_index.map(|_| {
@@ -516,7 +539,7 @@ fn validate_run(module: &ShaderModule, columns: &[Vec<f32>]) -> Result<RunPlan, 
     })
 }
 
-fn byte_len(values: usize, workgroup_size: u32) -> Result<u64, GpuError> {
+pub(super) fn byte_len(values: usize, workgroup_size: u32) -> Result<u64, GpuError> {
     values
         .checked_mul(F32_SIZE)
         .and_then(|bytes| u64::try_from(bytes).ok())
@@ -526,8 +549,62 @@ fn byte_len(values: usize, workgroup_size: u32) -> Result<u64, GpuError> {
         })
 }
 
+pub(super) fn create_storage_bind_group_layout(
+    device: &wgpu::Device,
+    bindings: impl IntoIterator<Item = (u32, Access)>,
+) -> wgpu::BindGroupLayout {
+    let layout_entries: Vec<wgpu::BindGroupLayoutEntry> = bindings
+        .into_iter()
+        .map(|(binding, access)| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage {
+                    read_only: access == Access::Read,
+                },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        })
+        .collect();
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &layout_entries,
+    })
+}
+
+pub(super) fn create_compute_pipeline(
+    executor: &GpuExecutor,
+    shader: &wgpu::ShaderModule,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    entry_point: &str,
+) -> Result<wgpu::ComputePipeline, GpuError> {
+    let pipeline_layout = executor
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[bind_group_layout],
+            push_constant_ranges: &[],
+        });
+    executor
+        .device
+        .push_error_scope(wgpu::ErrorFilter::Validation);
+    let pipeline = executor
+        .device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: None,
+            layout: Some(&pipeline_layout),
+            module: shader,
+            entry_point,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+    executor.pop_shader_error_scope()?;
+    Ok(pipeline)
+}
+
 /// Creates a MAP_READ staging buffer of `bytes` size.
-fn staging_buffer(device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
+pub(super) fn staging_buffer(device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("staging"),
         size: bytes,
@@ -537,7 +614,10 @@ fn staging_buffer(device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
 }
 
 /// Maps a staging buffer and reads its contents back as f32 values.
-fn read_back(device: &wgpu::Device, staging: &wgpu::Buffer) -> Result<Vec<f32>, GpuError> {
+pub(super) fn read_back(
+    device: &wgpu::Device,
+    staging: &wgpu::Buffer,
+) -> Result<Vec<f32>, GpuError> {
     let slice = staging.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -549,6 +629,26 @@ fn read_back(device: &wgpu::Device, staging: &wgpu::Buffer) -> Result<Vec<f32>, 
         .map_err(|e| GpuError::Readback(e.to_string()))?
         .map_err(|e| GpuError::Readback(e.to_string()))?;
     let values = bytemuck::cast_slice::<u8, f32>(&slice.get_mapped_range()).to_vec();
+    staging.unmap();
+    Ok(values)
+}
+
+/// Maps a staging buffer and reads its contents back as u32 values.
+pub(super) fn read_back_u32(
+    device: &wgpu::Device,
+    staging: &wgpu::Buffer,
+) -> Result<Vec<u32>, GpuError> {
+    let slice = staging.slice(..);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = sender.send(result);
+    });
+    device.poll(wgpu::Maintain::Wait);
+    receiver
+        .recv()
+        .map_err(|e| GpuError::Readback(e.to_string()))?
+        .map_err(|e| GpuError::Readback(e.to_string()))?;
+    let values = bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range()).to_vec();
     staging.unmap();
     Ok(values)
 }
