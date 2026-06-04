@@ -61,9 +61,11 @@ canonical scenario.
     value-bearing declarations, `lower()` runs dimensional checks, reports carry
     units as provenance, and named same-dimension conversions are declared but
     never auto-applied. The numeric runtime is unit-erased.
-- **Bounded numeric kernel extraction + CPU/GPU equivalence**: elementwise table
-  kernels and field-stencil kernels each run through both the reference (f64) and
-  the kernel path (f32), compared within a declared tolerance, never bit-for-bit.
+- **Bounded numeric kernel extraction + equivalence**: elementwise table kernels
+  and field-stencil kernels each run through both the reference (f64) and the CPU
+  kernel path (f32), compared within a declared tolerance, never bit-for-bit.
+  WGSL/GPU hardware checks remain limited to the optional `conflux-wgsl` `gpu`
+  feature and are being hardened under #238.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
   transfer notes, proximity-index eligibility, and graph-kernel eligibility) and
@@ -114,6 +116,12 @@ dependency outside `conflux-residency`. Planning is advisory; profile-guided
 planning is optional research. There is no graph-kernel backend — graph rules and
 events run only on the CPU reference path. Enforced mechanically by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
+
+The tracked GPU backend pass (#238) does not change those boundaries: it is
+scoped to harden `conflux-wgsl` correctness for table and field kernels while
+deferring runtime GPU selected execution, Residency-backed persistent GPU
+resources, flow/actor/query/graph/event GPU backends, fusion, and engine GPU
+integration. See `docs/GPU_BACKEND_PASS.md`.
 
 ## Checkpoint: `alpha-0`
 
