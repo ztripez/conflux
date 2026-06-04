@@ -46,6 +46,7 @@ pub use report::{KernelReport, RejectedKernel, RejectionReason};
 // `Kernel::diagnostics` carries simulation assessments verbatim; re-export the
 // type so kernel-IR consumers (including backends) can read them without
 // reaching back into the simulation IR crate.
-pub use conflux_ir::Assessment;
+pub use conflux_ir::{Assessment, EdgePolicy};
 
+/// Describes the crate-level ownership boundary for bounded numeric kernel IR.
 pub const CRATE_BOUNDARY: &str = "bounded numeric kernel ir";

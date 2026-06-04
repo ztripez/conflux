@@ -9,6 +9,7 @@
 //! on the kernel IR, and no core crate depends on it.
 
 mod emit;
+mod field_emit;
 mod module;
 mod report;
 
@@ -16,8 +17,14 @@ mod report;
 mod gpu;
 
 pub use emit::{emit_wgsl, WgslError};
-pub use module::{Access, BindingRequirement, BindingSource, ShaderModule};
-pub use report::{lower_kernels, RejectedShader, WgslReport};
+pub use field_emit::emit_field_wgsl;
+pub use module::{
+    Access, BindingRequirement, BindingSource, FieldBindingRequirement, FieldBindingSource,
+    FieldShaderModule, ShaderModule,
+};
+pub use report::{
+    lower_field_kernels, lower_kernels, RejectedFieldShader, RejectedShader, WgslReport,
+};
 
 #[cfg(feature = "gpu")]
 pub use gpu::{run_on_gpu, GpuError, GpuExecutor, GpuRun, GpuRunMetadata};
