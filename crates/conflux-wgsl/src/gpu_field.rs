@@ -451,6 +451,7 @@ fn check_field_gpu_equivalence_with_runner(
     runner: &impl FieldGpuRunner,
 ) -> Result<FieldGpuEquivalenceReport, GpuError> {
     tolerance.validate()?;
+    validate_field_run(module, channels)?;
     let cpu = execute_field(kernel, channels);
     let outcome = match runner.run(module, channels)? {
         Some(run) => {
@@ -975,6 +976,33 @@ mod tests {
             FieldGpuEquivalenceOutcome::SkippedNoAdapter
         ));
         assert!(report.to_string().contains("[SKIP]: no GPU adapter"));
+    }
+
+    #[test]
+    fn field_gpu_equivalence_validates_channels_before_cpu_execution() {
+        let (kernel, module, channels) = multi_workgroup_field_kernel();
+
+        let missing = check_field_gpu_equivalence_with_runner(
+            &kernel,
+            &module,
+            &[],
+            FieldGpuTolerance { abs: 0.0, rel: 0.0 },
+            &NoAdapterRunner,
+        )
+        .expect_err("missing channel must fail before CPU execution or adapter skip");
+        assert!(matches!(missing, GpuError::MissingFieldChannel { .. }));
+
+        let mut short_channels = channels;
+        short_channels[0].truncate(1);
+        let short = check_field_gpu_equivalence_with_runner(
+            &kernel,
+            &module,
+            &short_channels,
+            FieldGpuTolerance { abs: 0.0, rel: 0.0 },
+            &NoAdapterRunner,
+        )
+        .expect_err("short channel must fail before CPU execution or adapter skip");
+        assert!(matches!(short, GpuError::ShortFieldChannel { .. }));
     }
 
     #[test]
