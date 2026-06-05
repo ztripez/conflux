@@ -57,8 +57,8 @@ resource, authority, diagnostic, and generation contracts.
 
 ## Runtime boundary
 
-The default runtime path remains reference-only. This pass must not add runtime
-GPU selected execution.
+The default runtime path remains reference-only. This pass did not add runtime GPU
+selected execution; that policy is tracked in the follow-up GPU execution epic.
 
 - No `ExecutionMode::PreferGpu` / `RequireGpu` in this pass.
 - No `ExecutionPath::Gpu` in this pass.
@@ -67,10 +67,11 @@ GPU selected execution.
 - No planner-driven automatic execution. Planner reports remain advisory and
   never mutate the IR, fuse kernels, or change runtime behavior.
 
-Future runtime GPU execution is tracked separately so it must define an explicit
-opt-in orchestration surface, typed fallback/refusal reasons, and a boundary-safe
-way to invoke GPU work without pulling shader or buffer-movement concerns into
-the runtime crate.
+Runtime GPU policy is tracked separately so it must define an explicit opt-in
+orchestration surface, typed fallback/refusal reasons, and a boundary-safe way to
+invoke GPU work without pulling shader or buffer-movement concerns into the
+runtime crate. The first runtime policy slice may select or refuse `Gpu` without
+dispatching hardware work; actual GPU dispatch remains a later boundary decision.
 
 ## In-epic non-goals
 

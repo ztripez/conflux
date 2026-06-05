@@ -15,17 +15,25 @@ pub struct RuleFireReport {
     pub rows: Vec<RowOutcome>,
     /// The execution mode the caller requested for this run.
     pub requested_mode: ExecutionMode,
-    /// The candidate optimized path the rule qualifies for: `CpuKernel` when it is
-    /// kernel-eligible, otherwise `Reference`. Under `ReferenceOnly` eligibility is
-    /// not evaluated, so this is `Reference`.
+    /// The candidate optimized path the rule qualifies for under the requested mode.
+    ///
+    /// `CpuKernel` means the rule is eligible for CPU-kernel execution. `Gpu` means
+    /// GPU policy was requested and kernel extraction accepted the table rule as the
+    /// runtime-local proxy for the bounded WGSL-shaped subset. `Reference` means no
+    /// optimized path was selected or eligibility was not evaluated under
+    /// [`ExecutionMode::ReferenceOnly`].
     pub eligible_path: ExecutionPath,
     /// The path resolution chose given the requested mode and the rule's
     /// eligibility.
     pub selected_path: ExecutionPath,
-    /// The path actually executed; `None` means the rule was refused (a required
-    /// kernel was unavailable), so no rows were evaluated.
+    /// The path actually executed; `None` means the rule was refused because a
+    /// required CPU-kernel or GPU path was unavailable, so no rows were evaluated.
     pub used_path: Option<ExecutionPath>,
-    /// Why the rule did not run on the requested CPU-kernel path, if applicable.
+    /// Why the rule did not run on the requested optimized path, if applicable.
+    ///
+    /// CPU-kernel modes report kernel eligibility failures. GPU modes report whether
+    /// the rule could not reach the WGSL-shaped subset or the runtime GPU path is not
+    /// wired in.
     pub fallback_reason: Option<FallbackReason>,
     /// The specific, typed extraction reason the rule has no kernel, when a kernel
     /// path was requested but unavailable (the detail behind a `NotKernelEligible` /
@@ -46,6 +54,9 @@ pub enum ComparisonStatus {
     /// Ran on the CPU kernel; equivalence to the reference is established by
     /// `check_equivalence` within tolerance, not recomputed inline each tick.
     DeferredToEquivalenceHarness,
+    /// Ran on a GPU path; equivalence to the reference must be established by a
+    /// GPU equivalence harness, not recomputed inline each tick.
+    DeferredToGpuEquivalenceHarness,
     /// The rule was refused, so nothing ran to compare.
     NotRun,
 }
@@ -76,9 +87,11 @@ impl RuleFireReport {
 }
 
 impl RuleFireReport {
-    /// A short Display suffix describing the execution path and — for a fallback —
-    /// the specific, typed reason the kernel was unavailable. Empty for a plain
-    /// reference run, so reference-only reports do not imply optimization happened.
+    /// Builds a short display suffix describing the selected execution outcome.
+    ///
+    /// Returns an empty string for a plain reference run. Returns CPU-kernel, GPU,
+    /// fallback, or refusal text when an optimized path was selected, unavailable,
+    /// or refused with a typed [`FallbackReason`].
     pub fn execution_note(&self) -> String {
         // The specific extraction reason, if known, else a coarse phrase.
         let why = || match &self.kernel_rejection {
@@ -87,11 +100,24 @@ impl RuleFireReport {
         };
         match (self.used_path, self.fallback_reason) {
             (Some(ExecutionPath::CpuKernel), _) => " [cpu-kernel]".to_string(),
+            (Some(ExecutionPath::Gpu), _) => " [gpu]".to_string(),
             (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
                 format!(" [fell back to reference: {}]", why())
             }
+            (Some(ExecutionPath::Reference), Some(FallbackReason::NotWgslLowerable)) => {
+                format!(" [fell back to reference: not WGSL-lowerable — {}]", why())
+            }
+            (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPathUnavailable)) => {
+                " [fell back to reference: GPU path unavailable]".to_string()
+            }
             (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
                 format!(" [REFUSED: required kernel unavailable — {}]", why())
+            }
+            (None, Some(FallbackReason::NotWgslLowerable)) => {
+                format!(" [REFUSED: not WGSL-lowerable — {}]", why())
+            }
+            (None, Some(FallbackReason::RequiredGpuUnavailable)) => {
+                " [REFUSED: required GPU unavailable]".to_string()
             }
             _ => String::new(),
         }

@@ -124,15 +124,17 @@ planning is optional research. There is no graph-kernel backend — graph rules 
 events run only on the CPU reference path. Enforced mechanically by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
 
-The tracked GPU backend pass (#238) does not change those boundaries: it hardened
-`conflux-wgsl` correctness for table and bounded field kernels while deferring
-runtime GPU selected execution, Residency-backed persistent GPU resources,
-flow/actor/query/graph/event GPU backends, fusion, and engine GPU integration.
-See `docs/GPU_BACKEND_PASS.md`.
+The tracked GPU backend pass (#238) did not change those boundaries: it hardened
+`conflux-wgsl` correctness for table and bounded field kernels. The follow-up GPU
+execution track (#261, with runtime selected-execution policy in #246) has since
+added a Residency descriptor-mapping bridge and explicit runtime GPU
+selection/refusal policy, while still deferring actual GPU dispatch,
+flow/actor/query/graph/event GPU backends, fusion, and engine GPU integration. See
+`docs/GPU_BACKEND_PASS.md`.
 
 The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is
 documentation/reporting only. It separates correctness, smoke, and performance
-claims and does not introduce runtime GPU selected execution or an optimizer.
+claims and does not introduce actual runtime GPU dispatch or an optimizer.
 
 ## Checkpoint: `alpha-0`
 

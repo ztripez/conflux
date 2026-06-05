@@ -20,6 +20,15 @@ policy, and ordering.
 - **`RequireCpuKernel`** — kernel-eligible rules run on the kernel; an ineligible
   rule is **refused** (not silently run on the reference), so nothing is computed
   for it that tick.
+- **`PreferGpu`** — GPU-shaped table rules select the `Gpu` path, then visibly
+  fall back to the reference with `GpuPathUnavailable` because `conflux-runtime`
+  has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency. Rules
+  that cannot reach the bounded WGSL-shaped subset fall back with
+  `NotWgslLowerable`.
+- **`RequireGpu`** — GPU-shaped table rules select the `Gpu` path, then are
+  refused with `RequiredGpuUnavailable` until a boundary-safe GPU executor exists.
+  Rules that cannot reach the bounded WGSL-shaped subset are refused with
+  `NotWgslLowerable`. No reference fallback is hidden.
 
 Proximity-query indexing is an independent opt-in. Use
 `Simulation::with_query_mode(ir, query_mode)` for query-only selection or
@@ -39,19 +48,34 @@ indexes:
 Each table-rule firing carries:
 
 - `requested_mode` — the mode the run asked for.
-- `eligible_path` — the candidate optimized path the rule qualifies for
-  (`CpuKernel` when kernel-eligible, else `Reference`).
+- `eligible_path` — the candidate path the table rule qualifies for under the
+  requested mode: `CpuKernel` for CPU-kernel eligibility, `Gpu` when GPU policy was
+  requested and kernel extraction accepted the rule as the runtime-local
+  WGSL-shaped eligibility proxy, or `Reference` when no optimized path is selected.
 - `selected_path` — the path policy chose given the mode and eligibility.
 - `used_path` — the path actually executed; `None` means the rule was **refused**
-  (a required kernel was unavailable), so no rows were evaluated.
+  because a required CPU-kernel or GPU path was unavailable, so no rows were
+  evaluated.
 - `fallback_reason` — `NotKernelEligible` (preferred-but-ineligible → ran on the
-  reference) or `RequiredKernelUnavailable` (required-but-ineligible → refused).
+  reference), `RequiredKernelUnavailable` (required-but-ineligible → refused),
+  `NotWgslLowerable`, `GpuPathUnavailable`, or `RequiredGpuUnavailable`.
 - `kernel_rejection` — the **specific, typed** extraction reason behind a fallback
   (e.g. `ReadsParameter { name: "growth" }`), so the report self-explains *why*
   there is no kernel without consulting the planner.
 - `comparison_status` — `IsReference` (the result is the reference by definition),
   `DeferredToEquivalenceHarness` (ran on the kernel; equivalence is the harness's
-  job, within tolerance), or `NotRun` (refused).
+  job, within tolerance), `DeferredToGpuEquivalenceHarness` (reserved for future
+  actual GPU runs), or `NotRun` (refused).
+
+GPU modes in this slice are explicit policy/reporting modes, not hidden hardware
+dispatch. `selected_path: Gpu` records the requested policy decision; `used_path`
+remains `Reference` for visible prefer-mode fallback or `None` for require-mode
+refusal until a later boundary-safe GPU executor exists.
+
+GPU policy is table-rule scoped in this slice. Flow and actor-rule CPU kernels are
+not GPU eligibility: under `PreferGpu` those domains visibly fall back to reference
+with `NotWgslLowerable`, and under `RequireGpu` they are refused with
+`NotWgslLowerable`.
 
 ## Worked example
 

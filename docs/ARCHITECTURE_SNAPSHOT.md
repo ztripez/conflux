@@ -199,8 +199,11 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   means an emitter accepted the kernel, while `executed_on_gpu=false` means the
   planner did not dispatch runtime GPU work.
   The current GPU backend pass is scoped in `docs/GPU_BACKEND_PASS.md`; it keeps
-  GPU correctness work in `conflux-wgsl` and does not add runtime GPU selected
-  execution or Residency-backed GPU resource ownership.
+  GPU correctness work in `conflux-wgsl`. Runtime GPU policy can explicitly select
+  or refuse `ExecutionPath::Gpu`, but actual GPU dispatch is still absent from
+  `conflux-runtime` so the runtime keeps no `wgpu`, `conflux-wgsl`, Residency, or
+  buffer-movement dependency. The current runtime GPU policy is table-rule scoped;
+  flow and actor-rule CPU kernels are not GPU eligibility.
   Measurement and engine-integration claims are scoped by
   `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`, which separates correctness, smoke, and
   performance evidence.

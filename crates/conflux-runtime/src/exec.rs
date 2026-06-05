@@ -26,7 +26,9 @@ use crate::report::{
     AggregateReport, AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport,
     Report, RowOutcome, RuleFireReport, StepReport,
 };
-use crate::selection::{resolve_path, ExecutionMode, ExecutionPath, QueryExecutionMode};
+use crate::selection::{
+    resolve_path, table_rule_eligible_path, ExecutionMode, ExecutionPath, QueryExecutionMode,
+};
 
 /// A simulation instance holding lowered IR, the execution plan, and live state.
 pub struct Simulation {
@@ -143,9 +145,10 @@ impl Simulation {
             (HashMap::new(), HashMap::new())
         };
 
-        // Flow kernels are extracted the same way: accepted kernels to run the
-        // optimized path, rejections to explain a fallback. Empty under reference-only.
-        let (flow_kernels, flow_rejections) = if mode.requests_kernel() {
+        // Flow kernels are extracted only for CPU-kernel modes. GPU modes are
+        // table-rule policy in this slice, so flow CPU-kernel eligibility must not
+        // masquerade as flow GPU eligibility.
+        let (flow_kernels, flow_rejections) = if mode.requests_cpu_kernel() {
             let report = extract_flows(&ir);
             let kernels = report
                 .accepted
@@ -162,8 +165,10 @@ impl Simulation {
             (HashMap::new(), HashMap::new())
         };
 
-        // Actor-rule kernels: same up-front extraction, empty under reference-only.
-        let (actor_kernels, actor_rejections) = if mode.requests_kernel() {
+        // Actor-rule kernels are extracted only for CPU-kernel modes. GPU modes are
+        // table-rule policy in this slice, so actor CPU-kernel eligibility must not
+        // masquerade as actor GPU eligibility.
+        let (actor_kernels, actor_rejections) = if mode.requests_cpu_kernel() {
             let report = extract_actor_rules(&ir);
             let kernels = report
                 .accepted
@@ -394,13 +399,11 @@ impl Simulation {
             } else {
                 None
             };
-            let (selected_path, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
-            // The candidate optimized path: the kernel iff the rule is eligible.
-            let eligible_path = if kernel.is_some() {
-                ExecutionPath::CpuKernel
-            } else {
-                ExecutionPath::Reference
-            };
+            // The candidate optimized path the rule qualifies for under the
+            // requested policy. GPU modes use kernel extraction as the runtime's
+            // boundary-safe precondition without depending on `conflux-wgsl`.
+            let eligible_path = table_rule_eligible_path(kernel.is_some(), mode);
+            let (selected_path, used_path, fallback_reason) = resolve_path(eligible_path, mode);
             // When a kernel path was requested but unavailable, carry the specific,
             // typed extraction reason so the report self-explains the fallback.
             let kernel_rejection = if mode.requests_kernel() && kernel.is_none() {
@@ -412,6 +415,7 @@ impl Simulation {
                 None => ComparisonStatus::NotRun,
                 Some(ExecutionPath::Reference) => ComparisonStatus::IsReference,
                 Some(ExecutionPath::CpuKernel) => ComparisonStatus::DeferredToEquivalenceHarness,
+                Some(ExecutionPath::Gpu) => ComparisonStatus::DeferredToGpuEquivalenceHarness,
             };
 
             // Compute per-row proposals on the used path (a refused rule runs
@@ -433,6 +437,9 @@ impl Simulation {
                             &rule.assessments,
                         ));
                     }
+                }
+                Some(ExecutionPath::Gpu) => {
+                    unreachable!("GPU used path requires a future runtime GPU executor")
                 }
                 Some(ExecutionPath::Reference) => {
                     let columns_by_name = column_map(table);

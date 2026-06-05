@@ -161,13 +161,18 @@ pub(crate) fn step_actor_rules(
             .collect();
 
         // Resolve the execution path from the requested mode and kernel eligibility.
-        let kernel = if mode.requests_kernel() {
+        let kernel = if mode.requests_cpu_kernel() {
             actor_kernels.get(&rule.name)
         } else {
             None
         };
-        let (_selected, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
-        let kernel_rejection = if mode.requests_kernel() && kernel.is_none() {
+        let eligible_path = if kernel.is_some() {
+            ExecutionPath::CpuKernel
+        } else {
+            ExecutionPath::Reference
+        };
+        let (_selected, used_path, fallback_reason) = resolve_path(eligible_path, mode);
+        let kernel_rejection = if mode.requests_cpu_kernel() && kernel.is_none() {
             actor_rejections.get(&rule.name).cloned()
         } else {
             None
@@ -208,6 +213,9 @@ pub(crate) fn step_actor_rules(
                 .into_iter()
                 .map(|p| p as f64)
                 .collect()
+            }
+            Some(ExecutionPath::Gpu) => {
+                unreachable!("GPU used path requires a future actor GPU executor")
             }
         };
 
