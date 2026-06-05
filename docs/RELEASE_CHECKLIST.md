@@ -89,6 +89,9 @@ Everything in Tier 1, **plus**:
 - [ ] GPU wording distinguishes three states everywhere it appears:
       WGSL-lowerable, hardware-check executed, and runtime-selected execution.
       Only the first two exist today, and hardware checks are experimental.
+- [ ] GPU correctness, smoke, and performance wording follows
+      `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`; release copy does not treat shader
+      eligibility or hardware correctness examples as performance evidence.
 - [ ] Current non-goals (see `AGENTS.md` and the snapshot's "Current non-goals")
       are not contradicted by release copy.
 
@@ -109,11 +112,21 @@ cargo run -p conflux-runtime --example kernel_extraction
 cargo run -p conflux-runtime --example equivalence
 cargo run -p conflux-residency --example residency_bridge
 cargo run -p conflux-planner --example optimization_report
-cargo run -p conflux-trace --example profile_guided
 cargo run -p conflux-fixtures --example baseline_report
+```
+
+Optional correctness/helper checks:
+
+```sh
 # Optional table GPU correctness example (experimental; prints MATCH/MISMATCH or
 # SKIP when no adapter is reachable):
 cargo run -p conflux-wgsl --features gpu --example gpu_equivalence
 # Optional GPU-feature unit contracts (hardware-free comparison/validation seams):
 cargo test -p conflux-wgsl --features gpu
+```
+
+Research-only visibility examples (not release performance evidence):
+
+```sh
+cargo run -p conflux-trace --example profile_guided
 ```

@@ -2,6 +2,51 @@
 
 use conflux_kernel::{FieldKernelShape, ScalarType};
 
+/// Errors raised while deriving generated shader-resource layouts.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum DiagnosticLayoutError {
+    /// The diagnostic value count or byte count does not fit in `u64`.
+    #[error("diagnostic buffer byte length overflowed for {assessments} assessments over {elements} elements")]
+    ByteLengthOverflow {
+        /// Number of diagnostic assessments stored per element/cell.
+        assessments: usize,
+        /// Number of table rows or field cells covered by the diagnostic buffer.
+        elements: usize,
+    },
+}
+
+/// Returns the canonical byte length of a generated WGSL diagnostic buffer.
+///
+/// Diagnostic buffers are assessment-major: `assessments * elements` scalar
+/// values. This helper is the single place that converts that logical shape into
+/// a byte length for WGSL execution metadata and Residency descriptors. The
+/// `scalar_type` parameter selects the byte width of each diagnostic value.
+///
+/// # Errors
+///
+/// Returns [`DiagnosticLayoutError::ByteLengthOverflow`] if the value count or
+/// resulting byte length does not fit in `u64`.
+pub fn diagnostic_buffer_byte_len(
+    assessments: usize,
+    elements: usize,
+    scalar_type: ScalarType,
+) -> Result<u64, DiagnosticLayoutError> {
+    assessments
+        .checked_mul(elements)
+        .and_then(|values| values.checked_mul(scalar_size_bytes(scalar_type)))
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .ok_or(DiagnosticLayoutError::ByteLengthOverflow {
+            assessments,
+            elements,
+        })
+}
+
+fn scalar_size_bytes(scalar_type: ScalarType) -> usize {
+    match scalar_type {
+        ScalarType::F32 | ScalarType::U32 => 4,
+    }
+}
+
 /// How a shader binding accesses its storage buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {

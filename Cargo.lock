@@ -390,6 +390,7 @@ dependencies = [
  "conflux-core",
  "conflux-ir",
  "conflux-kernel",
+ "conflux-wgsl",
  "residency-core",
  "thiserror 1.0.69",
 ]

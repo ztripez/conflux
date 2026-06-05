@@ -201,6 +201,9 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   The current GPU backend pass is scoped in `docs/GPU_BACKEND_PASS.md`; it keeps
   GPU correctness work in `conflux-wgsl` and does not add runtime GPU selected
   execution or Residency-backed GPU resource ownership.
+  Measurement and engine-integration claims are scoped by
+  `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`, which separates correctness, smoke, and
+  performance evidence.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the
   CPU-side `FakeBackend` drives sync cycles today.
 - **Planner** — advisory only. It explains available backends and costs and never

@@ -130,6 +130,10 @@ runtime GPU selected execution, Residency-backed persistent GPU resources,
 flow/actor/query/graph/event GPU backends, fusion, and engine GPU integration.
 See `docs/GPU_BACKEND_PASS.md`.
 
+The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is
+documentation/reporting only. It separates correctness, smoke, and performance
+claims and does not introduce runtime GPU selected execution or an optimizer.
+
 ## Checkpoint: `alpha-0`
 
 This tag marks the end of the Alpha 0 phase (epic #179): the reference-grade
@@ -202,3 +206,7 @@ stepping and report/diagnostic resources in `conflux-bevy`, with no Bevy concept
 in core simulation crates. Godot remains parked until that boundary is proven.
 Graph-rule kernels remain advisory only under the current hard boundary unless
 that boundary is explicitly reopened.
+
+Deferred GPU work is grouped under #261. Wave 0 consists of the Residency-backed
+GPU resource bridge (#248) and the GPU measurement/engine planning guardrail
+(#250); neither changes the default reference runtime path.

@@ -78,6 +78,8 @@ Diagnostics should surface, not hide:
 - rejected proposals;
 - selected execution paths;
 - kernel/index fallback and refusal provenance;
+- future GPU eligibility, selected-execution, transfer, and refusal reports
+  produced by Conflux crates;
 - query, aggregate, projection, flow, graph, and event report counts.
 
 ## Dependency boundary
@@ -103,6 +105,8 @@ The `conflux-arch-guard` dependency-boundary test enforces this mechanically.
 - No ECS rewrite of Conflux actors.
 - No Bevy scheduler assumptions inside Conflux runtime.
 - No engine-owned mutation of Conflux internals.
+- No engine-owned GPU execution semantics.
+- No ECS ownership of Conflux actor or rule meaning.
 - No Residency shortcut through the engine adapter.
 - No Godot work in this phase; Godot remains parked until this adapter boundary is
   proven.

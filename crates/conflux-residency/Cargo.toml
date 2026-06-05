@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 conflux-ir.workspace = true
 conflux-kernel.workspace = true
+conflux-wgsl.workspace = true
 residency-core.workspace = true
 thiserror.workspace = true
 

@@ -8,7 +8,7 @@ use super::{
     byte_len, create_compute_pipeline, create_storage_bind_group_layout, read_back, read_back_u32,
     staging_buffer, GpuError, GpuExecutor,
 };
-use crate::module::{Access, FieldBindingSource, FieldShaderModule};
+use crate::module::{diagnostic_buffer_byte_len, Access, FieldBindingSource, FieldShaderModule};
 
 /// Dispatch/accounting metadata for a field GPU run.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -640,13 +640,12 @@ fn validate_field_run(
     };
     let output_bytes = byte_len(module.cell_count, workgroup_size)?;
     let validity_bytes = byte_len(module.cell_count, workgroup_size)?;
-    let diagnostic_values = diagnostic_assessments
-        .checked_mul(module.cell_count)
-        .ok_or(GpuError::DispatchSizeOverflow {
-            element_count: module.cell_count,
-            workgroup_size,
-        })?;
-    let diagnostic_bytes = byte_len(diagnostic_values, workgroup_size)?;
+    let diagnostic_bytes =
+        diagnostic_buffer_byte_len(diagnostic_assessments, module.cell_count, ScalarType::F32)
+            .map_err(|_| GpuError::DispatchSizeOverflow {
+                element_count: module.cell_count,
+                workgroup_size,
+            })?;
 
     Ok(FieldRunPlan {
         output_index,
@@ -680,10 +679,7 @@ fn create_field_buffers(
         .iter()
         .map(|b| match &b.source {
             FieldBindingSource::Channel { channel, .. } => {
-                let contents: Vec<f32> = channels[*channel][..module.cell_count]
-                    .iter()
-                    .map(|value| *value as f32)
-                    .collect();
+                let contents = channel_initial_contents(module, *channel, channels);
                 executor
                     .device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -713,6 +709,17 @@ fn create_field_buffers(
                     })
             }
         })
+        .collect()
+}
+
+fn channel_initial_contents(
+    module: &FieldShaderModule,
+    channel: usize,
+    channels: &[Vec<f64>],
+) -> Vec<f32> {
+    channels[channel][..module.cell_count]
+        .iter()
+        .map(|value| *value as f32)
         .collect()
 }
 
@@ -819,6 +826,15 @@ mod tests {
         assert!(comparison.within_tolerance);
         assert_eq!(comparison.uncomputable_mismatches, 0);
         assert_eq!(comparison.non_finite_mismatches, 0);
+    }
+
+    #[test]
+    fn read_write_field_channel_starts_from_prior_channel_values_without_gpu() {
+        let module = field_module(vec![channel(0, Access::ReadWrite, 0)]);
+
+        let contents = channel_initial_contents(&module, 0, &[vec![1.25, 2.5, 3.75, 4.0]]);
+
+        assert_eq!(contents, vec![1.25, 2.5, 3.75, 4.0]);
     }
 
     #[test]
