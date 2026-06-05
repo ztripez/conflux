@@ -61,21 +61,23 @@ canonical scenario.
     value-bearing declarations, `lower()` runs dimensional checks, reports carry
     units as provenance, and named same-dimension conversions are declared but
     never auto-applied. The numeric runtime is unit-erased.
-- **Bounded numeric kernel extraction + equivalence**: elementwise table kernels
-  and field-stencil kernels each run through both the reference (f64) and the CPU
-  kernel path (f32), compared within a declared tolerance, never bit-for-bit.
-  `conflux-wgsl` also lowers accepted table and bounded 2D field kernels to
-  deterministic WGSL modules. Its optional `gpu` feature provides
+- **Bounded numeric kernel extraction + equivalence**: elementwise table kernels,
+  field-stencil kernels, and fixed-offset flow kernels each have bounded CPU kernel
+  forms compared against the reference (f64) within declared tolerance, never
+  bit-for-bit. `conflux-wgsl` lowers accepted table, bounded 2D field, and bounded
+  flow kernels to deterministic WGSL modules. Flow WGSL computes exact
+  amount/destination buffers and uses deterministic CPU scatter to preserve
+  no-clamp conservation accounting. Its optional `gpu` feature provides
   hardware-gated table and field CPU/GPU equivalence helpers; they report
   `match`, `mismatch`, or `skipped: no adapter` and are not part of default
   runtime execution.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
-  transfer notes, GPU capability for table/field WGSL lowering, proximity-index
+  transfer notes, GPU capability for table/field/flow WGSL lowering, proximity-index
   eligibility, and graph-kernel eligibility) and `conflux-trace` (optional, off
   the execution path). The GPU capability report distinguishes WGSL-lowerable
-  rules from rules actually run on GPU; planner-produced entries do not imply GPU
-  dispatch. The proximity-index
+  rules/flows from work actually run on GPU; planner-produced entries do not imply
+  GPU dispatch. The proximity-index
   eligibility report now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
   and `conflux-wgsl` (WGSL emission plus optional, experimental `wgpu`
@@ -126,11 +128,12 @@ events run only on the CPU reference path. Enforced mechanically by
 
 The tracked GPU backend pass (#238) did not change those boundaries: it hardened
 `conflux-wgsl` correctness for table and bounded field kernels. The follow-up GPU
-execution track (#261, with runtime selected-execution policy in #246) has since
-added a Residency descriptor-mapping bridge and explicit runtime GPU
-selection/refusal policy, while still deferring actual GPU dispatch,
-flow/actor/query/graph/event GPU backends, fusion, and engine GPU integration. See
-`docs/GPU_BACKEND_PASS.md`.
+execution track (#261, with runtime selected-execution policy in #246 and flow WGSL
+lowering in #247) has since added a Residency descriptor-mapping bridge, explicit
+runtime GPU selection/refusal policy, and a flow amount/destination shader backend,
+while still deferring actual GPU dispatch, actor/query/graph/event GPU backends,
+fusion, and engine GPU integration. See `docs/GPU_BACKEND_PASS.md` and
+`docs/FLOW_GPU_BACKEND.md`.
 
 The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is
 documentation/reporting only. It separates correctness, smoke, and performance

@@ -1,8 +1,10 @@
 use conflux_core::{
-    cell, col, field_lit, lit, lower, neighbor, param, EdgePolicy, Field, FieldRule, Grid2, Model,
-    Rule, Table,
+    cell, col, field_lit, lit, lower, neighbor, param, EdgePolicy, Field, FieldRule, Flow, Grid2,
+    Model, Rule, Table,
 };
-use conflux_planner::{plan, BackendChoice, CostHint, FieldGpuRejection, TableGpuRejection};
+use conflux_planner::{
+    plan, BackendChoice, CostHint, FieldGpuRejection, FlowGpuRejection, TableGpuRejection,
+};
 use conflux_wgsl::WgslError;
 
 /// A model exercising all three backend tiers on one table at one cadence:
@@ -337,5 +339,90 @@ fn reports_field_wgsl_rejections_as_structured_reasons() {
             reason: WgslError::NonFiniteLiteral { value, .. },
         }) => assert_eq!(*value, 1e40),
         other => panic!("expected typed field WGSL rejection, got {other:?}"),
+    }
+}
+
+#[test]
+fn reports_flow_gpu_capability_without_claiming_execution() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![9.0, 0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+
+    let report = plan_for(&model);
+    let flow = &report.gpu.flows[0];
+    assert_eq!(flow.flow, "runoff");
+    assert_eq!(flow.field, "Terrain");
+    assert_eq!(flow.channel, "water");
+    assert_eq!(flow.grid, (3, 1));
+    assert_eq!(flow.stencil_radius, Some(0));
+    assert!(flow.wgsl_lowerable);
+    assert!(!flow.executed_on_gpu);
+    assert!(flow.rejection.is_none());
+    assert_eq!(report.gpu.wgsl_lowerable_count(), 1);
+    assert_eq!(report.gpu.executed_on_gpu_count(), 0);
+    let display = report.gpu.to_string();
+    assert!(display.contains("1 WGSL-lowerable"));
+    assert!(display.contains("FLOW `runoff`"));
+}
+
+#[test]
+fn reports_flow_gpu_rejections_as_structured_reasons() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![9.0, 0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("far")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(neighbor("water", 2, 0, EdgePolicy::Reject))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+
+    let report = plan_for(&model);
+    let flow = &report.gpu.flows[0];
+    assert!(!flow.wgsl_lowerable);
+    assert!(!flow.executed_on_gpu);
+    assert!(matches!(
+        flow.rejection,
+        Some(FlowGpuRejection::NotFlowKernelLowerable { .. })
+    ));
+}
+
+#[test]
+fn reports_flow_wgsl_rejections_as_structured_reasons() {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![9.0, 0.0, 0.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("overflow_amount")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") + field_lit(1e40))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+
+    let report = plan_for(&model);
+    let flow = &report.gpu.flows[0];
+    assert_eq!(flow.flow, "overflow_amount");
+    assert!(!flow.wgsl_lowerable);
+    assert!(!flow.executed_on_gpu);
+    match &flow.rejection {
+        Some(FlowGpuRejection::WgslRejected {
+            reason: WgslError::NonFiniteLiteral { value, .. },
+        }) => assert_eq!(*value, 1e40),
+        other => panic!("expected typed flow WGSL rejection, got {other:?}"),
     }
 }

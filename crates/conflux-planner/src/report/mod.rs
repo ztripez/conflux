@@ -19,8 +19,8 @@ pub use core::{
 };
 pub use flow::{FlowCandidateShape, FlowEligibility, FlowEligibilityReport};
 pub use gpu::{
-    FieldGpuCapability, FieldGpuRejection, GpuCapabilityReport, TableGpuCapability,
-    TableGpuRejection,
+    FieldGpuCapability, FieldGpuRejection, FlowGpuCapability, FlowGpuRejection,
+    GpuCapabilityReport, TableGpuCapability, TableGpuRejection,
 };
 pub use graph::{
     GraphCandidateShape, GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility,

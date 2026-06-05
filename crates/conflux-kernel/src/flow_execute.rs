@@ -20,12 +20,16 @@ pub enum FlowKernelDestination {
     Boundary,
 }
 
-/// One emitted transfer from a source cell.
+/// One flow transfer from a source cell.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlowKernelTransfer {
+    /// Row-major source cell that emitted the amount.
     pub source: usize,
+    /// Where the emitted amount goes.
     pub destination: FlowKernelDestination,
     /// The emitted amount (computed in f32, returned as f64).
+    ///
+    /// This amount is never clamped to available source.
     pub amount: f64,
 }
 
@@ -35,6 +39,7 @@ pub struct FlowKernelOutput {
     /// The moved quantity channel after debit/credit (f32-computed amounts applied),
     /// addressed by cell (row-major).
     pub channel: Vec<f64>,
+    /// Explainable transfers applied to produce [`FlowKernelOutput::channel`].
     pub transfers: Vec<FlowKernelTransfer>,
     /// Total amount that left the grid (`Reject` destinations).
     pub boundary_loss: f64,
@@ -45,11 +50,15 @@ pub struct FlowKernelOutput {
 /// while debits/credits accumulate into a copy of the moved channel (so flow order
 /// cannot change the amounts). Amounts are evaluated in f32; a `Reject`-edge amount
 /// read that leaves the grid (or a zero amount) emits nothing.
+///
+/// # Panics
+///
+/// Panics if `channels` does not contain `kernel.channel`, if the moved channel is
+/// shorter than any emitted source or destination cell, or if an amount expression
+/// references a missing/short source channel.
 pub fn execute_flow(kernel: &FlowKernel, channels: &[Vec<f64>]) -> FlowKernelOutput {
     let grid = kernel.grid;
-    let mut moved = channels[kernel.channel].clone();
     let mut transfers = Vec::new();
-    let mut boundary_loss = 0.0;
 
     for cell in 0..grid.cells() {
         let (x, y) = (cell % grid.width, cell / grid.width);
@@ -69,19 +78,12 @@ pub fn execute_flow(kernel: &FlowKernel, channels: &[Vec<f64>]) -> FlowKernelOut
             continue;
         }
 
-        // Debit the source (never clamped to what it holds).
-        moved[cell] -= amount;
-
         let destination = match resolve_neighbor(x, y, kernel.dx, kernel.dy, grid, kernel.edge) {
             Some((nx, ny)) => {
                 let dest = grid.index(nx, ny);
-                moved[dest] += amount;
                 FlowKernelDestination::Cell(dest)
             }
-            None => {
-                boundary_loss += amount;
-                FlowKernelDestination::Boundary
-            }
+            None => FlowKernelDestination::Boundary,
         };
 
         transfers.push(FlowKernelTransfer {
@@ -91,9 +93,56 @@ pub fn execute_flow(kernel: &FlowKernel, channels: &[Vec<f64>]) -> FlowKernelOut
         });
     }
 
+    apply_flow_transfers(kernel, channels, &transfers)
+}
+
+/// Applies decoded flow transfers to the moved channel using the canonical
+/// no-clamp deterministic scatter semantics.
+///
+/// This is the single reducer for flow debit/credit/boundary-loss accounting. CPU
+/// flow execution uses it after evaluating amounts, and GPU readback adapters use
+/// it after decoding amount/destination buffers.
+///
+/// # Panics
+///
+/// Panics if `channels` does not contain `kernel.channel`, if the moved channel is
+/// shorter than any transfer source, or if a transfer cell destination is outside
+/// the moved channel.
+pub fn apply_flow_transfers(
+    kernel: &FlowKernel,
+    channels: &[Vec<f64>],
+    transfers: &[FlowKernelTransfer],
+) -> FlowKernelOutput {
+    let mut moved = channels[kernel.channel].clone();
+    let boundary_loss = apply_flow_transfers_to_channel(&mut moved, transfers);
+
     FlowKernelOutput {
         channel: moved,
-        transfers,
+        transfers: transfers.to_vec(),
         boundary_loss,
     }
+}
+
+/// Applies flow transfers to an existing moved channel and returns boundary loss.
+///
+/// This reducer performs the canonical no-clamp scatter: debit every source,
+/// credit cell destinations, and add boundary destinations to explicit loss.
+/// Runtime code uses this variant when multiple flows accumulate into live field
+/// state instead of replacing it with a snapshot-derived output buffer.
+///
+/// # Panics
+///
+/// Panics if `moved` is shorter than any transfer source or cell destination.
+pub fn apply_flow_transfers_to_channel(moved: &mut [f64], transfers: &[FlowKernelTransfer]) -> f64 {
+    let mut boundary_loss = 0.0;
+
+    for transfer in transfers {
+        moved[transfer.source] -= transfer.amount;
+        match transfer.destination {
+            FlowKernelDestination::Cell(dest) => moved[dest] += transfer.amount,
+            FlowKernelDestination::Boundary => boundary_loss += transfer.amount,
+        }
+    }
+
+    boundary_loss
 }

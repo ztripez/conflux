@@ -14,9 +14,9 @@ pub struct OptimizationReport {
     pub rules: Vec<RulePlan>,
     /// Advisory fusion groups: sets of rules that *could* fuse. Never fused here.
     pub fusion: Vec<FusionGroup>,
-    /// Advisory GPU capability for table and field kernels.
+    /// Advisory GPU capability for table, field, and flow kernels.
     ///
-    /// This distinguishes WGSL-lowerable rules from rules actually run on a GPU.
+    /// This distinguishes WGSL-lowerable rules/flows from work actually run on a GPU.
     /// The planner never dispatches GPU work, so its entries report
     /// `executed_on_gpu == false`.
     pub gpu: super::GpuCapabilityReport,

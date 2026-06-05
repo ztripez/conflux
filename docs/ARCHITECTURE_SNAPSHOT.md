@@ -40,8 +40,8 @@ crates/
 - **conflux-bevy** is an engine adapter. It owns Bevy resources, messages, and
   systems for manually stepping a `Simulation` and surfacing Conflux reports into a
   Bevy world. Bevy concepts do not enter Conflux core crates.
-- **conflux-wgsl** lowers accepted table and bounded 2D field kernels to
-  inspectable WGSL compute shaders and resource requirements. Optional GPU
+- **conflux-wgsl** lowers accepted table, bounded 2D field, and bounded flow kernels
+  to inspectable WGSL compute shaders and resource requirements. Optional GPU
   execution/equivalence helpers live behind the off-by-default `gpu` feature; the
   emitter side needs no `wgpu`.
 - **conflux-residency** is the only crate that depends on `residency-core`. It maps
@@ -171,7 +171,7 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 - **Equivalence report** — per rule, matched kernel run vs fallback to reference,
   with the reason.
 - **Planner reports** — backend choice + cost hints, fusion candidates, transfer
-  advisories, GPU capability for table/field WGSL lowering, proximity-index
+  advisories, GPU capability for table/field/flow WGSL lowering, proximity-index
   eligibility, and graph-kernel eligibility (all advisory).
 - **Trace + recommendations** — optional, off the execution path.
 - **Baseline report** — `cargo run -p conflux-fixtures --example baseline_report`
@@ -191,10 +191,12 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   bridge-write path; unconditional (no opt-in mode) because lowering guarantees
   valid region masks.
 - **GPU / WGSL** — emission is always available and inspectable for accepted
-  table kernels and bounded 2D field kernels; execution is experimental and
-  behind the optional `gpu` feature (wgpu). Hardware checks compare GPU buffers
-  against CPU contracts and report explicit match, mismatch, or no-adapter skip;
-  they do not silently imply GPU work ran.
+  table kernels, bounded 2D field kernels, and bounded flow kernels. Flow shaders
+  emit amount/destination buffers and preserve exact scatter through the shared
+  deterministic fold described in `docs/FLOW_GPU_BACKEND.md`. Hardware execution is
+  experimental and behind the optional `gpu` feature (wgpu). Hardware checks compare
+  GPU buffers against CPU contracts and report explicit match, mismatch, or
+  no-adapter skip; they do not silently imply GPU work ran.
   Planner GPU capability reports use this distinction too: `WGSL-lowerable=true`
   means an emitter accepted the kernel, while `executed_on_gpu=false` means the
   planner did not dispatch runtime GPU work.
@@ -202,8 +204,10 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   GPU correctness work in `conflux-wgsl`. Runtime GPU policy can explicitly select
   or refuse `ExecutionPath::Gpu`, but actual GPU dispatch is still absent from
   `conflux-runtime` so the runtime keeps no `wgpu`, `conflux-wgsl`, Residency, or
-  buffer-movement dependency. The current runtime GPU policy is table-rule scoped;
-  flow and actor-rule CPU kernels are not GPU eligibility.
+  buffer-movement dependency. The current runtime GPU policy is table-rule scoped.
+  Flow WGSL capability is planner/backend metadata only: flow CPU kernels are not
+  runtime GPU eligibility, and `conflux-runtime` does not dispatch flow work on
+  GPU. Actor-rule CPU kernels are also not runtime GPU eligibility.
   Measurement and engine-integration claims are scoped by
   `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`, which separates correctness, smoke, and
   performance evidence.
