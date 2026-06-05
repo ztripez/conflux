@@ -124,7 +124,7 @@ where
     ));
     match read.edge {
         EdgePolicy::Wrap => body.push_str(&format!(
-            "    let {index} = u32((({ny} % {height}) + {height}) % {height}) * {width}u + u32((({nx} % {width}) + {width}) % {width});\n    let {value} = {var}[{index}];\n    let {valid} = true;\n",
+            "    var wrap_x_{n} = {nx} % {width};\n    if (wrap_x_{n} < 0) {{ wrap_x_{n} = wrap_x_{n} + {width}; }}\n    var wrap_y_{n} = {ny} % {height};\n    if (wrap_y_{n} < 0) {{ wrap_y_{n} = wrap_y_{n} + {height}; }}\n    let {index} = u32(wrap_y_{n}) * {width}u + u32(wrap_x_{n});\n    let {value} = {var}[{index}];\n    let {valid} = true;\n",
             height = grid.height_i32,
             width = grid.width_i32,
         )),

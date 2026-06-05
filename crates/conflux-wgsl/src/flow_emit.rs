@@ -7,8 +7,8 @@
 //! the same deterministic scatter semantics as `conflux_kernel::execute_flow`.
 
 use conflux_kernel::{
-    apply_flow_transfers, Assessment, EdgePolicy, FlowKernel, FlowKernelDestination,
-    FlowKernelOutput, FlowKernelTransfer, ScalarType,
+    apply_flow_transfers, Assessment, EdgePolicy, FieldKernelExpr, FlowKernel,
+    FlowKernelDestination, FlowKernelOutput, FlowKernelTransfer, ScalarType,
 };
 
 use crate::emit::{
@@ -177,8 +177,8 @@ fn expected_flow_destination(
     let dy = y + kernel.dy;
     match kernel.edge {
         EdgePolicy::Wrap => {
-            let wrapped_x = ((dx % grid.width_i32) + grid.width_i32) % grid.width_i32;
-            let wrapped_y = ((dy % grid.height_i32) + grid.height_i32) % grid.height_i32;
+            let wrapped_x = wrap_coord_i32(dx, grid.width_i32);
+            let wrapped_y = wrap_coord_i32(dy, grid.height_i32);
             let destination = usize::try_from(wrapped_y)
                 .map_err(|_| unsupported_grid(kernel, "wrapped y does not fit in usize"))?
                 * kernel.grid.width
@@ -202,6 +202,15 @@ fn expected_flow_destination(
     }
 }
 
+fn wrap_coord_i32(coord: i32, axis: i32) -> i32 {
+    let rem = coord % axis;
+    if rem < 0 {
+        rem + axis
+    } else {
+        rem
+    }
+}
+
 /// Lowers one bounded flow kernel to a WGSL compute shader module.
 ///
 /// # Errors
@@ -210,9 +219,10 @@ fn expected_flow_destination(
 /// f32 values. Returns [`WgslError::InvalidFlowChannel`] when the flow amount
 /// expression references a missing amount-channel binding. Returns
 /// [`WgslError::UnsupportedFlowGrid`] when the grid width, height, or cell count
-/// cannot be represented by the generated WGSL coordinate and sentinel encoding.
-/// Returns literal or diagnostic-expression errors when WGSL cannot encode finite
-/// f32 values for the amount expression or diagnostics.
+/// cannot be represented by the generated WGSL coordinate/sentinel encoding, or
+/// when the destination offset can overflow generated i32 coordinate math. Returns
+/// literal or diagnostic-expression errors when WGSL cannot encode finite f32 values
+/// for the amount expression or diagnostics.
 pub fn emit_flow_wgsl(kernel: &FlowKernel) -> Result<FlowShaderModule, WgslError> {
     if kernel.scalar_type != ScalarType::F32 {
         return Err(WgslError::UnsupportedScalarType {
@@ -334,7 +344,7 @@ fn destination_body(kernel: &FlowKernel, grid: FlowGridConstants) -> String {
     );
     match kernel.edge {
         EdgePolicy::Wrap => body.push_str(&format!(
-            "            let dest = u32(((dy % {height}) + {height}) % {height}) * {width}u + u32(((dx % {width}) + {width}) % {width});\n            {DESTINATIONS_VAR}[i] = dest;\n",
+            "            var dest_x = dx % {width};\n            if (dest_x < 0) {{ dest_x = dest_x + {width}; }}\n            var dest_y = dy % {height};\n            if (dest_y < 0) {{ dest_y = dest_y + {height}; }}\n            let dest = u32(dest_y) * {width}u + u32(dest_x);\n            {DESTINATIONS_VAR}[i] = dest;\n",
             height = grid.height_i32,
             width = grid.width_i32,
         )),
@@ -381,12 +391,68 @@ fn validate_flow_grid(kernel: &FlowKernel) -> Result<FlowGridConstants, WgslErro
             "cell count overlaps flow destination sentinel values",
         ));
     }
+    if !axis_add_is_i32_safe(kernel.grid.width, kernel.dx) {
+        return Err(unsupported_grid(
+            kernel,
+            "destination x offset can overflow generated i32 coordinate math",
+        ));
+    }
+    if !axis_add_is_i32_safe(kernel.grid.height, kernel.dy) {
+        return Err(unsupported_grid(
+            kernel,
+            "destination y offset can overflow generated i32 coordinate math",
+        ));
+    }
+    validate_amount_coordinate_math(kernel)?;
     Ok(FlowGridConstants {
         width_i32,
         height_i32,
         width_u32,
         cells_u32,
     })
+}
+
+fn validate_amount_coordinate_math(kernel: &FlowKernel) -> Result<(), WgslError> {
+    validate_amount_expr_coordinate_math(kernel, &kernel.amount)
+}
+
+fn validate_amount_expr_coordinate_math(
+    kernel: &FlowKernel,
+    expr: &FieldKernelExpr,
+) -> Result<(), WgslError> {
+    match expr {
+        FieldKernelExpr::Neighbor { dx, dy, .. } => {
+            if !axis_add_is_i32_safe(kernel.grid.width, *dx) {
+                return Err(unsupported_grid(
+                    kernel,
+                    "amount x offset can overflow generated i32 coordinate math",
+                ));
+            }
+            if !axis_add_is_i32_safe(kernel.grid.height, *dy) {
+                return Err(unsupported_grid(
+                    kernel,
+                    "amount y offset can overflow generated i32 coordinate math",
+                ));
+            }
+            Ok(())
+        }
+        FieldKernelExpr::Neg(inner) => validate_amount_expr_coordinate_math(kernel, inner),
+        FieldKernelExpr::Add(lhs, rhs)
+        | FieldKernelExpr::Sub(lhs, rhs)
+        | FieldKernelExpr::Mul(lhs, rhs)
+        | FieldKernelExpr::Div(lhs, rhs) => {
+            validate_amount_expr_coordinate_math(kernel, lhs)?;
+            validate_amount_expr_coordinate_math(kernel, rhs)
+        }
+        FieldKernelExpr::Literal(_) | FieldKernelExpr::Cell(_) => Ok(()),
+    }
+}
+
+fn axis_add_is_i32_safe(len: usize, delta: i32) -> bool {
+    let max_coord = len.saturating_sub(1) as i64;
+    let lo = i64::from(delta);
+    let hi = max_coord + i64::from(delta);
+    lo >= i64::from(i32::MIN) && hi <= i64::from(i32::MAX)
 }
 
 fn unsupported_grid(kernel: &FlowKernel, reason: &str) -> WgslError {
@@ -513,6 +579,10 @@ mod tests {
     use conflux_kernel::{execute_flow, extract_flows, FlowKernelDestination};
 
     fn flow_kernel(edge: EdgePolicy) -> FlowKernel {
+        flow_kernel_with_destination(1, 0, edge)
+    }
+
+    fn flow_kernel_with_destination(dx: i32, dy: i32, edge: EdgePolicy) -> FlowKernel {
         let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
         terrain.stock("water", vec![9.0, 0.0, 0.0]);
         let mut model = Model::new("world");
@@ -522,7 +592,7 @@ mod tests {
                 .on_field("Terrain")
                 .move_channel("water")
                 .amount(cell("water") * field_lit(0.5))
-                .to_neighbor(1, 0, edge)
+                .to_neighbor(dx, dy, edge)
                 .conserved(),
         );
         let ir = lower(&model).unwrap();
@@ -552,6 +622,70 @@ mod tests {
         assert!(!module
             .source
             .contains(&format!("{FLOW_DESTINATION_BOUNDARY}u")));
+    }
+
+    #[test]
+    fn rejects_destination_offset_that_can_overflow_wgsl_i32_math() {
+        let kernel = flow_kernel_with_destination(i32::MAX, 0, EdgePolicy::Wrap);
+
+        assert!(matches!(
+            emit_flow_wgsl(&kernel),
+            Err(WgslError::UnsupportedFlowGrid { .. })
+        ));
+    }
+
+    #[test]
+    fn shader_run_rejects_destination_offset_that_can_overflow_wgsl_i32_math() {
+        let kernel = flow_kernel_with_destination(i32::MAX, 0, EdgePolicy::Wrap);
+        let channels = vec![vec![9.0, 0.0, 0.0]];
+        let shader = FlowShaderRun {
+            amounts: vec![4.5, 0.0, 0.0],
+            destinations: vec![1, FLOW_DESTINATION_NONE, FLOW_DESTINATION_NONE],
+            diagnostics: Vec::new(),
+        };
+
+        assert!(matches!(
+            apply_flow_shader_run(&kernel, &channels, &shader),
+            Err(WgslError::UnsupportedFlowGrid { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_amount_neighbor_offset_that_can_overflow_wgsl_i32_math() {
+        let mut kernel = flow_kernel(EdgePolicy::Wrap);
+        kernel.amount = FieldKernelExpr::Neighbor {
+            channel: 0,
+            dx: i32::MAX,
+            dy: 0,
+            edge: EdgePolicy::Wrap,
+        };
+
+        assert!(matches!(
+            emit_flow_wgsl(&kernel),
+            Err(WgslError::UnsupportedFlowGrid { .. })
+        ));
+    }
+
+    #[test]
+    fn shader_run_rejects_amount_neighbor_offset_that_can_overflow_wgsl_i32_math() {
+        let mut kernel = flow_kernel(EdgePolicy::Wrap);
+        kernel.amount = FieldKernelExpr::Neighbor {
+            channel: 0,
+            dx: i32::MAX,
+            dy: 0,
+            edge: EdgePolicy::Wrap,
+        };
+        let channels = vec![vec![9.0, 0.0, 0.0]];
+        let shader = FlowShaderRun {
+            amounts: vec![4.5, 0.0, 0.0],
+            destinations: vec![1, FLOW_DESTINATION_NONE, FLOW_DESTINATION_NONE],
+            diagnostics: Vec::new(),
+        };
+
+        assert!(matches!(
+            apply_flow_shader_run(&kernel, &channels, &shader),
+            Err(WgslError::UnsupportedFlowGrid { .. })
+        ));
     }
 
     #[test]

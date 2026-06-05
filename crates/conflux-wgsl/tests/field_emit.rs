@@ -46,12 +46,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let y = i / 3u;
     let nx_0 = i32(x) + -1;
     let ny_0 = i32(y) + 0;
-    let idx_0 = u32(((ny_0 % 2) + 2) % 2) * 3u + u32(((nx_0 % 3) + 3) % 3);
+    var wrap_x_0 = nx_0 % 3;
+    if (wrap_x_0 < 0) { wrap_x_0 = wrap_x_0 + 3; }
+    var wrap_y_0 = ny_0 % 2;
+    if (wrap_y_0 < 0) { wrap_y_0 = wrap_y_0 + 2; }
+    let idx_0 = u32(wrap_y_0) * 3u + u32(wrap_x_0);
     let value_0 = v_height[idx_0];
     let valid_0 = true;
     let nx_1 = i32(x) + 0;
     let ny_1 = i32(y) + 1;
-    let idx_1 = u32(((ny_1 % 2) + 2) % 2) * 3u + u32(((nx_1 % 3) + 3) % 3);
+    var wrap_x_1 = nx_1 % 3;
+    if (wrap_x_1 < 0) { wrap_x_1 = wrap_x_1 + 3; }
+    var wrap_y_1 = ny_1 % 2;
+    if (wrap_y_1 < 0) { wrap_y_1 = wrap_y_1 + 2; }
+    let idx_1 = u32(wrap_y_1) * 3u + u32(wrap_x_1);
     let value_1 = v_rain[idx_1];
     let valid_1 = true;
     if ((valid_0 && valid_1)) {
