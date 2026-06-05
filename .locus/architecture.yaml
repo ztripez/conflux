@@ -1,0 +1,54 @@
+# Locus architecture declaration.
+#
+# This file is the project-owned statement of architectural intent. Locus
+# compares it against what the repository actually does. Code is evidence; this
+# declaration is the contract.
+#
+# Start small: declare the few boundaries and concepts that actually matter,
+# then run `locus check`. This is not a place for generic code-quality rules.
+
+version: 1
+
+# Canonical domain/architecture concepts. Each concept has exactly one owner
+# and an explicit set of adapters allowed to translate or serialize it. Optional
+# recognition patterns are non-authoritative evidence for `needs_decision`
+# concept-shadow findings; the concept name and owner remain the authority.
+concepts: []
+  # - name: User
+  #   owner: src/domain/user.rs
+  #   adapters:
+  #     - src/adapters/user_serde.rs
+  #   recognition:
+  #     names: [UserRecord, UserSpec]
+  #     fields:
+  #       required: [id, email]
+
+# Regions of the repository and the dependencies they may take. `allow` lists
+# other boundary names. A boundary may always depend on itself.
+boundaries: []
+  # - name: domain
+  #   roots: [src/domain]
+  #   # domain depends on nothing internal: it is the core.
+  # - name: adapters
+  #   roots: [src/adapters]
+  #   allow: [domain]
+
+# Planned, owned, bounded architectural moves. While `active` and unexpired, a
+# transition accepts the finding fingerprints it lists. It cannot become a
+# permanent ignore: it expires.
+transitions: []
+  # - id: split-user-module
+  #   reason: splitting the user module into submodules
+  #   owner: your-name
+  #   status: active
+  #   expires: 2026-12-31
+  #   accept: []   # paste finding fingerprints from `locus check`
+
+# Temporary, fingerprinted exceptions for one specific accepted finding each.
+# A waiver stops matching when it expires or when the finding changes.
+waivers: []
+  # - id: legacy-edge
+  #   reason: legacy dependency, removed once the rewrite lands
+  #   owner: your-name
+  #   expires: 2026-12-31
+  #   fingerprint: paste-from-locus-check
