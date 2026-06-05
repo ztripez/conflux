@@ -1,54 +1,73 @@
 # Locus architecture declaration.
 #
-# This file is the project-owned statement of architectural intent. Locus
-# compares it against what the repository actually does. Code is evidence; this
-# declaration is the contract.
-#
-# Start small: declare the few boundaries and concepts that actually matter,
-# then run `locus check`. This is not a place for generic code-quality rules.
+# Conflux owns simulation meaning and execution. Backends and adapters may read
+# that meaning, but engine, GPU, and buffer-movement concerns must stay in their
+# boundary crates.
 
 version: 1
 
-# Canonical domain/architecture concepts. Each concept has exactly one owner
-# and an explicit set of adapters allowed to translate or serialize it. Optional
-# recognition patterns are non-authoritative evidence for `needs_decision`
-# concept-shadow findings; the concept name and owner remain the authority.
+# Canonical domain concepts are intentionally left undeclared for the first Locus
+# slice. The crate-boundary contract below is the enforcement target; concepts can
+# be added later when we want Locus to police a specific public model concept.
 concepts: []
-  # - name: User
-  #   owner: src/domain/user.rs
-  #   adapters:
-  #     - src/adapters/user_serde.rs
-  #   recognition:
-  #     names: [UserRecord, UserSpec]
-  #     fields:
-  #       required: [id, email]
 
-# Regions of the repository and the dependencies they may take. `allow` lists
-# other boundary names. A boundary may always depend on itself.
-boundaries: []
-  # - name: domain
-  #   roots: [src/domain]
-  #   # domain depends on nothing internal: it is the core.
-  # - name: adapters
-  #   roots: [src/adapters]
-  #   allow: [domain]
+# Boundary names mirror the workspace crates. `allow` lists the internal Conflux
+# boundaries a region may depend on, including dev-test evidence inside that crate
+# root. A boundary may always depend on itself and is not listed in its own allow.
+boundaries:
+  - name: ir
+    roots: [crates/conflux-ir]
+    note: Lowered simulation IR and shared vocabulary; no other Conflux crate owns this layer.
 
-# Planned, owned, bounded architectural moves. While `active` and unexpired, a
-# transition accepts the finding fingerprints it lists. It cannot become a
-# permanent ignore: it expires.
+  - name: core
+    roots: [crates/conflux-core]
+    allow: [ir]
+    note: Public authoring API and the single lowering/validation gate.
+
+  - name: kernel
+    roots: [crates/conflux-kernel]
+    allow: [ir, core]
+    note: Bounded numeric kernel IR and CPU executor; core is allowed for crate-local tests.
+
+  - name: runtime
+    roots: [crates/conflux-runtime]
+    allow: [core, ir, kernel]
+    note: CPU reference execution, selected-execution policy, scheduler, and reports.
+
+  - name: wgsl
+    roots: [crates/conflux-wgsl]
+    allow: [kernel, core]
+    note: WGSL emission and optional GPU correctness helpers; core is allowed for tests/examples.
+
+  - name: residency
+    roots: [crates/conflux-residency]
+    allow: [ir, kernel, wgsl, core]
+    note: The only Conflux boundary that may bridge to Residency buffer movement.
+
+  - name: planner
+    roots: [crates/conflux-planner]
+    allow: [ir, kernel, wgsl, residency, core]
+    note: Advisory reports that read backend reports without mutating IR or execution.
+
+  - name: trace
+    roots: [crates/conflux-trace]
+    allow: [core, kernel, planner, residency]
+    note: Standalone trace schema and recommendation research; Conflux deps are dev-only evidence.
+
+  - name: fixtures
+    roots: [crates/conflux-fixtures]
+    allow: [core, kernel, planner, residency, runtime, trace, wgsl]
+    note: Internal scenario and report-contract support, not a production API layer.
+
+  - name: bevy
+    roots: [crates/conflux-bevy]
+    allow: [core, ir, runtime, fixtures]
+    note: Engine adapter boundary; Bevy ECS/resources/messages stay here.
+
+  - name: arch-guard
+    roots: [crates/conflux-arch-guard]
+    note: Internal mechanical dependency-boundary tests.
+
 transitions: []
-  # - id: split-user-module
-  #   reason: splitting the user module into submodules
-  #   owner: your-name
-  #   status: active
-  #   expires: 2026-12-31
-  #   accept: []   # paste finding fingerprints from `locus check`
 
-# Temporary, fingerprinted exceptions for one specific accepted finding each.
-# A waiver stops matching when it expires or when the finding changes.
 waivers: []
-  # - id: legacy-edge
-  #   reason: legacy dependency, removed once the rewrite lands
-  #   owner: your-name
-  #   expires: 2026-12-31
-  #   fingerprint: paste-from-locus-check
