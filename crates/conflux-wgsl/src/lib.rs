@@ -21,8 +21,8 @@ mod gpu_equivalence;
 pub use emit::{emit_wgsl, WgslError};
 pub use field_emit::emit_field_wgsl;
 pub use module::{
-    Access, BindingRequirement, BindingSource, FieldBindingRequirement, FieldBindingSource,
-    FieldShaderModule, ShaderModule,
+    diagnostic_buffer_byte_len, Access, BindingRequirement, BindingSource, DiagnosticLayoutError,
+    FieldBindingRequirement, FieldBindingSource, FieldShaderModule, ShaderModule,
 };
 pub use report::{
     lower_field_kernels, lower_kernels, RejectedFieldShader, RejectedShader, WgslReport,

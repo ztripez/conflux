@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 
 use conflux_kernel::ScalarType;
 
-use crate::module::{Access, BindingSource, ShaderModule};
+use crate::module::{diagnostic_buffer_byte_len, Access, BindingSource, ShaderModule};
 
 #[path = "gpu_field.rs"]
 mod gpu_field;
@@ -274,15 +274,7 @@ impl GpuExecutor {
             .bindings
             .iter()
             .map(|b| {
-                let contents: Vec<f32> = match &b.source {
-                    BindingSource::Column { index, .. } => {
-                        columns[*index][..module.element_count].to_vec()
-                    }
-                    // The diagnostic buffer is a pure output; start it zeroed.
-                    BindingSource::Diagnostics { assessments } => {
-                        vec![0.0f32; assessments * module.element_count]
-                    }
-                };
+                let contents = binding_initial_contents(module, b, columns);
                 self.device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(&b.var),
@@ -361,6 +353,20 @@ impl GpuExecutor {
     fn pop_shader_error_scope(&self) -> Result<(), GpuError> {
         pollster::block_on(self.device.pop_error_scope())
             .map_or(Ok(()), |e| Err(GpuError::Shader(e.to_string())))
+    }
+}
+
+fn binding_initial_contents(
+    module: &ShaderModule,
+    binding: &crate::module::BindingRequirement,
+    columns: &[Vec<f32>],
+) -> Vec<f32> {
+    match &binding.source {
+        BindingSource::Column { index, .. } => columns[*index][..module.element_count].to_vec(),
+        // The diagnostic buffer is a pure output; start it zeroed.
+        BindingSource::Diagnostics { assessments } => {
+            vec![0.0f32; assessments * module.element_count]
+        }
     }
 }
 
@@ -514,13 +520,15 @@ fn validate_run(module: &ShaderModule, columns: &[Vec<f32>]) -> Result<RunPlan, 
         element_count_u32.div_ceil(workgroup_size)
     };
     let output_bytes = byte_len(module.element_count, workgroup_size)?;
-    let diagnostic_values = diagnostic_assessments
-        .checked_mul(module.element_count)
-        .ok_or(GpuError::DispatchSizeOverflow {
-            element_count: module.element_count,
-            workgroup_size,
-        })?;
-    let diagnostic_bytes = byte_len(diagnostic_values, workgroup_size)?;
+    let diagnostic_bytes = diagnostic_buffer_byte_len(
+        diagnostic_assessments,
+        module.element_count,
+        ScalarType::F32,
+    )
+    .map_err(|_| GpuError::DispatchSizeOverflow {
+        element_count: module.element_count,
+        workgroup_size,
+    })?;
 
     Ok(RunPlan {
         output_index,
@@ -713,6 +721,16 @@ mod tests {
         assert_eq!(plan.metadata.output_bytes, 12);
         assert_eq!(plan.metadata.diagnostic_bytes, 24);
         assert_eq!(plan.metadata.diagnostic_assessments, 2);
+    }
+
+    #[test]
+    fn read_write_output_binding_starts_from_prior_column_values_without_gpu() {
+        let module = module(vec![column(0, Access::ReadWrite, 0)]);
+
+        let contents =
+            binding_initial_contents(&module, &module.bindings[0], &[vec![3.0, 5.0, 8.0]]);
+
+        assert_eq!(contents, vec![3.0, 5.0, 8.0]);
     }
 
     #[test]

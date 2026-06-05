@@ -87,6 +87,9 @@ GPU pass:
 - Bevy or Godot GPU execution integration;
 - performance claims beyond correctness and smoke evidence.
 
+The correctness/smoke/performance claim taxonomy for the deferred GPU expansion
+work lives in `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`.
+
 ## Deferred follow-ups
 
 The excluded scopes are tracked explicitly so they are not lost:
@@ -96,7 +99,8 @@ The excluded scopes are tracked explicitly so they are not lost:
 - flow GPU kernels: #247;
 - actor-rule GPU kernels: #249;
 - exact GPU proximity-query execution: #251;
-- GPU measurement and engine-integration planning: #250;
+- GPU measurement and engine-integration planning: #250
+  (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`);
 - graph/event GPU boundary revisit: #252;
 - GPU batching/fusion execution: #253.
 

@@ -78,6 +78,9 @@ After a step, Bevy systems can read:
 
 The original Conflux report types remain accessible. The diagnostics resource is a
 summary for Bevy-facing UI/observability, not a replacement for Conflux reports.
+Future GPU/planner reports may be surfaced the same way: as adapter resources or
+messages that expose canonical Conflux report data without moving execution policy
+or simulation meaning into Bevy.
 
 ## Example
 
