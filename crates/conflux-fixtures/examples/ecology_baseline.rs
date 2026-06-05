@@ -289,6 +289,7 @@ fn main() {
 fn path_label(used_path: Option<ExecutionPath>, reason: &str) -> String {
     match used_path {
         Some(ExecutionPath::CpuKernel) => "optimized (cpu-kernel)".to_string(),
+        Some(ExecutionPath::Gpu) => "optimized (gpu)".to_string(),
         Some(ExecutionPath::Reference) if reason.is_empty() => "reference".to_string(),
         Some(ExecutionPath::Reference) => format!("fell back to reference ({reason})"),
         None => format!("refused ({reason})"),

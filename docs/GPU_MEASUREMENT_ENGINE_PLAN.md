@@ -1,7 +1,7 @@
 # GPU measurement, batching, and engine-integration plan
 
 This document scopes #250. It is a planning and reporting guardrail only: it does
-not add runtime-selected GPU execution, an applied optimizer, engine-owned GPU
+not add actual runtime GPU dispatch, an applied optimizer, engine-owned GPU
 semantics, or benchmark claims. Batching and fusion are covered here only as
 advisory reporting guardrails; GPU batching/fusion execution remains deferred to
 #253.
@@ -90,7 +90,7 @@ shortcut through the engine layer.
 
 ## Non-goals
 
-- No runtime-selected GPU execution.
+- No actual runtime GPU dispatch.
 - No applied fusion or batching.
 - No automatic optimizer or IR mutation.
 - No benchmark suite.

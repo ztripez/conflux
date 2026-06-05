@@ -1,6 +1,9 @@
 //! Selected CPU-kernel execution orchestration under an explicit mode.
 
-use conflux_core::{col, lit, lower, param, Assessment, Model, Rule, Table};
+use conflux_core::{
+    cell, col, field_lit, lit, lower, param, ActorRule, ActorSet, Assessment, EdgePolicy, Field,
+    Flow, Grid2, Model, Rule, Table,
+};
 use conflux_runtime::{ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason, Simulation};
 
 /// A `Store` table with one kernel-eligible rule (`accumulate`, pure column
@@ -23,6 +26,46 @@ fn mixed_model() -> Model {
         Rule::new("leak")
             .on("Store")
             .propose("level", col("level") - param("rate")),
+    );
+    model
+}
+
+/// A kernel-eligible flow model used to verify GPU policy does not treat flow CPU
+/// kernels as flow GPU eligibility.
+fn flow_model() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(3, 1));
+    terrain.stock("water", vec![9.0, 0.0, 0.0]);
+
+    let mut model = Model::new("flow_gpu_policy");
+    model.add_field(terrain);
+    model.add_flow(
+        Flow::new("runoff")
+            .on_field("Terrain")
+            .move_channel("water")
+            .amount(cell("water") * field_lit(0.5))
+            .to_neighbor(1, 0, EdgePolicy::Reject)
+            .conserved(),
+    );
+    model
+}
+
+/// A kernel-eligible actor-rule model used to verify GPU policy does not treat
+/// actor CPU kernels as actor GPU eligibility.
+fn actor_model() -> Model {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("grass", vec![5.0, 5.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![10.0, 8.0]);
+
+    let mut model = Model::new("actor_gpu_policy");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .propose("energy", col("energy") + lit(1.0)),
     );
     model
 }
@@ -131,6 +174,126 @@ fn require_succeeds_when_every_rule_is_eligible() {
         "every rule runs on the kernel under Require with no refusal"
     );
     assert_eq!(sim.column("Store", "reserve"), Some(&[11.0, 22.0][..]));
+}
+
+#[test]
+fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() {
+    let mut sim = Simulation::with_mode(lower(&mixed_model()).unwrap(), ExecutionMode::PreferGpu);
+    let step = sim.step();
+
+    let accumulate = step.rules.iter().find(|r| r.rule == "accumulate").unwrap();
+    assert_eq!(accumulate.eligible_path, ExecutionPath::Gpu);
+    assert_eq!(accumulate.selected_path, ExecutionPath::Gpu);
+    assert_eq!(accumulate.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        accumulate.fallback_reason,
+        Some(FallbackReason::GpuPathUnavailable)
+    );
+    assert_eq!(
+        accumulate.comparison_status,
+        ComparisonStatus::IsReference,
+        "fallback is reference execution, not a hidden GPU run"
+    );
+    assert_eq!(sim.column("Store", "reserve"), Some(&[11.0, 22.0][..]));
+
+    let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
+    assert_eq!(leak.eligible_path, ExecutionPath::Reference);
+    assert_eq!(leak.selected_path, ExecutionPath::Reference);
+    assert_eq!(leak.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(leak.fallback_reason, Some(FallbackReason::NotWgslLowerable));
+    assert!(leak.kernel_rejection.is_some());
+    assert_eq!(sim.column("Store", "level"), Some(&[4.5, 4.5][..]));
+}
+
+#[test]
+fn require_gpu_refuses_without_hidden_reference_or_gpu_execution() {
+    let mut sim = Simulation::with_mode(lower(&mixed_model()).unwrap(), ExecutionMode::RequireGpu);
+    let step = sim.step();
+
+    let accumulate = step.rules.iter().find(|r| r.rule == "accumulate").unwrap();
+    assert_eq!(accumulate.eligible_path, ExecutionPath::Gpu);
+    assert_eq!(accumulate.selected_path, ExecutionPath::Gpu);
+    assert_eq!(accumulate.used_path, None);
+    assert_eq!(
+        accumulate.fallback_reason,
+        Some(FallbackReason::RequiredGpuUnavailable)
+    );
+    assert_eq!(accumulate.comparison_status, ComparisonStatus::NotRun);
+    assert!(accumulate.rows.is_empty());
+
+    let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
+    assert_eq!(leak.eligible_path, ExecutionPath::Reference);
+    assert_eq!(leak.selected_path, ExecutionPath::Gpu);
+    assert_eq!(leak.used_path, None);
+    assert_eq!(leak.fallback_reason, Some(FallbackReason::NotWgslLowerable));
+    assert!(leak.kernel_rejection.is_some());
+    assert!(leak.rows.is_empty());
+
+    assert_eq!(sim.column("Store", "reserve"), Some(&[10.0, 20.0][..]));
+    assert_eq!(sim.column("Store", "level"), Some(&[5.0, 5.0][..]));
+}
+
+#[test]
+fn gpu_modes_do_not_treat_flow_cpu_kernels_as_gpu_eligibility() {
+    let mut prefer = Simulation::with_mode(lower(&flow_model()).unwrap(), ExecutionMode::PreferGpu);
+    let prefer_step = prefer.step();
+    let prefer_flow = &prefer_step.flows[0];
+    assert_eq!(prefer_flow.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        prefer_flow.fallback_reason,
+        Some(FallbackReason::NotWgslLowerable)
+    );
+    assert_eq!(
+        prefer.field_channel("Terrain", "water"),
+        Some(&[4.5, 4.5, 0.0][..])
+    );
+
+    let mut require =
+        Simulation::with_mode(lower(&flow_model()).unwrap(), ExecutionMode::RequireGpu);
+    let require_step = require.step();
+    let require_flow = &require_step.flows[0];
+    assert_eq!(require_flow.used_path, None);
+    assert_eq!(
+        require_flow.fallback_reason,
+        Some(FallbackReason::NotWgslLowerable)
+    );
+    assert!(require_flow.transfers.is_empty());
+    assert_eq!(
+        require.field_channel("Terrain", "water"),
+        Some(&[9.0, 0.0, 0.0][..])
+    );
+}
+
+#[test]
+fn gpu_modes_do_not_treat_actor_cpu_kernels_as_gpu_eligibility() {
+    let mut prefer =
+        Simulation::with_mode(lower(&actor_model()).unwrap(), ExecutionMode::PreferGpu);
+    let prefer_step = prefer.step();
+    let prefer_rule = &prefer_step.actor_rules[0];
+    assert_eq!(prefer_rule.used_path, Some(ExecutionPath::Reference));
+    assert_eq!(
+        prefer_rule.fallback_reason,
+        Some(FallbackReason::NotWgslLowerable)
+    );
+    assert_eq!(
+        prefer.actor_channel("Herd", "energy"),
+        Some(&[11.0, 9.0][..])
+    );
+
+    let mut require =
+        Simulation::with_mode(lower(&actor_model()).unwrap(), ExecutionMode::RequireGpu);
+    let require_step = require.step();
+    let require_rule = &require_step.actor_rules[0];
+    assert_eq!(require_rule.used_path, None);
+    assert_eq!(
+        require_rule.fallback_reason,
+        Some(FallbackReason::NotWgslLowerable)
+    );
+    assert!(require_rule.actors.is_empty());
+    assert_eq!(
+        require.actor_channel("Herd", "energy"),
+        Some(&[10.0, 8.0][..])
+    );
 }
 
 #[test]

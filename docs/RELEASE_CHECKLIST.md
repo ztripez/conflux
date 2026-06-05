@@ -86,9 +86,11 @@ Everything in Tier 1, **plus**:
 - [ ] Cross-check `docs/API_STABILITY.md`: no experimental surface (GPU execution,
       profile-guided trace, unit conversions, proximity index, scale links beyond
       region→table) is presented as a stable guarantee in README or crate docs.
-- [ ] GPU wording distinguishes three states everywhere it appears:
-      WGSL-lowerable, hardware-check executed, and runtime-selected execution.
-      Only the first two exist today, and hardware checks are experimental.
+- [ ] GPU wording distinguishes four states everywhere it appears:
+      WGSL-lowerable, hardware-check executed, policy-selected/refused GPU
+      execution, and actual runtime GPU dispatch. Actual runtime GPU dispatch does
+      not exist today; policy-level `PreferGpu` / `RequireGpu` reporting is
+      experimental.
 - [ ] GPU correctness, smoke, and performance wording follows
       `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`; release copy does not treat shader
       eligibility or hardware correctness examples as performance evidence.

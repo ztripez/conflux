@@ -45,8 +45,8 @@ pub struct ActorRuleFireReport {
     pub query_inputs: Vec<ActorQueryInputBinding>,
     pub actors: Vec<ActorOutcome>,
     /// The path this rule ran on: `Reference` (default, source of truth),
-    /// `CpuKernel` (opt-in optimized path), or `None` when a required kernel was
-    /// unavailable and the rule was refused (no actors evaluated this tick).
+    /// `CpuKernel` (opt-in optimized path), or `None` when a required optimized path
+    /// was unavailable and the rule was refused (no actors evaluated this tick).
     pub used_path: Option<ExecutionPath>,
     /// Why the rule did not run on the requested optimized path, if applicable.
     pub fallback_reason: Option<FallbackReason>,
@@ -72,11 +72,24 @@ impl ActorRuleFireReport {
         }
         match (self.used_path, self.fallback_reason) {
             (Some(ExecutionPath::CpuKernel), _) => " [actor-kernel]".to_string(),
+            (Some(ExecutionPath::Gpu), _) => " [actor-gpu]".to_string(),
             (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
                 format!(" [fell back to reference: {}]", why())
             }
+            (Some(ExecutionPath::Reference), Some(FallbackReason::NotWgslLowerable)) => {
+                " [fell back to reference: actor GPU path unsupported]".to_string()
+            }
+            (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPathUnavailable)) => {
+                " [fell back to reference: GPU path unavailable]".to_string()
+            }
             (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
                 format!(" [REFUSED: required kernel unavailable — {}]", why())
+            }
+            (None, Some(FallbackReason::NotWgslLowerable)) => {
+                " [REFUSED: actor GPU path unsupported]".to_string()
+            }
+            (None, Some(FallbackReason::RequiredGpuUnavailable)) => {
+                " [REFUSED: required GPU unavailable]".to_string()
             }
             _ => String::new(),
         }

@@ -53,13 +53,18 @@ pub(crate) fn step_flows(
         let field = &ir.fields[flow.field];
         let grid = field.grid;
 
-        let kernel = if mode.requests_kernel() {
+        let kernel = if mode.requests_cpu_kernel() {
             flow_kernels.get(&flow.name)
         } else {
             None
         };
-        let (_selected, used_path, fallback_reason) = resolve_path(kernel.is_some(), mode);
-        let kernel_rejection = if mode.requests_kernel() && kernel.is_none() {
+        let eligible_path = if kernel.is_some() {
+            ExecutionPath::CpuKernel
+        } else {
+            ExecutionPath::Reference
+        };
+        let (_selected, used_path, fallback_reason) = resolve_path(eligible_path, mode);
+        let kernel_rejection = if mode.requests_cpu_kernel() && kernel.is_none() {
             flow_rejections.get(&flow.name).cloned()
         } else {
             None
@@ -88,6 +93,9 @@ pub(crate) fn step_flows(
                     &snapshot[flow.field],
                     &mut field_data[flow.field],
                 )
+            }
+            Some(ExecutionPath::Gpu) => {
+                unreachable!("GPU used path requires a future flow GPU executor")
             }
         };
         let total_after: f64 = field_data[flow.field][flow.channel].iter().sum();

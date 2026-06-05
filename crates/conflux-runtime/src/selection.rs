@@ -31,38 +31,73 @@ pub enum ExecutionMode {
     /// (reported), never silently run on the reference. Use when a caller wants to
     /// know that the optimized path is genuinely available.
     RequireCpuKernel,
+    /// Prefer explicit GPU execution for WGSL-lowerable table rules. GPU execution
+    /// is not wired into `conflux-runtime`; when unavailable the rule falls back to
+    /// the reference with a typed reason.
+    PreferGpu,
+    /// Require explicit GPU execution for WGSL-lowerable table rules. If the GPU
+    /// path is unavailable or the rule cannot lower to the GPU-shaped subset, the
+    /// rule is refused rather than silently run on the reference.
+    RequireGpu,
 }
 
 impl ExecutionMode {
-    /// Whether this mode requests the CPU-kernel path at all (`PreferCpuKernel` or
-    /// `RequireCpuKernel`).
+    /// Whether this mode requests kernel extraction as an eligibility precondition.
+    ///
+    /// CPU-kernel modes use extracted kernels for execution. GPU modes use extraction
+    /// only as the runtime-local eligibility proxy for table rules that can reach the
+    /// bounded WGSL-shaped subset without making `conflux-runtime` depend on
+    /// `conflux-wgsl` or `wgpu`.
     pub fn requests_kernel(self) -> bool {
+        matches!(
+            self,
+            ExecutionMode::PreferCpuKernel
+                | ExecutionMode::RequireCpuKernel
+                | ExecutionMode::PreferGpu
+                | ExecutionMode::RequireGpu
+        )
+    }
+
+    /// Whether this mode requests the CPU-kernel path specifically.
+    pub fn requests_cpu_kernel(self) -> bool {
         matches!(
             self,
             ExecutionMode::PreferCpuKernel | ExecutionMode::RequireCpuKernel
         )
     }
 
-    /// Whether a rule that cannot use the CPU-kernel path falls back to the
-    /// reference (`ReferenceOnly`, `PreferCpuKernel`) rather than being refused
-    /// (`RequireCpuKernel`). This is the prefer-vs-require distinction.
+    /// Whether this mode requests the GPU path.
+    pub fn requests_gpu(self) -> bool {
+        matches!(self, ExecutionMode::PreferGpu | ExecutionMode::RequireGpu)
+    }
+
+    /// Whether an unavailable requested execution path falls back to the reference.
+    ///
+    /// Prefer modes report a fallback to the semantic reference path. Require modes
+    /// refuse the rule instead of silently running the reference path.
     pub fn allows_reference_fallback(self) -> bool {
-        !matches!(self, ExecutionMode::RequireCpuKernel)
+        !matches!(
+            self,
+            ExecutionMode::RequireCpuKernel | ExecutionMode::RequireGpu
+        )
     }
 }
 
 /// A concrete execution path. The vocabulary shared by the *requested* / *eligible*
-/// / *selected* / *used* concepts above; this epic selects only between the
-/// reference and the CPU kernel (no GPU/Residency here).
+/// / *selected* / *used* concepts above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutionPath {
     /// The CPU reference executor — the semantic source of truth.
     Reference,
     /// The extracted bounded numeric kernel on CPU.
     CpuKernel,
+    /// Explicit GPU execution. The runtime can select or refuse this path without
+    /// depending on `wgpu` or `conflux-wgsl`; actual GPU execution requires a
+    /// boundary-safe backend to be supplied in a later slice.
+    Gpu,
 }
 
-/// Why a rule did not run on the requested CPU-kernel path. Typed so fallback and
+/// Why a rule did not run on the requested optimized path. Typed so fallback and
 /// refusal are structural report data, never a stringly error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FallbackReason {
@@ -73,6 +108,15 @@ pub enum FallbackReason {
     /// eligible kernel, so it was *refused* rather than silently run on the
     /// reference.
     RequiredKernelUnavailable,
+    /// GPU execution was requested but the rule or domain cannot reach the bounded
+    /// WGSL-shaped subset in this runtime policy slice.
+    NotWgslLowerable,
+    /// GPU execution was preferred, but this runtime has no boundary-safe GPU
+    /// execution backend wired in, so it ran the reference and reported the reason.
+    GpuPathUnavailable,
+    /// GPU execution was required, but this runtime has no boundary-safe GPU
+    /// execution backend wired in, so the rule was refused.
+    RequiredGpuUnavailable,
 }
 
 /// How the caller wants proximity queries evaluated. The default
@@ -157,17 +201,35 @@ pub(crate) fn resolve_query_path(
     }
 }
 
-/// Resolves the execution path for one rule from the requested `mode` and whether
-/// an eligible CPU kernel is available, returning `(selected, used, fallback)`.
-/// `used == None` means the rule is refused (a required kernel was unavailable).
+/// Returns the optimized path a table rule qualifies for under the requested mode.
+///
+/// GPU modes use successful kernel extraction as the runtime-local proxy for the
+/// bounded WGSL-shaped subset. Non-table domains must not use this helper unless
+/// they gain their own GPU eligibility source.
+pub(crate) fn table_rule_eligible_path(
+    kernel_available: bool,
+    mode: ExecutionMode,
+) -> ExecutionPath {
+    if mode.requests_gpu() && kernel_available {
+        ExecutionPath::Gpu
+    } else if mode.requests_cpu_kernel() && kernel_available {
+        ExecutionPath::CpuKernel
+    } else {
+        ExecutionPath::Reference
+    }
+}
+
+/// Resolves the execution path for one rule from the requested `mode` and canonical
+/// `eligible_path`, returning `(selected, used, fallback)`. `used == None` means the
+/// rule is refused because a required optimized path was unavailable.
 ///
 /// This is the pure policy decision — no execution, no kernel evaluation — kept out
 /// of the executor so the runtime's `step()` does not absorb selection logic.
 pub(crate) fn resolve_path(
-    kernel_available: bool,
+    eligible_path: ExecutionPath,
     mode: ExecutionMode,
 ) -> (ExecutionPath, Option<ExecutionPath>, Option<FallbackReason>) {
-    match (kernel_available, mode) {
+    match (eligible_path, mode) {
         // Reference-only never consults the kernel.
         (_, ExecutionMode::ReferenceOnly) => (
             ExecutionPath::Reference,
@@ -175,22 +237,47 @@ pub(crate) fn resolve_path(
             None,
         ),
         // Eligible and requested: run the kernel.
-        (true, _) => (
+        (
+            ExecutionPath::CpuKernel,
+            ExecutionMode::PreferCpuKernel | ExecutionMode::RequireCpuKernel,
+        ) => (
             ExecutionPath::CpuKernel,
             Some(ExecutionPath::CpuKernel),
             None,
         ),
         // Required but unavailable: refuse, never silently fall back.
-        (false, ExecutionMode::RequireCpuKernel) => (
+        (_, ExecutionMode::RequireCpuKernel) => (
             ExecutionPath::CpuKernel,
             None,
             Some(FallbackReason::RequiredKernelUnavailable),
         ),
         // Preferred but unavailable: reported fall back to the reference.
-        (false, ExecutionMode::PreferCpuKernel) => (
+        (_, ExecutionMode::PreferCpuKernel) => (
             ExecutionPath::Reference,
             Some(ExecutionPath::Reference),
             Some(FallbackReason::NotKernelEligible),
+        ),
+        // GPU modes are explicit policy only in this slice: runtime/core do not
+        // depend on WGSL, wgpu, or Residency, so no hidden GPU dispatch can occur.
+        (ExecutionPath::Reference | ExecutionPath::CpuKernel, ExecutionMode::PreferGpu) => (
+            ExecutionPath::Reference,
+            Some(ExecutionPath::Reference),
+            Some(FallbackReason::NotWgslLowerable),
+        ),
+        (ExecutionPath::Reference | ExecutionPath::CpuKernel, ExecutionMode::RequireGpu) => (
+            ExecutionPath::Gpu,
+            None,
+            Some(FallbackReason::NotWgslLowerable),
+        ),
+        (ExecutionPath::Gpu, ExecutionMode::PreferGpu) => (
+            ExecutionPath::Gpu,
+            Some(ExecutionPath::Reference),
+            Some(FallbackReason::GpuPathUnavailable),
+        ),
+        (ExecutionPath::Gpu, ExecutionMode::RequireGpu) => (
+            ExecutionPath::Gpu,
+            None,
+            Some(FallbackReason::RequiredGpuUnavailable),
         ),
     }
 }
@@ -205,10 +292,17 @@ mod tests {
     }
 
     #[test]
-    fn requests_kernel_only_for_prefer_and_require() {
+    fn requests_kernel_for_cpu_and_gpu_eligibility_modes() {
         assert!(!ExecutionMode::ReferenceOnly.requests_kernel());
         assert!(ExecutionMode::PreferCpuKernel.requests_kernel());
         assert!(ExecutionMode::RequireCpuKernel.requests_kernel());
+        assert!(ExecutionMode::PreferGpu.requests_kernel());
+        assert!(ExecutionMode::RequireGpu.requests_kernel());
+        assert!(ExecutionMode::PreferCpuKernel.requests_cpu_kernel());
+        assert!(ExecutionMode::RequireCpuKernel.requests_cpu_kernel());
+        assert!(!ExecutionMode::PreferGpu.requests_cpu_kernel());
+        assert!(ExecutionMode::PreferGpu.requests_gpu());
+        assert!(ExecutionMode::RequireGpu.requests_gpu());
     }
 
     #[test]
@@ -216,6 +310,8 @@ mod tests {
         assert!(ExecutionMode::ReferenceOnly.allows_reference_fallback());
         assert!(ExecutionMode::PreferCpuKernel.allows_reference_fallback());
         assert!(!ExecutionMode::RequireCpuKernel.allows_reference_fallback());
+        assert!(ExecutionMode::PreferGpu.allows_reference_fallback());
+        assert!(!ExecutionMode::RequireGpu.allows_reference_fallback());
     }
 
     #[test]
@@ -225,21 +321,21 @@ mod tests {
 
         // Reference-only ignores kernel availability.
         assert_eq!(
-            resolve_path(true, ReferenceOnly),
+            resolve_path(CpuKernel, ReferenceOnly),
             (Reference, Some(Reference), None)
         );
         assert_eq!(
-            resolve_path(false, ReferenceOnly),
+            resolve_path(Reference, ReferenceOnly),
             (Reference, Some(Reference), None)
         );
 
         // Prefer: eligible runs the kernel; ineligible falls back, reported.
         assert_eq!(
-            resolve_path(true, PreferCpuKernel),
+            resolve_path(CpuKernel, PreferCpuKernel),
             (CpuKernel, Some(CpuKernel), None)
         );
         assert_eq!(
-            resolve_path(false, PreferCpuKernel),
+            resolve_path(Reference, PreferCpuKernel),
             (
                 Reference,
                 Some(Reference),
@@ -249,17 +345,55 @@ mod tests {
 
         // Require: eligible runs the kernel; ineligible is refused (used = None).
         assert_eq!(
-            resolve_path(true, RequireCpuKernel),
+            resolve_path(CpuKernel, RequireCpuKernel),
             (CpuKernel, Some(CpuKernel), None)
         );
         assert_eq!(
-            resolve_path(false, RequireCpuKernel),
+            resolve_path(Reference, RequireCpuKernel),
             (
                 CpuKernel,
                 None,
                 Some(FallbackReason::RequiredKernelUnavailable)
             )
         );
+
+        assert_eq!(
+            resolve_path(Gpu, PreferGpu),
+            (
+                Gpu,
+                Some(Reference),
+                Some(FallbackReason::GpuPathUnavailable)
+            )
+        );
+        assert_eq!(
+            resolve_path(Reference, PreferGpu),
+            (
+                Reference,
+                Some(Reference),
+                Some(FallbackReason::NotWgslLowerable)
+            )
+        );
+        assert_eq!(
+            resolve_path(Gpu, RequireGpu),
+            (Gpu, None, Some(FallbackReason::RequiredGpuUnavailable))
+        );
+        assert_eq!(
+            resolve_path(Reference, RequireGpu),
+            (Gpu, None, Some(FallbackReason::NotWgslLowerable))
+        );
+    }
+
+    #[test]
+    fn table_rule_eligibility_maps_cpu_and_gpu_modes() {
+        use ExecutionMode::*;
+        use ExecutionPath::*;
+
+        assert_eq!(table_rule_eligible_path(false, ReferenceOnly), Reference);
+        assert_eq!(table_rule_eligible_path(true, ReferenceOnly), Reference);
+        assert_eq!(table_rule_eligible_path(true, PreferCpuKernel), CpuKernel);
+        assert_eq!(table_rule_eligible_path(false, PreferCpuKernel), Reference);
+        assert_eq!(table_rule_eligible_path(true, PreferGpu), Gpu);
+        assert_eq!(table_rule_eligible_path(false, PreferGpu), Reference);
     }
 
     #[test]
