@@ -1,22 +1,25 @@
 //! Advisory GPU-capability reporting.
 //!
 //! This analysis reads bounded kernel extraction and WGSL-lowering reports to say
-//! which table rules, field rules, and flows are WGSL-lowerable. It deliberately does not
-//! select a runtime backend or dispatch GPU work.
+//! which table rules, field rules, flows, and actor rules are WGSL-lowerable. It
+//! deliberately does not select a runtime backend or dispatch GPU work.
 
 use std::collections::{HashMap, HashSet};
 
 use conflux_ir::SimIr;
-use conflux_kernel::{extract_fields, extract_flows, FieldKernelReport, FlowKernelReport};
-use conflux_wgsl::{lower_field_kernels, lower_flow_kernels, WgslReport};
+use conflux_kernel::{
+    extract_actor_rules, extract_fields, extract_flows, ActorKernelReport, FieldKernelReport,
+    FlowKernelReport,
+};
+use conflux_wgsl::{lower_actor_kernels, lower_field_kernels, lower_flow_kernels, WgslReport};
 
 use crate::report::{
-    BackendChoice, FieldGpuCapability, FieldGpuRejection, FlowGpuCapability, FlowGpuRejection,
-    GpuCapabilityReport, RulePlan, TableGpuCapability,
+    ActorGpuCapability, ActorGpuRejection, BackendChoice, FieldGpuCapability, FieldGpuRejection,
+    FlowGpuCapability, FlowGpuRejection, GpuCapabilityReport, RulePlan, TableGpuCapability,
 };
 
-/// Produces advisory GPU capability for table rules, field rules, and flows in a
-/// lowered model.
+/// Produces advisory GPU capability for table rules, field rules, flows, and actor
+/// rules in a lowered model.
 ///
 /// # Parameters
 ///
@@ -24,10 +27,11 @@ use crate::report::{
 ///
 /// # Returns
 ///
-/// A [`GpuCapabilityReport`] that records WGSL lowerability for table rules, field
-/// rules, and flows. The report is advisory only: it checks whether kernels can
-/// lower to WGSL, does not dispatch GPU work, does not mutate the IR, and entries
-/// produced by the planner always report `executed_on_gpu == false`.
+/// A [`GpuCapabilityReport`] that records WGSL lowerability for table rules,
+/// field rules, flows, and actor rules. The report is advisory only: it checks
+/// whether kernels can lower to WGSL, does not dispatch GPU work, does not mutate
+/// the IR, and entries produced by the planner always report
+/// `executed_on_gpu == false`.
 pub fn gpu_capability(ir: &SimIr) -> GpuCapabilityReport {
     crate::plan(ir).gpu
 }
@@ -40,11 +44,67 @@ pub(crate) fn gpu_capability_from_rule_plans_and_reports(
     let field_wgsl = lower_field_kernels(&fields.accepted);
     let flows = extract_flows(ir);
     let flow_wgsl = lower_flow_kernels(&flows.accepted);
+    let actors = extract_actor_rules(ir);
+    let actor_wgsl = lower_actor_kernels(&actors.accepted);
     GpuCapabilityReport {
         table_rules: table_capabilities(rules),
         field_rules: field_capabilities(ir, &fields, &field_wgsl),
         flows: flow_capabilities(ir, &flows, &flow_wgsl),
+        actor_rules: actor_capabilities(ir, &actors, &actor_wgsl),
     }
+}
+
+fn actor_capabilities(
+    ir: &SimIr,
+    actors: &ActorKernelReport,
+    wgsl: &WgslReport,
+) -> Vec<ActorGpuCapability> {
+    let accepted: HashSet<&str> = wgsl
+        .accepted_actors
+        .iter()
+        .map(|module| module.kernel.as_str())
+        .collect();
+    let rejected: HashMap<&str, _> = wgsl
+        .rejected_actors
+        .iter()
+        .map(|rejection| (rejection.kernel.as_str(), rejection.reason.clone()))
+        .collect();
+    let kernel_rejections: HashMap<&str, _> = actors
+        .rejected
+        .iter()
+        .map(|rejection| (rejection.rule.as_str(), rejection.reason.clone()))
+        .collect();
+
+    ir.actor_rules
+        .iter()
+        .map(|rule| {
+            let actor_set = &ir.actors[rule.actor_set];
+            let field = &ir.fields[actor_set.field];
+            let wgsl_lowerable = accepted.contains(rule.name.as_str());
+            let rejection = if wgsl_lowerable {
+                None
+            } else if let Some(reason) = rejected.get(rule.name.as_str()) {
+                Some(ActorGpuRejection::WgslRejected {
+                    reason: reason.clone(),
+                })
+            } else {
+                kernel_rejections.get(rule.name.as_str()).map(|reason| {
+                    ActorGpuRejection::NotActorKernelLowerable {
+                        reason: reason.clone(),
+                    }
+                })
+            };
+            ActorGpuCapability {
+                rule: rule.name.clone(),
+                actor_set: actor_set.name.clone(),
+                field: field.name.clone(),
+                actor_count: actor_set.count,
+                wgsl_lowerable,
+                executed_on_gpu: false,
+                rejection,
+            }
+        })
+        .collect()
 }
 
 fn table_capabilities(rules: &[RulePlan]) -> Vec<TableGpuCapability> {

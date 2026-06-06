@@ -113,6 +113,19 @@ pub enum WgslError {
         /// Human-readable explanation of the unsupported grid shape.
         reason: String,
     },
+    /// An actor expression references an input binding index outside the actor
+    /// kernel's input-binding list.
+    #[error(
+        "actor kernel `{kernel}` references input binding {input}, but only {available_inputs} input bindings exist"
+    )]
+    InvalidActorInput {
+        /// Name of the actor kernel that could not lower.
+        kernel: String,
+        /// Invalid binding index referenced by the actor expression.
+        input: usize,
+        /// Number of input bindings available on the actor kernel.
+        available_inputs: usize,
+    },
 }
 
 /// Lowers one elementwise kernel to a WGSL compute shader module.
@@ -136,7 +149,7 @@ pub fn emit_wgsl(kernel: &Kernel) -> Result<ShaderModule, WgslError> {
     // emit a shader that fails to compile.
     check_finite_literals(&kernel.expr, &kernel.name)?;
     // Diagnostic bounds become WGSL literals too, so they face the same rule.
-    check_finite_diagnostics(kernel)?;
+    check_finite_diagnostics(&kernel.name, &kernel.diagnostics)?;
 
     let bindings = build_bindings(kernel);
     let var_for = |column: usize| -> String {
@@ -244,7 +257,7 @@ pub(crate) fn diagnostic_expr(assessment: Assessment) -> String {
 
 /// Walks the expression and rejects any literal that is not finite once narrowed
 /// to f32 (covers f64 inf/NaN and f32 overflow such as `1e40`).
-fn check_finite_literals(expr: &KernelExpr, kernel: &str) -> Result<(), WgslError> {
+pub(crate) fn check_finite_literals(expr: &KernelExpr, kernel: &str) -> Result<(), WgslError> {
     match expr {
         KernelExpr::Literal(value) => {
             if (*value as f32).is_finite() {
@@ -270,18 +283,21 @@ fn check_finite_literals(expr: &KernelExpr, kernel: &str) -> Result<(), WgslErro
 
 /// Rejects diagnostics whose bounds are not finite as f32, since they would need
 /// an inf/NaN literal the WGSL backend cannot emit.
-fn check_finite_diagnostics(kernel: &Kernel) -> Result<(), WgslError> {
+pub(crate) fn check_finite_diagnostics(
+    kernel: &str,
+    diagnostics: &[Assessment],
+) -> Result<(), WgslError> {
     let reject = |value: f64| -> Result<(), WgslError> {
         if (value as f32).is_finite() {
             Ok(())
         } else {
             Err(WgslError::NonFiniteDiagnosticBound {
-                kernel: kernel.name.clone(),
+                kernel: kernel.to_string(),
                 value,
             })
         }
     };
-    for assessment in &kernel.diagnostics {
+    for assessment in diagnostics {
         match assessment {
             Assessment::Finite => {}
             Assessment::Range { min, max } => {

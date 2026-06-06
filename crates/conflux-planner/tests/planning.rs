@@ -1,9 +1,10 @@
 use conflux_core::{
-    cell, col, field_lit, lit, lower, neighbor, param, EdgePolicy, Field, FieldRule, Flow, Grid2,
-    Model, Rule, Table,
+    cell, col, field_lit, lit, lower, neighbor, param, ActorRule, ActorSet, EdgePolicy, Field,
+    FieldRule, Flow, Grid2, Model, Rule, Table,
 };
 use conflux_planner::{
-    plan, BackendChoice, CostHint, FieldGpuRejection, FlowGpuRejection, TableGpuRejection,
+    plan, ActorGpuRejection, BackendChoice, CostHint, FieldGpuRejection, FlowGpuRejection,
+    TableGpuRejection,
 };
 use conflux_wgsl::WgslError;
 
@@ -425,4 +426,64 @@ fn reports_flow_wgsl_rejections_as_structured_reasons() {
         }) => assert_eq!(*value, 1e40),
         other => panic!("expected typed flow WGSL rejection, got {other:?}"),
     }
+}
+
+#[test]
+fn reports_actor_gpu_capability_without_claiming_execution() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 2));
+    terrain.stock("grass", vec![4.0, 8.0, 12.0, 16.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 1)])
+        .stock("energy", vec![1.0, 2.0]);
+    let mut model = Model::new("world");
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("graze")
+            .on_actors("Herd")
+            .sample_field("grass")
+            .propose("energy", col("energy") + col("grass") * lit(0.25)),
+    );
+
+    let report = plan_for(&model);
+    let actor = &report.gpu.actor_rules[0];
+    assert_eq!(actor.rule, "graze");
+    assert_eq!(actor.actor_set, "Herd");
+    assert_eq!(actor.field, "Terrain");
+    assert_eq!(actor.actor_count, 2);
+    assert!(actor.wgsl_lowerable);
+    assert!(!actor.executed_on_gpu);
+    assert!(actor.rejection.is_none());
+    assert_eq!(report.gpu.wgsl_lowerable_count(), 1);
+    assert_eq!(report.gpu.executed_on_gpu_count(), 0);
+    assert!(report.gpu.to_string().contains("ACTOR `graze`"));
+}
+
+#[test]
+fn reports_actor_gpu_rejections_as_structured_reasons() {
+    let mut terrain = Field::new("Terrain", Grid2::new(2, 1));
+    terrain.stock("grass", vec![4.0, 8.0]);
+    let herd = ActorSet::new("Herd", 2)
+        .on_field("Terrain")
+        .positions_xy(vec![(0, 0), (1, 0)])
+        .stock("energy", vec![1.0, 2.0]);
+    let mut model = Model::new("world");
+    model.param("boost", 1.0);
+    model.add_field(terrain);
+    model.add_actor_set(herd);
+    model.add_actor_rule(
+        ActorRule::new("boost")
+            .on_actors("Herd")
+            .propose("energy", col("energy") + param("boost")),
+    );
+
+    let report = plan_for(&model);
+    let actor = &report.gpu.actor_rules[0];
+    assert!(!actor.wgsl_lowerable);
+    assert!(!actor.executed_on_gpu);
+    assert!(matches!(
+        actor.rejection,
+        Some(ActorGpuRejection::NotActorKernelLowerable { .. })
+    ));
 }

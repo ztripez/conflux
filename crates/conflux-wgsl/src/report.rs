@@ -2,12 +2,13 @@
 
 use std::fmt;
 
-use conflux_kernel::{FieldKernel, FlowKernel, Kernel};
+use conflux_kernel::{ActorKernel, FieldKernel, FlowKernel, Kernel};
 
+use crate::actor_emit::emit_actor_wgsl;
 use crate::emit::{emit_wgsl, WgslError};
 use crate::field_emit::emit_field_wgsl;
 use crate::flow_emit::emit_flow_wgsl;
-use crate::module::{FieldShaderModule, FlowShaderModule, ShaderModule};
+use crate::module::{ActorShaderModule, FieldShaderModule, FlowShaderModule, ShaderModule};
 
 /// Which kernels lowered to WGSL and which were rejected.
 #[derive(Clone, Debug, Default)]
@@ -24,6 +25,10 @@ pub struct WgslReport {
     pub accepted_flows: Vec<FlowShaderModule>,
     /// Flow kernels rejected from WGSL lowering with an explainable reason.
     pub rejected_flows: Vec<RejectedFlowShader>,
+    /// Actor-rule kernels that lowered successfully to WGSL.
+    pub accepted_actors: Vec<ActorShaderModule>,
+    /// Actor-rule kernels rejected from WGSL lowering with an explainable reason.
+    pub rejected_actors: Vec<RejectedActorShader>,
 }
 
 /// A kernel that could not lower to the WGSL backend.
@@ -50,6 +55,15 @@ pub struct RejectedFlowShader {
     /// Source flow kernel name.
     pub kernel: String,
     /// Reason the flow kernel could not lower to WGSL.
+    pub reason: WgslError,
+}
+
+/// An actor-rule kernel that could not lower to the WGSL backend.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RejectedActorShader {
+    /// Source actor-rule kernel name.
+    pub kernel: String,
+    /// Reason the actor-rule kernel could not lower to WGSL.
     pub reason: WgslError,
 }
 
@@ -101,17 +115,39 @@ pub fn lower_flow_kernels(kernels: &[FlowKernel]) -> WgslReport {
     report
 }
 
+/// Lowers a set of bounded actor-rule kernels to WGSL, recording per-kernel
+/// acceptance or an explained rejection.
+pub fn lower_actor_kernels(kernels: &[ActorKernel]) -> WgslReport {
+    let mut report = WgslReport::default();
+    for kernel in kernels {
+        match emit_actor_wgsl(kernel) {
+            Ok(module) => report.accepted_actors.push(module),
+            Err(reason) => report.rejected_actors.push(RejectedActorShader {
+                kernel: kernel.name.clone(),
+                reason,
+            }),
+        }
+    }
+    report
+}
+
 impl WgslReport {
-    /// Returns the total number of table, field, and flow kernels accepted by WGSL
-    /// lowering.
+    /// Returns the total number of table, field, flow, and actor-rule kernels
+    /// accepted by WGSL lowering.
     pub fn accepted_count(&self) -> usize {
-        self.accepted.len() + self.accepted_fields.len() + self.accepted_flows.len()
+        self.accepted.len()
+            + self.accepted_fields.len()
+            + self.accepted_flows.len()
+            + self.accepted_actors.len()
     }
 
-    /// Returns the total number of table, field, and flow kernels rejected by WGSL
-    /// lowering.
+    /// Returns the total number of table, field, flow, and actor-rule kernels
+    /// rejected by WGSL lowering.
     pub fn rejected_count(&self) -> usize {
-        self.rejected.len() + self.rejected_fields.len() + self.rejected_flows.len()
+        self.rejected.len()
+            + self.rejected_fields.len()
+            + self.rejected_flows.len()
+            + self.rejected_actors.len()
     }
 }
 
@@ -167,6 +203,23 @@ impl fmt::Display for WgslReport {
             writeln!(
                 f,
                 "  REJECT FLOW `{}`: {}",
+                rejected.kernel, rejected.reason
+            )?;
+        }
+        for module in &self.accepted_actors {
+            writeln!(
+                f,
+                "  LOWER ACTOR `{}` ({} bindings, {} actors, @workgroup_size({}))",
+                module.kernel,
+                module.bindings.len(),
+                module.actor_count,
+                module.workgroup_size
+            )?;
+        }
+        for rejected in &self.rejected_actors {
+            writeln!(
+                f,
+                "  REJECT ACTOR `{}`: {}",
                 rejected.kernel, rejected.reason
             )?;
         }
