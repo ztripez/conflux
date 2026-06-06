@@ -37,12 +37,13 @@ pub use unit::{Conversion, Unit};
 
 // Re-export the shared primitives so callers can build models from one crate.
 pub use conflux_ir::{
-    cell, col, dt, field_lit, graph_lit, incident_edge, incident_edge_count, lit, neighbor,
-    neighbor_node, neighbor_node_count, node, param, AggregateOp, ApproximationPolicy, Assessment,
-    Authority, Cadence, Comparison, ConservationPolicy, ConversionIr, Dimension, EdgePolicy,
-    EventFieldIr, EventIr, EventSource, Expr, FieldExpr, GraphChannelIr, GraphEdgeIr,
-    GraphEventTriggerIr, GraphExpr, GraphIr, GraphRuleIr, GraphTriggerConditionIr, Grid2,
-    QueryInput, QueryLimit, QueryMetric, QueryOrdering, RelationshipKind, ScaleRef, SelfPolicy,
+    cell, col, dt, field_lit, finalize_query_neighbors, graph_lit, incident_edge,
+    incident_edge_count, lit, neighbor, neighbor_node, neighbor_node_count, node, param,
+    query_distance, AggregateOp, ApproximationPolicy, Assessment, Authority, Cadence, Comparison,
+    ConservationPolicy, ConversionIr, Dimension, EdgePolicy, EventFieldIr, EventIr, EventSource,
+    Expr, FieldExpr, GraphChannelIr, GraphEdgeIr, GraphEventTriggerIr, GraphExpr, GraphIr,
+    GraphRuleIr, GraphTriggerConditionIr, Grid2, QueryInput, QueryIr, QueryLimit, QueryMetric,
+    QueryNeighbor, QueryOrdering, QuerySourceResult, RelationshipKind, ScaleRef, SelfPolicy,
     TopologyKind, UnitIr, ValueKind,
 };
 

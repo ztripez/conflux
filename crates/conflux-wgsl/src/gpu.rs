@@ -13,11 +13,16 @@ use crate::module::{diagnostic_buffer_byte_len, Access, BindingSource, ShaderMod
 
 #[path = "gpu_field.rs"]
 mod gpu_field;
+#[path = "gpu_query.rs"]
+mod gpu_query;
 
 pub use gpu_field::{
     check_field_gpu_equivalence, compare_field_gpu_proposals, run_field_on_gpu, FieldGpuComparison,
     FieldGpuEquivalenceOutcome, FieldGpuEquivalenceReport, FieldGpuRun, FieldGpuRunMetadata,
     FieldGpuTolerance,
+};
+pub use gpu_query::{
+    run_proximity_query_on_gpu, ProximityGpuExecutionPath, ProximityGpuRun, ProximityGpuRunMetadata,
 };
 
 const F32_SIZE: usize = std::mem::size_of::<f32>();
@@ -148,6 +153,52 @@ pub enum GpuError {
         absolute: f32,
         /// Relative tolerance supplied by the caller.
         relative: f32,
+    },
+    /// A proximity query shape has no exact GPU implementation in this phase.
+    #[error("proximity query `{query}` is not exact-GPU eligible: {reason}")]
+    UnsupportedProximityQuery {
+        /// Query name from the lowered IR.
+        query: String,
+        /// Human-readable explanation of the unsupported query shape.
+        reason: String,
+    },
+    /// A supplied actor position is outside the query's host grid.
+    #[error("actor position for `{set}` actor {actor} is cell {cell}; grid has {cells} cells")]
+    InvalidActorPosition {
+        /// Actor set label supplied by the caller.
+        set: String,
+        /// Actor index within the set.
+        actor: usize,
+        /// Row-major cell index supplied for the actor.
+        cell: usize,
+        /// Number of cells in the query host grid.
+        cells: usize,
+    },
+    /// The source/target pair matrix is too large for the phase-0 GPU scan.
+    #[error("proximity GPU dispatch size overflow for {source_count} sources and {target_count} targets")]
+    ProximityDispatchSizeOverflow {
+        /// Number of source actors.
+        source_count: usize,
+        /// Number of candidate target actors.
+        target_count: usize,
+    },
+    /// GPU proximity readback did not contain exactly one flag per source-target pair.
+    #[error("proximity GPU readback returned {actual} flags; expected {expected}")]
+    InvalidProximityReadback {
+        /// Number of flags returned from the GPU readback.
+        actual: usize,
+        /// Number of source-target flags required by the query plan.
+        expected: usize,
+    },
+    /// GPU proximity readback contained a flag value other than exactly 0 or 1.
+    #[error("invalid proximity GPU flag {flag} for source actor {source_actor} and target actor {target_actor}; expected 0 or 1")]
+    InvalidProximityFlag {
+        /// Source actor index within the query source set.
+        source_actor: usize,
+        /// Target actor index within the query target set.
+        target_actor: usize,
+        /// Raw flag value read back from the GPU.
+        flag: u32,
     },
 }
 

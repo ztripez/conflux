@@ -68,9 +68,10 @@ canonical scenario.
   flow kernels to deterministic WGSL modules. Flow WGSL computes exact
   amount/destination buffers and uses deterministic CPU scatter to preserve
   no-clamp conservation accounting. Its optional `gpu` feature provides
-  hardware-gated table and field CPU/GPU equivalence helpers; they report
-  `match`, `mismatch`, or `skipped: no adapter` and are not part of default
-  runtime execution.
+  hardware-gated table and field CPU/GPU equivalence helpers plus an explicit
+  exact bounded-radius Chebyshev/Manhattan proximity-query GPU scan helper; they
+  report `match`, `mismatch`, `skipped: no adapter`, or `ExactGpuScan` metadata
+  and are not part of default runtime execution.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
   transfer notes, GPU capability for table/field/flow WGSL lowering, proximity-index
@@ -131,8 +132,10 @@ The tracked GPU backend pass (#238) did not change those boundaries: it hardened
 execution track (#261, with runtime selected-execution policy in #246 and flow WGSL
 lowering in #247) has since added a Residency descriptor-mapping bridge, explicit
 runtime GPU selection/refusal policy, and a flow amount/destination shader backend,
-while still deferring actual GPU dispatch, actor/query/graph/event GPU backends,
-fusion, and engine GPU integration. See `docs/GPU_BACKEND_PASS.md` and
+while still deferring runtime-integrated GPU dispatch, actor-rule runtime GPU
+dispatch, graph/event GPU backends, fusion, and engine GPU integration. Query GPU
+support is currently only the explicit `conflux-wgsl` helper described above, not a
+runtime-selected execution path. See `docs/GPU_BACKEND_PASS.md` and
 `docs/FLOW_GPU_BACKEND.md`.
 
 The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is

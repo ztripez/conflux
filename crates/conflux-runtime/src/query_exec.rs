@@ -13,9 +13,9 @@
 //! bounded-radius queries, then applies the same exact distance, self-policy, and
 //! stable ordering checks as the scan.
 
-use conflux_ir::{Grid2, QueryIr, QueryLimit, QueryMetric, QueryOrdering, SelfPolicy, SimIr};
+use conflux_ir::{finalize_query_neighbors, Grid2, QueryIr, QueryLimit, QuerySourceResult, SimIr};
 
-use crate::report::{QueryIndexRejectionReason, QueryNeighbor, QueryReport, QuerySourceResult};
+use crate::report::{QueryIndexRejectionReason, QueryReport};
 use crate::selection::{resolve_query_path, QueryExecutionMode, QueryExecutionPath};
 
 /// Evaluates every declared proximity query under `mode`, using the exact CPU scan
@@ -57,7 +57,7 @@ pub(crate) fn evaluate_queries_with_mode(
                     .enumerate()
                     .map(|(source_actor, &source_cell)| {
                         let candidates = scan_candidates(target_positions);
-                        let neighbors = finalize_neighbors(
+                        let neighbors = finalize_query_neighbors(
                             source_actor,
                             source_cell,
                             target_positions,
@@ -79,7 +79,7 @@ pub(crate) fn evaluate_queries_with_mode(
                         .enumerate()
                         .map(|(source_actor, &source_cell)| {
                             let candidates = indexed_candidates(source_cell, &index, query, grid);
-                            let neighbors = finalize_neighbors(
+                            let neighbors = finalize_query_neighbors(
                                 source_actor,
                                 source_cell,
                                 target_positions,
@@ -167,70 +167,4 @@ fn indexed_candidates(
         }
     }
     candidates
-}
-
-/// Applies the canonical exact query semantics to a candidate target list: self
-/// policy, distance, radius / k-nearest limit, and stable ordering. Both the scan
-/// and index paths call this function, so the index can only change candidate
-/// discovery, not proximity-query meaning.
-fn finalize_neighbors(
-    source_actor: usize,
-    source_cell: usize,
-    target_positions: &[usize],
-    candidate_targets: &[usize],
-    query: &QueryIr,
-    grid: Grid2,
-    same_set: bool,
-) -> Vec<QueryNeighbor> {
-    let mut candidates: Vec<QueryNeighbor> = candidate_targets
-        .iter()
-        .filter_map(|&target_actor| {
-            // "Self" is the same actor identity, which only exists within one set.
-            if same_set && target_actor == source_actor && query.self_policy == SelfPolicy::Exclude
-            {
-                return None;
-            }
-            let target_cell = target_positions[target_actor];
-            let distance = distance(source_cell, target_cell, grid, query.metric);
-            match query.limit {
-                // A radius bound is applied here; k-nearest keeps all and truncates
-                // after ordering.
-                QueryLimit::Within(radius) if distance > radius => None,
-                _ => Some(QueryNeighbor {
-                    target_actor,
-                    distance,
-                }),
-            }
-        })
-        .collect();
-
-    // Apply the declared ordering. The `match` is exhaustive on purpose: a new
-    // `QueryOrdering` variant must fail to compile here rather than be silently
-    // ignored. `total_cmp` gives a deterministic order without unwrapping
-    // (distances are finite, so it matches the natural ordering).
-    match query.ordering {
-        QueryOrdering::DistanceThenIndex => candidates.sort_by(|a, b| {
-            a.distance
-                .total_cmp(&b.distance)
-                .then(a.target_actor.cmp(&b.target_actor))
-        }),
-    }
-
-    if let QueryLimit::KNearest(k) = query.limit {
-        candidates.truncate(k);
-    }
-    candidates
-}
-
-/// Exact distance between two row-major cells in `grid` under `metric`.
-fn distance(a: usize, b: usize, grid: Grid2, metric: QueryMetric) -> f64 {
-    let (ax, ay) = grid.xy(a);
-    let (bx, by) = grid.xy(b);
-    let dx = (ax as f64 - bx as f64).abs();
-    let dy = (ay as f64 - by as f64).abs();
-    match metric {
-        QueryMetric::Chebyshev => dx.max(dy),
-        QueryMetric::Manhattan => dx + dy,
-        QueryMetric::Euclidean => (dx * dx + dy * dy).sqrt(),
-    }
 }
