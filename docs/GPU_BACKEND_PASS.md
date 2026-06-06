@@ -21,7 +21,7 @@ The pass is correctness-first. On `main`, it provides:
 - field CPU/GPU equivalence helpers with deterministic comparison, validation,
   invalid-cell, and no-adapter runner-seam coverage; callers can use the helper
   for hardware checks, but no standalone field smoke example exists yet;
-- advisory GPU eligibility for table and field kernels without implying
+- advisory GPU eligibility for table, field, and flow kernels without implying
   automatic runtime execution.
 
 The runtime still does not dispatch rules on GPU. Planner reports and fixture
@@ -97,7 +97,8 @@ The excluded scopes are tracked explicitly so they are not lost:
 
 - runtime GPU selected execution: #246;
 - Residency-backed GPU resource bridge: #248;
-- flow GPU kernels: #247;
+- flow GPU kernels: #247 (`docs/FLOW_GPU_BACKEND.md` records the phase-0
+  amount/destination shader strategy);
 - actor-rule GPU kernels: #249;
 - exact GPU proximity-query execution: #251;
 - GPU measurement and engine-integration planning: #250
@@ -108,7 +109,7 @@ The excluded scopes are tracked explicitly so they are not lost:
 ## Acceptance for this boundary
 
 - Docs distinguish current implementation from deferred runtime/resource GPU work.
-- Planner reports distinguish WGSL-lowerable table/field kernels from kernels
+- Planner reports distinguish WGSL-lowerable table/field/flow kernels from kernels
   actually dispatched on GPU.
 - `conflux-wgsl` remains the shader-lowering boundary.
 - `conflux-residency` remains the only Conflux crate depending on

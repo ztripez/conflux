@@ -36,7 +36,10 @@ pub use field_ir::{
     FieldKernel, FieldKernelBinding, FieldKernelExpr, FieldKernelShape, MAX_STENCIL_RADIUS,
 };
 pub use field_report::{FieldKernelReport, FieldRejectionReason, RejectedFieldKernel};
-pub use flow_execute::{execute_flow, FlowKernelDestination, FlowKernelOutput, FlowKernelTransfer};
+pub use flow_execute::{
+    apply_flow_transfers, apply_flow_transfers_to_channel, execute_flow, FlowKernelDestination,
+    FlowKernelOutput, FlowKernelTransfer,
+};
 pub use flow_extract::extract_flows;
 pub use flow_ir::FlowKernel;
 pub use flow_report::{FlowKernelReport, FlowRejectionReason, RejectedFlowKernel};
@@ -46,7 +49,7 @@ pub use report::{KernelReport, RejectedKernel, RejectionReason};
 // `Kernel::diagnostics` carries simulation assessments verbatim; re-export the
 // type so kernel-IR consumers (including backends) can read them without
 // reaching back into the simulation IR crate.
-pub use conflux_ir::{Assessment, EdgePolicy};
+pub use conflux_ir::{Assessment, ConservationPolicy, EdgePolicy};
 
 /// Describes the crate-level ownership boundary for bounded numeric kernel IR.
 pub const CRATE_BOUNDARY: &str = "bounded numeric kernel ir";

@@ -1,6 +1,6 @@
 //! The inspectable result of lowering a kernel to a WGSL compute shader.
 
-use conflux_kernel::{FieldKernelShape, ScalarType};
+use conflux_kernel::{ConservationPolicy, EdgePolicy, FieldKernelShape, ScalarType};
 
 /// Errors raised while deriving generated shader-resource layouts.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -214,4 +214,106 @@ pub struct FieldShaderModule {
     pub cell_count: usize,
     /// Storage buffer bindings, in binding-index order.
     pub bindings: Vec<FieldBindingRequirement>,
+}
+
+/// What a flow shader binding's storage buffer holds, so downstream resource
+/// layers can map buffers without parsing WGSL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FlowBindingSource {
+    /// One source-field channel addressed by field/channel index. The buffer is
+    /// sized to the field grid's cell count.
+    Channel {
+        /// Source field name.
+        field: String,
+        /// Source field index.
+        field_index: usize,
+        /// Source channel name.
+        name: String,
+        /// Source channel index within the field.
+        channel: usize,
+    },
+    /// The generated per-source emitted amount buffer. Values are f32 amounts in
+    /// row-major source-cell order; zero means no transfer for that source.
+    Amounts,
+    /// The generated per-source destination buffer. Values are row-major
+    /// destination cell indices, [`FLOW_DESTINATION_BOUNDARY`] for boundary loss,
+    /// or [`FLOW_DESTINATION_NONE`] for no transfer.
+    Destinations,
+    /// The generated diagnostic output buffer. It holds `assessments * cells` f32
+    /// violation magnitudes, laid out `[assessment * cells + cell]`.
+    Diagnostics {
+        /// Number of assessments, i.e. diagnostic rows of `cell_count` each.
+        assessments: usize,
+    },
+}
+
+/// Destination sentinel for a flow source cell that emitted no transfer.
+pub const FLOW_DESTINATION_NONE: u32 = u32::MAX;
+
+/// Destination sentinel for a flow source cell whose transfer left the grid under
+/// a `Reject` destination edge policy.
+pub const FLOW_DESTINATION_BOUNDARY: u32 = u32::MAX - 1;
+
+/// One storage-buffer binding a flow shader needs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlowBindingRequirement {
+    /// WGSL bind group index for this storage buffer.
+    pub group: u32,
+    /// WGSL binding index within [`Self::group`].
+    pub binding: u32,
+    /// WGSL variable name for this buffer.
+    pub var: String,
+    /// Storage access mode declared for this binding.
+    pub access: Access,
+    /// Scalar value type stored in the buffer.
+    pub scalar_type: ScalarType,
+    /// What the buffer holds.
+    pub source: FlowBindingSource,
+}
+
+impl FlowBindingRequirement {
+    /// The source channel index this binding maps to, or `None` for generated
+    /// amount, destination, and diagnostic buffers.
+    pub fn channel(&self) -> Option<usize> {
+        match &self.source {
+            FlowBindingSource::Channel { channel, .. } => Some(*channel),
+            FlowBindingSource::Amounts
+            | FlowBindingSource::Destinations
+            | FlowBindingSource::Diagnostics { .. } => None,
+        }
+    }
+}
+
+/// A lowered bounded flow kernel: stable WGSL that computes per-source emitted
+/// amounts plus exact destination metadata for a deterministic scatter step.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlowShaderModule {
+    /// Source flow kernel name.
+    pub kernel: String,
+    /// Source field name.
+    pub field: String,
+    /// Moved quantity channel name.
+    pub channel: String,
+    /// The generated WGSL source.
+    pub source: String,
+    /// Compute entry point name.
+    pub entry_point: String,
+    /// 1D workgroup size.
+    pub workgroup_size: u32,
+    /// Grid width in cells.
+    pub width: usize,
+    /// Grid height in cells.
+    pub height: usize,
+    /// Number of cells the shader processes.
+    pub cell_count: usize,
+    /// Fixed destination x offset.
+    pub dx: i32,
+    /// Fixed destination y offset.
+    pub dy: i32,
+    /// Destination edge policy.
+    pub edge: EdgePolicy,
+    /// Flow conservation policy carried for report/resource provenance.
+    pub conservation: ConservationPolicy,
+    /// Storage buffer bindings, in binding-index order.
+    pub bindings: Vec<FlowBindingRequirement>,
 }

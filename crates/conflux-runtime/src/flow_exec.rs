@@ -21,7 +21,10 @@
 use std::collections::HashMap;
 
 use conflux_ir::{FlowIr, Grid2, SimIr};
-use conflux_kernel::{execute_flow, FlowKernel, FlowKernelDestination, FlowRejectionReason};
+use conflux_kernel::{
+    apply_flow_transfers_to_channel, execute_flow, FlowKernel, FlowKernelDestination,
+    FlowKernelTransfer, FlowRejectionReason,
+};
 
 use crate::exec::assess;
 use crate::field_exec::{channel_map, eval_field, recompute_field_derived, resolve_neighbor};
@@ -85,15 +88,15 @@ pub(crate) fn step_flows(
                 );
                 transfers
             }
-            Some(ExecutionPath::CpuKernel) => {
-                let kernel = kernel.expect("kernel path selected only when a kernel exists");
-                run_flow_kernel(
+            Some(ExecutionPath::CpuKernel) => match kernel {
+                Some(kernel) => run_flow_kernel(
                     flow,
                     kernel,
                     &snapshot[flow.field],
                     &mut field_data[flow.field],
-                )
-            }
+                ),
+                None => unreachable!("CPU kernel path selected only when a flow kernel exists"),
+            },
             Some(ExecutionPath::Gpu) => {
                 unreachable!("GPU used path requires a future flow GPU executor")
             }
@@ -136,8 +139,7 @@ pub(crate) fn apply_flow(
     amount_source: &[Vec<f64>],
     moved: &mut [f64],
 ) -> (f64, Vec<FlowTransfer>) {
-    let mut boundary_loss = 0.0;
-    let mut transfers = Vec::new();
+    let mut kernel_transfers = Vec::new();
     for cell in 0..grid.cells() {
         let (x, y) = (cell % grid.width, cell / grid.width);
 
@@ -149,29 +151,37 @@ pub(crate) fn apply_flow(
             continue;
         }
 
-        moved[cell] -= amount;
         let destination = match resolve_neighbor(x, y, flow.dx, flow.dy, grid, flow.edge) {
             Some((nx, ny)) => {
                 let dest = grid.index(nx, ny);
-                moved[dest] += amount;
-                FlowDestination::Cell(dest)
+                FlowKernelDestination::Cell(dest)
             }
-            None => {
-                boundary_loss += amount;
-                FlowDestination::Boundary
-            }
+            None => FlowKernelDestination::Boundary,
         };
 
-        // Diagnostic only: assessments over the emitted amount are reported but do
-        // not gate the movement, so conservation accounting stays exact.
-        let assessments = assess(&flow.assessments, 0.0, amount);
-        transfers.push(FlowTransfer {
+        kernel_transfers.push(FlowKernelTransfer {
             source: cell,
             destination,
             amount,
-            assessments,
         });
     }
+
+    let boundary_loss = apply_flow_transfers_to_channel(moved, &kernel_transfers);
+
+    let transfers = kernel_transfers
+        .into_iter()
+        .map(|transfer| {
+            // Diagnostic only: assessments over the emitted amount are reported but do
+            // not gate the movement, so conservation accounting stays exact.
+            let assessments = assess(&flow.assessments, 0.0, transfer.amount);
+            FlowTransfer {
+                source: transfer.source,
+                destination: flow_destination(transfer.destination),
+                amount: transfer.amount,
+                assessments,
+            }
+        })
+        .collect();
     (boundary_loss, transfers)
 }
 
@@ -203,22 +213,21 @@ fn run_flow_kernel(
 ) -> Vec<FlowTransfer> {
     let out = execute_flow(kernel, snapshot);
     let moved = &mut field[flow.channel];
-    for transfer in &out.transfers {
-        moved[transfer.source] -= transfer.amount;
-        if let FlowKernelDestination::Cell(dest) = transfer.destination {
-            moved[dest] += transfer.amount;
-        }
-    }
+    apply_flow_transfers_to_channel(moved, &out.transfers);
     out.transfers
         .into_iter()
         .map(|t| FlowTransfer {
             source: t.source,
-            destination: match t.destination {
-                FlowKernelDestination::Cell(dest) => FlowDestination::Cell(dest),
-                FlowKernelDestination::Boundary => FlowDestination::Boundary,
-            },
+            destination: flow_destination(t.destination),
             amount: t.amount,
             assessments: assess(&flow.assessments, 0.0, t.amount),
         })
         .collect()
+}
+
+fn flow_destination(destination: FlowKernelDestination) -> FlowDestination {
+    match destination {
+        FlowKernelDestination::Cell(dest) => FlowDestination::Cell(dest),
+        FlowKernelDestination::Boundary => FlowDestination::Boundary,
+    }
 }

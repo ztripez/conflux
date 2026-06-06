@@ -25,9 +25,9 @@
 //! exact shape of that selection — without changing aggregate meaning or bridge
 //! timing.
 //!
-//! It reports *GPU capability* for table and field kernels — whether each rule is
-//! WGSL-lowerable, plus structured rejection reasons — while separately recording
-//! that the planner did not run anything on a GPU.
+//! It reports *GPU capability* for table, field, and flow kernels — whether each
+//! rule or flow is WGSL-lowerable, plus structured rejection reasons — while
+//! separately recording that the planner did not run anything on a GPU.
 //!
 //! And it reports *flow-optimization eligibility* for declared flows — which
 //! field-local flows could be backed by an optimized CPU flow kernel, the candidate
@@ -68,10 +68,10 @@ pub use report::{
     ActorCandidateShape, ActorRuleEligibility, ActorRuleEligibilityReport, AggregateCandidateShape,
     AggregateEligibility, AggregateEligibilityReport, ApproximationStatus, BackendChoice,
     CandidateIndex, CostHint, FieldGpuCapability, FieldGpuRejection, FlowCandidateShape,
-    FlowEligibility, FlowEligibilityReport, FusionGroup, GpuCapabilityReport, GraphCandidateShape,
-    GraphEligibilityReport, GraphRuleEligibility, GraphTriggerEligibility, IndexEligibilityReport,
-    IndexRebuildInputs, OptimizationReport, QueryIndexEligibility, RulePlan, TableGpuCapability,
-    TableGpuRejection, TransferAdvisory,
+    FlowEligibility, FlowEligibilityReport, FlowGpuCapability, FlowGpuRejection, FusionGroup,
+    GpuCapabilityReport, GraphCandidateShape, GraphEligibilityReport, GraphRuleEligibility,
+    GraphTriggerEligibility, IndexEligibilityReport, IndexRebuildInputs, OptimizationReport,
+    QueryIndexEligibility, RulePlan, TableGpuCapability, TableGpuRejection, TransferAdvisory,
 };
 pub use transfer::transfer_advisory;
 

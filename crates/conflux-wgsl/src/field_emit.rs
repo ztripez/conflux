@@ -1,14 +1,15 @@
 //! Lower bounded field kernels to WGSL compute shaders.
 
-use conflux_kernel::{
-    Assessment, EdgePolicy, FieldKernel, FieldKernelExpr, FieldKernelShape, ScalarType,
-};
+use conflux_kernel::{Assessment, FieldKernel, FieldKernelShape, ScalarType};
 
 use crate::emit::{
-    diagnostic_expr, var_name, wgsl_literal, wgsl_scalar, WgslError, DIAG_VAR, ENTRY_POINT,
-    WORKGROUP_SIZE,
+    diagnostic_expr, var_name, wgsl_scalar, WgslError, DIAG_VAR, ENTRY_POINT, WORKGROUP_SIZE,
 };
 use crate::module::{Access, FieldBindingRequirement, FieldBindingSource, FieldShaderModule};
+use crate::wgsl_expr::{
+    check_finite_diagnostics, check_finite_expr_literals, emit_field_kernel_expr,
+    validate_expr_channels, WgslExprState, WgslGridConstants,
+};
 
 /// Lowers one bounded field kernel to a WGSL compute shader module.
 ///
@@ -32,9 +33,9 @@ pub fn emit_field_wgsl(kernel: &FieldKernel) -> Result<FieldShaderModule, WgslEr
             scalar: kernel.scalar_type,
         });
     }
-    validate_field_channels(kernel, &kernel.expr)?;
-    check_finite_field_literals(&kernel.expr, &kernel.name)?;
-    check_finite_field_diagnostics(kernel)?;
+    validate_field_channels(kernel)?;
+    check_finite_expr_literals(&kernel.expr, &kernel.name)?;
+    check_finite_diagnostics(&kernel.name, &kernel.diagnostics)?;
 
     let bindings = build_field_bindings(kernel);
     let output_var = actual_channel_var(kernel, &bindings, kernel.output.channel)?;
@@ -90,14 +91,20 @@ fn emit_field_body(
         .iter()
         .any(|a| matches!(a, Assessment::MaxRelativeDelta { .. }));
     if needs_prev {
-        body.push_str(&format!("\x20   let prev = {output_var}[i];\n"));
+        body.push_str(&format!("    let prev = {output_var}[i];\n"));
     }
 
-    let mut state = FieldExprState::default();
-    let result = emit_field_expr(&kernel.expr, kernel, bindings, &mut state, &mut body)?;
-    body.push_str(&format!("\x20   if ({}) {{\n", result.valid));
+    let mut state = WgslExprState::default();
+    let grid = WgslGridConstants {
+        width_i32: kernel.grid.width as i32,
+        height_i32: kernel.grid.height as i32,
+        width_u32: kernel.grid.width as u32,
+    };
+    let mut lookup = |channel| field_binding_var(kernel, bindings, channel);
+    let result = emit_field_kernel_expr(&kernel.expr, grid, &mut state, &mut body, &mut lookup)?;
+    body.push_str(&format!("    if ({}) {{\n", result.valid));
     if kernel.diagnostics.is_empty() {
-        body.push_str(&format!("\x20       {output_var}[i] = {};\n", result.value));
+        body.push_str(&format!("        {output_var}[i] = {};\n", result.value));
     } else {
         body.push_str(&format!("        let out = {};\n", result.value));
         body.push_str(&format!("        {output_var}[i] = out;\n"));
@@ -126,135 +133,6 @@ fn emit_field_body(
     }
     body.push_str("    }\n");
     Ok(body)
-}
-
-#[derive(Default)]
-struct FieldExprState {
-    next: usize,
-}
-
-struct FieldExprResult {
-    value: String,
-    valid: String,
-}
-
-fn emit_field_expr(
-    expr: &FieldKernelExpr,
-    kernel: &FieldKernel,
-    bindings: &[FieldBindingRequirement],
-    state: &mut FieldExprState,
-    body: &mut String,
-) -> Result<FieldExprResult, WgslError> {
-    match expr {
-        FieldKernelExpr::Literal(value) => Ok(FieldExprResult {
-            value: wgsl_literal(*value),
-            valid: "true".to_string(),
-        }),
-        FieldKernelExpr::Cell(channel) => Ok(FieldExprResult {
-            value: format!("{}[i]", field_binding_var(kernel, bindings, *channel)?),
-            valid: "true".to_string(),
-        }),
-        FieldKernelExpr::Neighbor {
-            channel,
-            dx,
-            dy,
-            edge,
-        } => emit_neighbor_read(
-            kernel,
-            bindings,
-            state,
-            body,
-            NeighborRead {
-                channel: *channel,
-                dx: *dx,
-                dy: *dy,
-                edge: *edge,
-            },
-        ),
-        FieldKernelExpr::Neg(inner) => {
-            let inner = emit_field_expr(inner, kernel, bindings, state, body)?;
-            Ok(FieldExprResult {
-                value: format!("-({})", inner.value),
-                valid: inner.valid,
-            })
-        }
-        FieldKernelExpr::Add(lhs, rhs) => field_binop(kernel, bindings, state, body, lhs, "+", rhs),
-        FieldKernelExpr::Sub(lhs, rhs) => field_binop(kernel, bindings, state, body, lhs, "-", rhs),
-        FieldKernelExpr::Mul(lhs, rhs) => field_binop(kernel, bindings, state, body, lhs, "*", rhs),
-        FieldKernelExpr::Div(lhs, rhs) => field_binop(kernel, bindings, state, body, lhs, "/", rhs),
-    }
-}
-
-fn emit_neighbor_read(
-    kernel: &FieldKernel,
-    bindings: &[FieldBindingRequirement],
-    state: &mut FieldExprState,
-    body: &mut String,
-    read: NeighborRead,
-) -> Result<FieldExprResult, WgslError> {
-    let n = state.next;
-    state.next += 1;
-    let nx = format!("nx_{n}");
-    let ny = format!("ny_{n}");
-    let valid = format!("valid_{n}");
-    let value = format!("value_{n}");
-    let index = format!("idx_{n}");
-    let var = field_binding_var(kernel, bindings, read.channel)?;
-    body.push_str(&format!(
-        "\x20   let {nx} = i32(x) + {};\n\x20   let {ny} = i32(y) + {};\n",
-        read.dx, read.dy
-    ));
-    match read.edge {
-        EdgePolicy::Wrap => {
-            body.push_str(&format!(
-                "\x20   let {index} = u32((({ny} % {height}) + {height}) % {height}) * {width}u + u32((({nx} % {width}) + {width}) % {width});\n\x20   let {value} = {var}[{index}];\n\x20   let {valid} = true;\n",
-                height = kernel.grid.height as i32,
-                width = kernel.grid.width as i32,
-            ));
-        }
-        EdgePolicy::Reject => {
-            body.push_str(&format!(
-                "\x20   let {valid} = {nx} >= 0 && {nx} < {width} && {ny} >= 0 && {ny} < {height};\n\x20   var {value} = 0.0;\n\x20   if ({valid}) {{\n        let {index} = u32({ny}) * {width_u}u + u32({nx});\n        {value} = {var}[{index}];\n    }}\n",
-                width = kernel.grid.width as i32,
-                height = kernel.grid.height as i32,
-                width_u = kernel.grid.width,
-            ));
-        }
-    }
-    Ok(FieldExprResult { value, valid })
-}
-
-#[derive(Clone, Copy)]
-struct NeighborRead {
-    channel: usize,
-    dx: i32,
-    dy: i32,
-    edge: EdgePolicy,
-}
-
-fn field_binop(
-    kernel: &FieldKernel,
-    bindings: &[FieldBindingRequirement],
-    state: &mut FieldExprState,
-    body: &mut String,
-    lhs: &FieldKernelExpr,
-    op: &str,
-    rhs: &FieldKernelExpr,
-) -> Result<FieldExprResult, WgslError> {
-    let lhs = emit_field_expr(lhs, kernel, bindings, state, body)?;
-    let rhs = emit_field_expr(rhs, kernel, bindings, state, body)?;
-    Ok(FieldExprResult {
-        value: format!("({} {op} {})", lhs.value, rhs.value),
-        valid: combine_valid(&lhs.valid, &rhs.valid),
-    })
-}
-
-fn combine_valid(lhs: &str, rhs: &str) -> String {
-    match (lhs, rhs) {
-        ("true", "true") => "true".to_string(),
-        ("true", other) | (other, "true") => other.to_string(),
-        _ => format!("({lhs} && {rhs})"),
-    }
 }
 
 fn field_binding_var(
@@ -292,81 +170,16 @@ fn actual_channel_var(
         })
 }
 
-fn validate_field_channels(kernel: &FieldKernel, expr: &FieldKernelExpr) -> Result<(), WgslError> {
-    match expr {
-        FieldKernelExpr::Cell(channel) | FieldKernelExpr::Neighbor { channel, .. } => {
-            if *channel < kernel.channels.len() {
-                Ok(())
-            } else {
-                Err(WgslError::InvalidFieldChannel {
-                    kernel: kernel.name.clone(),
-                    channel: *channel,
-                    available_channels: kernel.channels.len(),
-                })
-            }
-        }
-        FieldKernelExpr::Literal(_) => Ok(()),
-        FieldKernelExpr::Neg(inner) => validate_field_channels(kernel, inner),
-        FieldKernelExpr::Add(lhs, rhs)
-        | FieldKernelExpr::Sub(lhs, rhs)
-        | FieldKernelExpr::Mul(lhs, rhs)
-        | FieldKernelExpr::Div(lhs, rhs) => {
-            validate_field_channels(kernel, lhs)?;
-            validate_field_channels(kernel, rhs)
-        }
-    }
-}
-
-/// Walks a field expression and rejects literals that are not finite once
-/// narrowed to f32, matching table-kernel emission.
-fn check_finite_field_literals(expr: &FieldKernelExpr, kernel: &str) -> Result<(), WgslError> {
-    match expr {
-        FieldKernelExpr::Literal(value) => {
-            if (*value as f32).is_finite() {
-                Ok(())
-            } else {
-                Err(WgslError::NonFiniteLiteral {
-                    kernel: kernel.to_string(),
-                    value: *value,
-                })
-            }
-        }
-        FieldKernelExpr::Cell(_) | FieldKernelExpr::Neighbor { .. } => Ok(()),
-        FieldKernelExpr::Neg(inner) => check_finite_field_literals(inner, kernel),
-        FieldKernelExpr::Add(lhs, rhs)
-        | FieldKernelExpr::Sub(lhs, rhs)
-        | FieldKernelExpr::Mul(lhs, rhs)
-        | FieldKernelExpr::Div(lhs, rhs) => {
-            check_finite_field_literals(lhs, kernel)?;
-            check_finite_field_literals(rhs, kernel)
-        }
-    }
-}
-
-/// Rejects field diagnostics whose bounds are not finite as f32, since they
-/// would need an inf/NaN literal the WGSL backend cannot emit.
-fn check_finite_field_diagnostics(kernel: &FieldKernel) -> Result<(), WgslError> {
-    let reject = |value: f64| -> Result<(), WgslError> {
-        if (value as f32).is_finite() {
-            Ok(())
-        } else {
-            Err(WgslError::NonFiniteDiagnosticBound {
-                kernel: kernel.name.clone(),
-                value,
-            })
-        }
-    };
-    for assessment in &kernel.diagnostics {
-        match assessment {
-            Assessment::Finite => {}
-            Assessment::Range { min, max } => {
-                reject(*min)?;
-                reject(*max)?;
-            }
-            Assessment::MaxRelativeDelta { fraction } => reject(*fraction)?,
-        }
-    }
-    Ok(())
+fn validate_field_channels(kernel: &FieldKernel) -> Result<(), WgslError> {
+    validate_expr_channels(
+        &kernel.expr,
+        kernel.channels.len(),
+        &|channel, available_channels| WgslError::InvalidFieldChannel {
+            kernel: kernel.name.clone(),
+            channel,
+            available_channels,
+        },
+    )
 }
 
 /// Read bindings for input channels distinct from the output, then the

@@ -78,6 +78,41 @@ pub enum WgslError {
         /// Number of channel bindings available on the field kernel.
         available_channels: usize,
     },
+    /// A flow amount expression references a channel binding index that is outside
+    /// the flow kernel's amount-channel binding list.
+    #[error(
+        "flow kernel `{kernel}` references amount channel binding {channel}, but only {available_channels} channel bindings exist"
+    )]
+    InvalidFlowChannel {
+        /// Name of the flow kernel that could not lower.
+        kernel: String,
+        /// Invalid binding index referenced by the flow amount expression.
+        channel: usize,
+        /// Number of channel bindings available on the flow kernel.
+        available_channels: usize,
+    },
+    /// Flow shader output buffers cannot be converted into deterministic flow
+    /// scatter output.
+    #[error("invalid flow shader output for `{kernel}`: {reason}")]
+    InvalidFlowShaderOutput {
+        /// Name of the flow kernel whose output buffers failed validation.
+        kernel: String,
+        /// Human-readable explanation of the invalid output shape or value.
+        reason: String,
+    },
+    /// A flow kernel's grid cannot be represented in the WGSL coordinate math used
+    /// by the phase-0 flow emitter.
+    #[error("flow kernel `{kernel}` has unsupported grid {width}x{height}: {reason}")]
+    UnsupportedFlowGrid {
+        /// Name of the flow kernel that could not lower.
+        kernel: String,
+        /// Grid width in cells.
+        width: usize,
+        /// Grid height in cells.
+        height: usize,
+        /// Human-readable explanation of the unsupported grid shape.
+        reason: String,
+    },
 }
 
 /// Lowers one elementwise kernel to a WGSL compute shader module.

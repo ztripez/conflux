@@ -1,11 +1,12 @@
 use std::fmt;
 
-use conflux_kernel::{FieldRejectionReason, RejectionReason};
+use conflux_kernel::{FieldRejectionReason, FlowRejectionReason, RejectionReason};
 use conflux_wgsl::WgslError;
 
-/// Advisory GPU capability for table and field kernels.
+/// Advisory GPU capability for table, field, and flow kernels.
 ///
-/// This report is about capability only: whether a rule can be lowered to WGSL.
+/// This report is about capability only: whether a table rule, field rule, or flow
+/// can be lowered to WGSL.
 /// It is not an execution report, does not imply GPU dispatch, and is always
 /// produced without mutating the IR or selecting a runtime backend.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -14,6 +15,8 @@ pub struct GpuCapabilityReport {
     pub table_rules: Vec<TableGpuCapability>,
     /// Field-rule GPU capability entries, in IR field-rule order.
     pub field_rules: Vec<FieldGpuCapability>,
+    /// Flow GPU capability entries, in IR flow order.
+    pub flows: Vec<FlowGpuCapability>,
 }
 
 /// Advisory GPU capability for one table rule.
@@ -57,6 +60,30 @@ pub struct FieldGpuCapability {
     pub rejection: Option<FieldGpuRejection>,
 }
 
+/// Advisory GPU capability for one field-local flow.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlowGpuCapability {
+    /// Source flow name.
+    pub flow: String,
+    /// Source field name.
+    pub field: String,
+    /// Moved quantity channel name.
+    pub channel: String,
+    /// Source grid size as `(width, height)`.
+    pub grid: (usize, usize),
+    /// Bounded stencil radius accepted by the flow-kernel extractor.
+    pub stencil_radius: Option<i32>,
+    /// True when the flow extracted as a bounded flow kernel and lowered to WGSL.
+    pub wgsl_lowerable: bool,
+    /// True only when a runtime GPU path actually dispatched this flow.
+    ///
+    /// The planner never dispatches work, so entries produced by
+    /// [`crate::plan`] are always `false`.
+    pub executed_on_gpu: bool,
+    /// Structured reason the flow is not WGSL-lowerable, when rejected.
+    pub rejection: Option<FlowGpuRejection>,
+}
+
 /// Why a table rule is not WGSL-lowerable.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TableGpuRejection {
@@ -87,8 +114,23 @@ pub enum FieldGpuRejection {
     },
 }
 
+/// Why a flow is not WGSL-lowerable.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FlowGpuRejection {
+    /// The flow did not extract into the bounded flow-kernel subset.
+    NotFlowKernelLowerable {
+        /// Typed flow-kernel extraction rejection reason.
+        reason: FlowRejectionReason,
+    },
+    /// The flow extracted as a bounded flow kernel, but WGSL lowering rejected it.
+    WgslRejected {
+        /// Typed WGSL-lowering rejection reason.
+        reason: WgslError,
+    },
+}
+
 impl GpuCapabilityReport {
-    /// Returns how many table and field rules are WGSL-lowerable.
+    /// Returns how many table rules, field rules, and flows are WGSL-lowerable.
     pub fn wgsl_lowerable_count(&self) -> usize {
         self.table_rules
             .iter()
@@ -99,9 +141,11 @@ impl GpuCapabilityReport {
                 .iter()
                 .filter(|rule| rule.wgsl_lowerable)
                 .count()
+            + self.flows.iter().filter(|flow| flow.wgsl_lowerable).count()
     }
 
-    /// Returns how many table and field rules were actually dispatched on a GPU.
+    /// Returns how many table rules, field rules, and flows were actually dispatched
+    /// on a GPU.
     pub fn executed_on_gpu_count(&self) -> usize {
         self.table_rules
             .iter()
@@ -111,6 +155,11 @@ impl GpuCapabilityReport {
                 .field_rules
                 .iter()
                 .filter(|rule| rule.executed_on_gpu)
+                .count()
+            + self
+                .flows
+                .iter()
+                .filter(|flow| flow.executed_on_gpu)
                 .count()
     }
 }
@@ -133,6 +182,17 @@ impl fmt::Display for FieldGpuRejection {
                 write!(f, "not a bounded field kernel: {reason}")
             }
             FieldGpuRejection::WgslRejected { reason } => write!(f, "WGSL rejected: {reason}"),
+        }
+    }
+}
+
+impl fmt::Display for FlowGpuRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FlowGpuRejection::NotFlowKernelLowerable { reason } => {
+                write!(f, "not a bounded flow kernel: {reason}")
+            }
+            FlowGpuRejection::WgslRejected { reason } => write!(f, "WGSL rejected: {reason}"),
         }
     }
 }
@@ -170,6 +230,24 @@ impl fmt::Display for GpuCapabilityReport {
                 )?;
             }
             if let Some(rejection) = &rule.rejection {
+                write!(f, " ({rejection})")?;
+            }
+            writeln!(f)?;
+        }
+        for flow in &self.flows {
+            write!(
+                f,
+                "  FLOW `{}` on `{}.{}`: WGSL-lowerable={}, executed_on_gpu={}",
+                flow.flow, flow.field, flow.channel, flow.wgsl_lowerable, flow.executed_on_gpu
+            )?;
+            if let Some(radius) = flow.stencil_radius {
+                write!(
+                    f,
+                    " [grid {}x{}, radius {radius}]",
+                    flow.grid.0, flow.grid.1
+                )?;
+            }
+            if let Some(rejection) = &flow.rejection {
                 write!(f, " ({rejection})")?;
             }
             writeln!(f)?;
