@@ -1,6 +1,6 @@
 use std::fmt;
 
-use conflux_ir::{QueryLimit, QueryMetric, QueryOrdering, SelfPolicy};
+use conflux_ir::{QueryLimit, QueryMetric, QueryOrdering, QuerySourceResult, SelfPolicy};
 
 use crate::selection::{QueryExecutionMode, QueryExecutionPath, QueryFallbackReason};
 
@@ -61,24 +61,6 @@ impl fmt::Display for QueryIndexRejectionReason {
             ),
         }
     }
-}
-
-/// One source actor's neighbors under a proximity query, in the query's declared
-/// stable order.
-#[derive(Clone, Debug, PartialEq)]
-pub struct QuerySourceResult {
-    /// Index of the source actor within the source set.
-    pub source_actor: usize,
-    pub neighbors: Vec<QueryNeighbor>,
-}
-
-/// A single neighbor returned by a proximity query.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct QueryNeighbor {
-    /// Index of the neighbor within the target set.
-    pub target_actor: usize,
-    /// Exact distance in the query's metric.
-    pub distance: f64,
 }
 
 impl QueryReport {

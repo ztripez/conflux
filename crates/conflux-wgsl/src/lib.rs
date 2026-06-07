@@ -3,12 +3,14 @@
 //! This crate lowers the bounded numeric kernel IR (`conflux-kernel`) to WGSL
 //! compute shaders plus the bind/resource requirements a backend would need to run
 //! them. The emitter is pure and GPU-free. The optional `gpu` feature currently
-//! provides hardware execution/equivalence helpers for table and field kernels;
-//! flow and actor-rule kernels lower to inspectable WGSL modules, but Conflux does
-//! not yet provide runtime GPU dispatch for them.
+//! provides hardware execution/equivalence helpers for table and field kernels,
+//! plus an experimental exact proximity-query GPU scan helper. Flow and actor-rule
+//! kernels lower to inspectable WGSL modules, but Conflux does not yet provide
+//! runtime GPU dispatch for them.
 //!
 //! GPU concerns do not leak into the simulation model: this crate depends only
-//! on the kernel IR, and no core crate depends on it.
+//! on public semantic primitives and kernel IR, and no core/runtime crate depends
+//! on it.
 
 mod actor_emit;
 mod emit;
@@ -42,8 +44,10 @@ pub use report::{
 #[cfg(feature = "gpu")]
 pub use gpu::{
     check_field_gpu_equivalence, compare_field_gpu_proposals, run_field_on_gpu, run_on_gpu,
-    FieldGpuComparison, FieldGpuEquivalenceOutcome, FieldGpuEquivalenceReport, FieldGpuRun,
-    FieldGpuRunMetadata, FieldGpuTolerance, GpuError, GpuExecutor, GpuRun, GpuRunMetadata,
+    run_proximity_query_on_gpu, FieldGpuComparison, FieldGpuEquivalenceOutcome,
+    FieldGpuEquivalenceReport, FieldGpuRun, FieldGpuRunMetadata, FieldGpuTolerance, GpuError,
+    GpuExecutor, GpuRun, GpuRunMetadata, ProximityGpuExecutionPath, ProximityGpuRun,
+    ProximityGpuRunMetadata,
 };
 #[cfg(feature = "gpu")]
 pub use gpu_equivalence::{

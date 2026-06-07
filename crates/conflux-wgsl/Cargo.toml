@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+conflux-ir.workspace = true
 conflux-kernel.workspace = true
 thiserror.workspace = true
 
@@ -22,7 +23,6 @@ gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
 
 [dev-dependencies]
 conflux-core.workspace = true
-conflux-ir.workspace = true
 
 [[example]]
 name = "gpu_equivalence"

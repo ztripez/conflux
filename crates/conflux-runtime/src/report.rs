@@ -18,13 +18,14 @@ pub use actor::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
     ActorRuleBlockedReason, ActorRuleFireReport,
 };
+pub use conflux_ir::{QueryNeighbor, QuerySourceResult};
 pub use flow::{FlowDestination, FlowFireReport, FlowSummary, FlowTransfer};
 pub use graph::{
     GraphEventInstance, GraphEventPayloadValue, GraphEventReport, GraphNodeOutcome,
     GraphRuleFireReport,
 };
 pub use projection::{AggregateReport, BridgeReport, ProjectionBridgeReport, ProjectionReport};
-pub use query::{QueryIndexRejectionReason, QueryNeighbor, QueryReport, QuerySourceResult};
+pub use query::{QueryIndexRejectionReason, QueryReport};
 pub use rules::{
     AssessmentSummary, ComparisonStatus, FieldCellOutcome, FieldRuleFireReport, RowOutcome,
     RuleFireReport,

@@ -21,7 +21,7 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-kernel` | **Stable-enough (bounded subset)** | Kernel IR + CPU executor for the supported elementwise/stencil/flow subset; rejection reasons are typed. Anything outside the subset is reported, not silently handled. |
 | `conflux-planner` reports | **Advisory (shape may evolve)** | The *advisory-only* guarantee is firm (never rewrites the IR or changes execution); the exact report shapes may change as backends evolve. |
 | `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic for accepted table kernels, bounded 2D field kernels, and bounded flow amount/destination kernels. |
-| `conflux-wgsl` `gpu` execution/equivalence | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); table and field CPU/GPU equivalence helpers skip gracefully without a GPU and report mismatches explicitly. They do not make runtime GPU execution automatic. |
+| `conflux-wgsl` `gpu` execution/equivalence | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); table and field CPU/GPU equivalence helpers skip gracefully without a GPU and report mismatches explicitly, and the exact bounded-radius Chebyshev/Manhattan proximity-query scan helper returns explicit `ExactGpuScan` metadata or visible refusal. They do not make runtime GPU execution automatic. |
 | `conflux-runtime` `PreferGpu` / `RequireGpu` policy | **Experimental** | Explicit selected-execution policy only, currently scoped to table-rule runtime GPU eligibility. It may select or refuse `ExecutionPath::Gpu`, but `conflux-runtime` still has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency and does not dispatch GPU work. Flow WGSL capability is planner/backend metadata only; actor-rule CPU kernels are not treated as runtime GPU eligibility. |
 | `conflux-residency` | **Experimental / release-blocked** | The bridge to Residency; release-blocked by the `residency-core` git dependency (see `docs/PUBLISH_POLICY.md`). |
 | `conflux-trace` | **Experimental (research)** | Trace schema + profile-guided recommendations. Off the execution path; normal runs never require it. |
@@ -33,8 +33,10 @@ Named so they are not mistaken for stable contracts:
 
 - **GPU execution/equivalence** (`conflux-wgsl` `gpu` feature) — emission is
   stable-enough; actual GPU dispatch remains experimental, hardware-gated, and
-  scoped to `conflux-wgsl` correctness helpers. Runtime GPU modes are explicit
-  policy/reporting modes only until a future boundary-safe GPU executor exists.
+  scoped to `conflux-wgsl` correctness helpers, including the experimental exact
+  bounded-radius Chebyshev/Manhattan proximity-query scan helper. Runtime GPU
+  modes are explicit policy/reporting modes only until a future boundary-safe GPU
+  executor exists.
 - **Profile-guided trace** (`conflux-trace`) — optional research; there is no release compiler or runtime adaptive optimizer.
 - **Unit conversions** (`Conversion`) — declared and validated, but **not yet applied**; no expression invocation surface exists yet (`docs/PUBLISH_POLICY.md` and the units epic note this).
 - **Proximity index** — exact uniform-grid execution exists only for bounded-radius actor queries and is opt-in through `QueryExecutionMode`; the CPU scan remains the source of truth and `KNearest` remains scan-only until an exact expanding-ring strategy exists.
