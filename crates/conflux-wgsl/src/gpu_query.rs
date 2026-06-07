@@ -9,7 +9,7 @@
 
 use wgpu::util::DeviceExt;
 
-use conflux_core::{
+use conflux_ir::{
     finalize_query_neighbors, Grid2, QueryIr, QueryLimit, QueryMetric, QueryOrdering,
     QuerySourceResult, SelfPolicy,
 };
@@ -497,7 +497,7 @@ mod tests {
             limit,
             self_policy: SelfPolicy::Exclude,
             ordering: QueryOrdering::DistanceThenIndex,
-            approximation: conflux_core::ApproximationPolicy::Exact,
+            approximation: conflux_ir::ApproximationPolicy::Exact,
         }
     }
 
@@ -618,15 +618,15 @@ mod tests {
         assert_eq!(
             run[0].neighbors,
             vec![
-                conflux_core::QueryNeighbor {
+                conflux_ir::QueryNeighbor {
                     target_actor: 0,
                     distance: 1.0,
                 },
-                conflux_core::QueryNeighbor {
+                conflux_ir::QueryNeighbor {
                     target_actor: 1,
                     distance: 1.0,
                 },
-                conflux_core::QueryNeighbor {
+                conflux_ir::QueryNeighbor {
                     target_actor: 2,
                     distance: 1.0,
                 },

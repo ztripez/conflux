@@ -423,6 +423,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "conflux-core",
+ "conflux-ir",
  "conflux-kernel",
  "pollster",
  "thiserror 1.0.69",
