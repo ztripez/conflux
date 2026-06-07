@@ -42,8 +42,9 @@ crates/
   Bevy world. Bevy concepts do not enter Conflux core crates.
 - **conflux-wgsl** lowers accepted table, bounded 2D field, and bounded flow kernels
   to inspectable WGSL compute shaders and resource requirements. Optional GPU
-  execution/equivalence helpers live behind the off-by-default `gpu` feature; the
-  emitter side needs no `wgpu`.
+  execution/equivalence helpers and the exact bounded-radius proximity-query scan
+  helper live behind the off-by-default `gpu` feature; the emitter side needs no
+  `wgpu`.
 - **conflux-residency** is the only crate that depends on `residency-core`. It maps
   kernel column buffers to Residency descriptors and drives a sync cycle, embedding
   Residency's transfer report.

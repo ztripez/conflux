@@ -36,8 +36,8 @@ boundaries:
 
   - name: wgsl
     roots: [crates/conflux-wgsl]
-    allow: [kernel, core]
-    note: WGSL emission and optional GPU correctness helpers; core is allowed for tests/examples.
+    allow: [ir, kernel, core]
+    note: WGSL emission and optional GPU correctness helpers; ir supplies shared backend/query semantics and core is allowed for tests/examples.
 
   - name: residency
     roots: [crates/conflux-residency]

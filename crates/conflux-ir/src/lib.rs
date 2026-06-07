@@ -8,6 +8,7 @@
 mod expr;
 mod field_expr;
 mod graph_expr;
+mod query_semantics;
 mod sim;
 mod types;
 
@@ -16,6 +17,9 @@ pub use field_expr::{cell, field_lit, neighbor, EdgePolicy, FieldExpr};
 pub use graph_expr::{
     graph_lit, incident_edge, incident_edge_count, neighbor_node, neighbor_node_count, node,
     GraphExpr,
+};
+pub use query_semantics::{
+    finalize_query_neighbors, query_distance, QueryNeighbor, QuerySourceResult,
 };
 pub use sim::{
     ActorChannelIr, ActorMovementIr, ActorQueryInputIr, ActorRuleIr, ActorSetIr, AggregateIr,

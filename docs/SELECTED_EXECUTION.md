@@ -77,6 +77,15 @@ not GPU eligibility: under `PreferGpu` those domains visibly fall back to refere
 with `NotWgslLowerable`, and under `RequireGpu` they are refused with
 `NotWgslLowerable`.
 
+The optional `conflux-wgsl` `gpu` feature also exposes an experimental proximity
+query hardware helper for equivalence/measurement work outside normal runtime
+dispatch. It is not selected by `conflux-runtime`: callers must invoke
+`run_proximity_query_on_gpu` explicitly, and its metadata reports
+`ExactGpuScan` so results are distinguishable from the runtime CPU scan and the
+CPU uniform-grid index. In this phase the helper accepts only exact
+bounded-radius Chebyshev/Manhattan queries; `KNearest` and Euclidean radius
+queries refuse visibly rather than approximate.
+
 ## Worked example
 
 Run the real scenario under a kernel-requesting mode:
