@@ -21,8 +21,8 @@ The pass is correctness-first. On `main`, it provides:
 - field CPU/GPU equivalence helpers with deterministic comparison, validation,
   invalid-cell, and no-adapter runner-seam coverage; callers can use the helper
   for hardware checks, but no standalone field smoke example exists yet;
-- advisory GPU eligibility for table, field, and flow kernels without implying
-  automatic runtime execution.
+- advisory GPU eligibility for table, field, flow, and actor-rule kernels without
+  implying automatic runtime execution.
 
 The runtime still does not dispatch rules on GPU. Planner reports and fixture
 output use `executed_on_gpu=false` for planner-produced capability entries.
@@ -81,7 +81,7 @@ GPU pass:
 - Residency-backed persistent GPU-resident execution;
 - adding `residency-wgpu` to Conflux;
 - flow GPU kernels;
-- actor-rule GPU kernels;
+- actor-rule runtime GPU dispatch;
 - GPU proximity-query execution;
 - graph-rule or event GPU backends;
 - applied fusion, batching, or automatic optimization;
@@ -99,7 +99,9 @@ The excluded scopes are tracked explicitly so they are not lost:
 - Residency-backed GPU resource bridge: #248;
 - flow GPU kernels: #247 (`docs/FLOW_GPU_BACKEND.md` records the phase-0
   amount/destination shader strategy);
-- actor-rule GPU kernels: #249;
+- actor-rule GPU kernels: #249 (`docs/ACTOR_GPU_KERNELS.md` records the phase-0
+  actor-channel/host-field-sample shader strategy; runtime dispatch remains
+  deferred);
 - exact GPU proximity-query execution: #251;
 - GPU measurement and engine-integration planning: #250
   (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`);
@@ -109,8 +111,8 @@ The excluded scopes are tracked explicitly so they are not lost:
 ## Acceptance for this boundary
 
 - Docs distinguish current implementation from deferred runtime/resource GPU work.
-- Planner reports distinguish WGSL-lowerable table/field/flow kernels from kernels
-  actually dispatched on GPU.
+- Planner reports distinguish WGSL-lowerable table/field/flow/actor-rule kernels
+  from kernels actually dispatched on GPU.
 - `conflux-wgsl` remains the shader-lowering boundary.
 - `conflux-residency` remains the only Conflux crate depending on
   `residency-core`.

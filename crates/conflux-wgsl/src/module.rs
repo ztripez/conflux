@@ -216,6 +216,98 @@ pub struct FieldShaderModule {
     pub bindings: Vec<FieldBindingRequirement>,
 }
 
+/// What an actor shader binding's storage buffer holds, so downstream resource
+/// layers can map actor and host-field data without parsing WGSL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ActorBindingSource {
+    /// One actor-set channel, addressed by actor-set/channel index. The buffer is
+    /// sized to the actor count.
+    ActorChannel {
+        /// Source actor set name.
+        actor_set: String,
+        /// Source actor set index.
+        actor_set_index: usize,
+        /// Source channel name.
+        name: String,
+        /// Source channel index within the actor set.
+        channel: usize,
+    },
+    /// One host-field channel sampled by actor position. The buffer is sized to
+    /// the host field cell count, not the actor count.
+    FieldSample {
+        /// Source host-field index.
+        field_index: usize,
+        /// Source field channel name.
+        name: String,
+        /// Source channel index within the host field.
+        channel: usize,
+    },
+    /// Actor positions as row-major host-field cell indices, one `u32` per actor.
+    Positions,
+    /// The generated diagnostic output buffer. It holds `assessments * actors`
+    /// f32 violation magnitudes, laid out `[assessment * actors + actor]`.
+    Diagnostics {
+        /// Number of assessments, i.e. diagnostic rows of `actor_count` each.
+        assessments: usize,
+    },
+}
+
+/// One storage-buffer binding an actor shader needs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActorBindingRequirement {
+    /// WGSL bind group index for this storage buffer.
+    pub group: u32,
+    /// WGSL binding index within [`Self::group`].
+    pub binding: u32,
+    /// WGSL variable name for this buffer.
+    pub var: String,
+    /// Storage access mode declared for this binding.
+    pub access: Access,
+    /// Scalar value type stored in the buffer.
+    pub scalar_type: ScalarType,
+    /// What the buffer holds.
+    pub source: ActorBindingSource,
+}
+
+impl ActorBindingRequirement {
+    /// The source actor channel index this binding maps to, or `None` for
+    /// field-sample, positions, and diagnostic buffers.
+    pub fn actor_channel(&self) -> Option<usize> {
+        match &self.source {
+            ActorBindingSource::ActorChannel { channel, .. } => Some(*channel),
+            ActorBindingSource::FieldSample { .. }
+            | ActorBindingSource::Positions
+            | ActorBindingSource::Diagnostics { .. } => None,
+        }
+    }
+}
+
+/// A lowered bounded actor-rule kernel: stable WGSL plus actor-specific resource
+/// requirements a backend needs to run it explicitly.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActorShaderModule {
+    /// Source actor-rule kernel name.
+    pub kernel: String,
+    /// Source actor set name.
+    pub actor_set: String,
+    /// Source host-field index for sampled field channels.
+    pub field: usize,
+    /// The generated WGSL source.
+    pub source: String,
+    /// Compute entry point name.
+    pub entry_point: String,
+    /// 1D workgroup size.
+    pub workgroup_size: u32,
+    /// Number of actors the shader processes.
+    pub actor_count: usize,
+    /// Target actor channel index.
+    pub target: usize,
+    /// Target actor channel name.
+    pub target_name: String,
+    /// Storage buffer bindings, in binding-index order.
+    pub bindings: Vec<ActorBindingRequirement>,
+}
+
 /// What a flow shader binding's storage buffer holds, so downstream resource
 /// layers can map buffers without parsing WGSL.
 #[derive(Clone, Debug, PartialEq, Eq)]
