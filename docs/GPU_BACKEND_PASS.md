@@ -106,7 +106,9 @@ The excluded scopes are tracked explicitly so they are not lost:
 - GPU measurement and engine-integration planning: #250
   (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`);
 - graph/event GPU boundary revisit: #252;
-- GPU batching/fusion execution: #253.
+- GPU batching/fusion decision: #253
+  (`docs/GPU_BATCHING_FUSION_DECISION.md` keeps execution advisory-only until the
+  evidence and architecture gates are met).
 
 ## Acceptance for this boundary
 
