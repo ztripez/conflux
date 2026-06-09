@@ -40,12 +40,11 @@ Residency owns buffer-backed data movement and resource residency.
   optional hardware-gated GPU correctness checks. It is still the only Conflux
   crate allowed to contain shader code or depend on `wgpu`, and `wgpu` remains
   behind the `gpu` feature.
-- `conflux-residency` maps Conflux numeric resources into Residency descriptors
-  and embeds Residency transfer reports. Follow-up #248 may later map
-  `conflux-wgsl` binding requirements into Residency descriptors, but
-  `conflux-residency` must not reimplement Residency's generation tracking,
-  patch protocol, readback machinery, transfer planning, or backend buffer
-  lifecycle.
+- `conflux-residency` maps Conflux numeric resources and lowered
+  `conflux-wgsl` binding requirements into Residency descriptors and embeds
+  Residency transfer reports. It must not reimplement Residency's generation
+  tracking, patch protocol, readback machinery, transfer planning, or backend
+  buffer lifecycle.
 - Residency owns resource residency, mutation authority, generation tracking,
   uploads, readbacks, diagnostic attachments, transfer plans, transfer reports,
   and backend-specific buffer synchronization.
@@ -58,7 +57,8 @@ resource, authority, diagnostic, and generation contracts.
 ## Runtime boundary
 
 The default runtime path remains reference-only. This pass did not add runtime GPU
-selected execution; that policy is tracked in the follow-up GPU execution epic.
+selected execution; the later #246 follow-up added explicit policy reporting that
+can select or refuse `ExecutionPath::Gpu` without dispatching hardware work.
 
 - No `ExecutionMode::PreferGpu` / `RequireGpu` in this pass.
 - No `ExecutionPath::Gpu` in this pass.
@@ -67,11 +67,10 @@ selected execution; that policy is tracked in the follow-up GPU execution epic.
 - No planner-driven automatic execution. Planner reports remain advisory and
   never mutate the IR, fuse kernels, or change runtime behavior.
 
-Runtime GPU policy is tracked separately so it must define an explicit opt-in
-orchestration surface, typed fallback/refusal reasons, and a boundary-safe way to
-invoke GPU work without pulling shader or buffer-movement concerns into the
-runtime crate. The first runtime policy slice may select or refuse `Gpu` without
-dispatching hardware work; actual GPU dispatch remains a later boundary decision.
+Runtime GPU policy therefore remains an explicit opt-in reporting surface with
+typed fallback/refusal reasons. Actual GPU dispatch remains a later boundary
+decision and must not pull shader or buffer-movement concerns into the runtime
+crate.
 
 ## In-epic non-goals
 
@@ -80,29 +79,31 @@ GPU pass:
 
 - Residency-backed persistent GPU-resident execution;
 - adding `residency-wgpu` to Conflux;
-- flow GPU kernels;
+- flow WGSL lowering / correctness surfaces;
 - actor-rule runtime GPU dispatch;
-- GPU proximity-query execution;
+- proximity-query hardware-gated scan helpers;
 - graph-rule or event GPU backends;
 - applied fusion, batching, or automatic optimization;
 - Bevy or Godot GPU execution integration;
 - performance claims beyond correctness and smoke evidence.
 
-The correctness/smoke/performance claim taxonomy for the deferred GPU expansion
+The correctness/smoke/performance claim taxonomy for the follow-up GPU expansion
 work lives in `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`.
 
-## Deferred follow-ups
+## Follow-up outcomes
 
-The excluded scopes are tracked explicitly so they are not lost:
+The excluded scopes were tracked explicitly in the closed follow-up epic #261:
 
-- runtime GPU selected execution: #246;
+- runtime GPU selected execution/reporting policy: #246 (explicit policy can
+  select/refuse `ExecutionPath::Gpu`, but `conflux-runtime` still does not dispatch
+  GPU work);
 - Residency-backed GPU resource bridge: #248;
-- flow GPU kernels: #247 (`docs/FLOW_GPU_BACKEND.md` records the phase-0
-  amount/destination shader strategy);
-- actor-rule GPU kernels: #249 (`docs/ACTOR_GPU_KERNELS.md` records the phase-0
-  actor-channel/host-field-sample shader strategy; runtime dispatch remains
-  deferred);
-- exact GPU proximity-query execution: #251;
+- flow WGSL lowering / correctness surface: #247 (`docs/FLOW_GPU_BACKEND.md`
+  records the phase-0 amount/destination shader strategy);
+- actor-rule WGSL lowering / correctness surface: #249
+  (`docs/ACTOR_GPU_KERNELS.md` records the phase-0 actor-channel/host-field-sample
+  shader strategy; runtime dispatch remains deferred);
+- exact GPU proximity-query scan helper: #251;
 - GPU measurement and engine-integration planning: #250
   (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`);
 - graph/event GPU boundary decision: #252

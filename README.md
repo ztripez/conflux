@@ -18,7 +18,7 @@ Conflux owns simulation meaning and execution planning:
 - simulation IR
 - bounded numeric kernel extraction
 - CPU reference execution
-- future GPU/shader backend planning
+- bounded GPU/shader backend lowering decisions
 - reports explaining model stability, backend choice, and execution cost
 
 Conflux does **not** own CPU/GPU buffer truth or transfer. Residency owns:
@@ -72,16 +72,20 @@ crates/
 
 ## Status
 
-The MVP ladder (MVP0–MVP7) and Alpha 0 are complete. The Alpha 0 checkpoint is
-tagged `alpha-0`: it freezes the reference-grade CPU semantics, proves the public
-API with the `regional_settlement_ecology` scenario, and records the first
-optimization target from evidence. Since that checkpoint, the first optimized
-execution track (#192) added opt-in CPU paths for field-local **flows** and eligible
-**actor rules**, with visible fallback/equivalence reporting, and the post-Alpha
-query slice (#217) added an opt-in exact uniform-grid index path for bounded-radius
-**proximity queries**. The Bevy adapter phase 0 (#43) adds `conflux-bevy`, an
-adapter-only crate for manual stepping and report/diagnostic resources; Bevy
-dependencies remain mechanically forbidden outside that adapter.
+The MVP ladder (MVP0–MVP7), Alpha 0, Alpha 1, and the GPU follow-up epic (#261)
+are complete. Alpha 0 is tagged `alpha-0`: it freezes the reference-grade CPU
+semantics, proves the public API with the `regional_settlement_ecology` scenario,
+and records the first optimization target from evidence. Alpha 1 is tagged
+`alpha-1-runtime`: it added opt-in CPU paths for field-local **flows** and
+eligible **actor rules**, opt-in exact uniform-grid indexing for bounded-radius
+**proximity queries**, and internal aggregate precomputed region selection. The
+closed GPU follow-up track (#261) added boundary-safe Residency descriptor
+mapping, explicit runtime GPU selection/refusal reporting, WGSL lowering for
+flows and actor rules, an exact proximity-query GPU scan helper, and decision
+records keeping batching/fusion advisory-only and the graph/event GPU boundary
+closed. The Bevy adapter phase 0 (#43) adds `conflux-bevy`, an adapter-only crate
+for manual stepping and report/diagnostic resources; Bevy dependencies remain
+mechanically forbidden outside that adapter.
 
 The current implemented domains include 2D **fields** (local-kernel rules +
 field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**,
@@ -89,10 +93,11 @@ field-kernel equivalence), **regions/aggregates/bridges**, field-local **flows**
 **units & dimensions**, an explicit **graph** domain (topology, node/edge channels,
 and bounded-adjacency graph rules), and report-only **events** materialized from
 graph rules. For a concise snapshot of what is true now and the invariants you can
-rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). The current
-optimization decision record is exact bounded-radius proximity-query indexing
-(#217), recorded in
-[`docs/POST_ALPHA_OPTIMIZATION_TARGET.md`](docs/POST_ALPHA_OPTIMIZATION_TARGET.md).
+rely on, see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). Current GPU
+follow-up decision records include advisory-only batching/fusion
+([`docs/GPU_BATCHING_FUSION_DECISION.md`](docs/GPU_BATCHING_FUSION_DECISION.md))
+and the closed graph/event GPU boundary
+([`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`](docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md)).
 For which APIs are stable enough to build on versus experimental, see
 [`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview tag
 or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
@@ -130,23 +135,25 @@ backend (the CPU-side `FakeBackend` for now), embedding Residency's transfer
 report in a Conflux report. Residency owns generation tracking, patches,
 readbacks, and transfer planning; only `conflux-residency` depends on it.
 
-The first GPU compute backend (MVP5) lives in `conflux-wgsl`: it lowers an
-elementwise kernel to a stable, inspectable WGSL compute shader plus the
-bind/resource requirements a backend needs, and rejects kernels outside the
-supported subset with a reason. Both backends also lower the kernel's stability
-checks to an executable per-row diagnostic buffer (violation magnitudes that are
-measured and reported, never clamped), so instability surfaces as data; the
-equivalence example compares the GPU output and diagnostics against the CPU
-kernel path. Actual GPU execution is behind an
-optional `gpu` feature (wgpu); the example runs on a real adapter and skips
-gracefully when no GPU is present.
+The GPU compute backend (MVP5 and follow-up #261) lives in `conflux-wgsl`: it
+lowers accepted table, bounded 2D field, bounded flow, and bounded actor-rule
+kernels to stable, inspectable WGSL plus the bind/resource requirements a backend
+needs, and rejects unsupported kernels with a reason. Flow WGSL emits exact
+amount/destination buffers and preserves the CPU scatter semantics; actor WGSL
+matches the actor CPU-kernel input assembly. Optional hardware correctness helpers
+live behind the `gpu` feature (wgpu): table and field examples run on a real
+adapter and skip gracefully when no GPU is present, and the proximity-query helper
+returns explicit exact-scan metadata or a visible refusal. Runtime policy can
+explicitly select or refuse `ExecutionPath::Gpu`, but `conflux-runtime` still does
+not dispatch GPU work and has no `wgpu`, `conflux-wgsl`, Residency, or buffer
+movement dependency.
 
 Advisory optimization reports (MVP6) live in `conflux-planner`: it reads the
-kernel, WGSL, and Residency reports and explains, per rule, which backend is
-available (reference / CPU kernel / GPU) and why a more-optimized path is not,
-plus static cost hints, fusion candidates, and transfer-cost notes from a
-Residency report. Everything is advisory — the planner reads the reports and
-never rewrites the IR, fuses kernels, or changes execution.
+kernel, WGSL, and Residency reports and explains, per rule, which advisory surface
+is available (reference, CPU kernel, or WGSL-lowerable GPU capability) and why a
+more-optimized path is not, plus static cost hints, fusion candidates, and
+transfer-cost notes from a Residency report. Everything is advisory — the planner
+reads the reports and never rewrites the IR, fuses kernels, or changes execution.
 
 Trace artifacts and profile-guided planning (MVP7) are optional research in
 `conflux-trace`. A trace records, per rule, measured timing, the backend that

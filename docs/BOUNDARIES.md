@@ -23,7 +23,7 @@ Conflux owns the meaning and execution of simulation rules.
 - bounded kernel extraction
 - CPU reference execution
 - backend choice reports
-- future shader/backend lowering decisions
+- bounded shader/backend lowering decisions
 
 ## Residency owns
 
@@ -57,12 +57,12 @@ the **only** crate allowed to depend on `residency-core`.
 - `conflux-wgsl` is the only crate that emits shader source or depends on
   `wgpu` (behind its `gpu` feature). GPU/shader concerns never enter the core
   crates.
-- The GPU backend pass is correctness-first and boundary-preserving: shader
-  lowering and optional hardware-gated checks stay in `conflux-wgsl`, while
-  resource residency, mutation authority, generation tracking, uploads,
-  readbacks, transfer planning, and transfer reports stay in Residency. See
-  `docs/GPU_BACKEND_PASS.md` for the active GPU workstream's scope and
-  non-goals.
+- The GPU backend and follow-up passes are correctness-first and
+  boundary-preserving: shader lowering and optional hardware-gated checks stay in
+  `conflux-wgsl`, while resource residency, mutation authority, generation
+  tracking, uploads, readbacks, transfer planning, and transfer reports stay in
+  Residency. See `docs/GPU_BACKEND_PASS.md` for the completed GPU workstream's
+  scope and non-goals.
 - `conflux-planner` reads the kernel, WGSL, and Residency reports to produce
   advisory optimization/planning reports. It only *reads* those reports — it
   emits no shader source, depends on no `wgpu` or `residency-core` directly,
@@ -113,11 +113,11 @@ Conflux core should not implement its own:
 
 Those belong in Residency.
 
-Runtime GPU selected execution is outside the current GPU pass and tracked
-separately. If it is added later, it must be explicit opt-in policy with visible
-fallback/refusal reporting — never hidden behind the reference executor. The
-default runtime path remains reference-only, and planner GPU eligibility remains
-advisory rather than an instruction to execute on the GPU.
+Runtime GPU selected-execution policy exists as explicit opt-in reporting for
+eligible table rules: it may select or refuse `ExecutionPath::Gpu`, but it does
+not dispatch hardware work. The default runtime path remains reference-only, and
+planner GPU eligibility remains advisory rather than an instruction to execute on
+the GPU.
 
 Graph and event GPU backends remain out of scope under
 `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`: graph rules run on the CPU reference

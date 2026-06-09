@@ -6,7 +6,20 @@ contributors and agents. For the factual architecture description see
 `docs/MVP_LADDER.md` and the README `## Status` section; for the ownership split
 see `docs/BOUNDARIES.md`.
 
-## Checkpoint: `mvp-cpu-snapshot-v0`
+## Checkpoints
+
+Known-green tags so far:
+
+- `mvp-cpu-snapshot-v0` — end of the MVP/reference-build phase and start of
+  Alpha 0.
+- `alpha-0` — reference-grade CPU semantics frozen against the graph/event state.
+- `alpha-1-runtime` — first post-Alpha optimized runtime checkpoint.
+
+The GPU follow-up epic (#261) is closed on `main`; it did not cut a tag and did
+not add default or hidden runtime GPU dispatch. Alpha 2 readiness work starts from
+this post-#261 baseline.
+
+### `mvp-cpu-snapshot-v0`
 
 This tag marks the end of the MVP/reference-build phase and the start of Alpha 0
 (epic #179): the full CPU reference semantic baseline **after** the graph and
@@ -64,18 +77,19 @@ canonical scenario.
 - **Bounded numeric kernel extraction + equivalence**: elementwise table kernels,
   field-stencil kernels, and fixed-offset flow kernels each have bounded CPU kernel
   forms compared against the reference (f64) within declared tolerance, never
-  bit-for-bit. `conflux-wgsl` lowers accepted table, bounded 2D field, and bounded
-  flow kernels to deterministic WGSL modules. Flow WGSL computes exact
-  amount/destination buffers and uses deterministic CPU scatter to preserve
-  no-clamp conservation accounting. Its optional `gpu` feature provides
-  hardware-gated table and field CPU/GPU equivalence helpers plus an explicit
-  exact bounded-radius Chebyshev/Manhattan proximity-query GPU scan helper; they
-  report `match`, `mismatch`, `skipped: no adapter`, or `ExactGpuScan` metadata
-  and are not part of default runtime execution.
+  bit-for-bit. `conflux-wgsl` lowers accepted table, bounded 2D field, bounded
+  flow, and bounded actor-rule kernels to deterministic WGSL modules. Flow WGSL
+  computes exact amount/destination buffers and uses deterministic CPU scatter to
+  preserve no-clamp conservation accounting. Actor WGSL emits one proposal per
+  actor and matches the actor CPU-kernel input assembly. Its optional `gpu`
+  feature provides hardware-gated table and field CPU/GPU equivalence helpers plus
+  an explicit exact bounded-radius Chebyshev/Manhattan proximity-query GPU scan
+  helper; they report `match`, `mismatch`, `skipped: no adapter`, or
+  `ExactGpuScan` metadata and are not part of default runtime execution.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
-  transfer notes, GPU capability for table/field/flow WGSL lowering, proximity-index
-  eligibility, and graph-kernel eligibility) and `conflux-trace` (optional, off
+  transfer notes, GPU capability for table/field/flow/actor WGSL lowering,
+  proximity-index eligibility, and graph-kernel eligibility) and `conflux-trace` (optional, off
   the execution path). The GPU capability report distinguishes WGSL-lowerable
   rules/flows from work actually run on GPU; planner-produced entries do not imply
   GPU dispatch. The proximity-index
@@ -131,15 +145,19 @@ events run only on the CPU reference path, as reaffirmed by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
 
 The tracked GPU backend pass (#238) did not change those boundaries: it hardened
-`conflux-wgsl` correctness for table and bounded field kernels. The follow-up GPU
-execution track (#261, with runtime selected-execution policy in #246 and flow WGSL
-lowering in #247) has since added a Residency descriptor-mapping bridge, explicit
-runtime GPU selection/refusal policy, and a flow amount/destination shader backend,
-while still deferring runtime-integrated GPU dispatch, actor-rule runtime GPU
-dispatch, graph/event GPU backends, fusion, and engine GPU integration. Query GPU
-support is currently only the explicit `conflux-wgsl` helper described above, not a
-runtime-selected execution path. See `docs/GPU_BACKEND_PASS.md` and
-`docs/FLOW_GPU_BACKEND.md`.
+`conflux-wgsl` correctness for table and bounded field kernels. The now-closed
+follow-up GPU execution track (#261) added a Residency descriptor-mapping bridge
+(#248), explicit runtime GPU selection/refusal policy for table-rule eligibility
+(#246), flow amount/destination WGSL lowering (#247), actor-rule WGSL lowering
+(#249), an exact proximity-query GPU scan helper (#251), and decision records for
+batching/fusion (#253) and graph/events (#252). It still does **not** add
+runtime-integrated GPU dispatch, flow or actor-rule runtime GPU dispatch,
+graph/event GPU backends, fusion, or engine GPU integration. Query GPU support is
+currently only the explicit `conflux-wgsl` helper described above, not a
+runtime-selected execution path. See `docs/GPU_BACKEND_PASS.md`,
+`docs/FLOW_GPU_BACKEND.md`, `docs/ACTOR_GPU_KERNELS.md`,
+`docs/GPU_BATCHING_FUSION_DECISION.md`, and
+`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`.
 
 The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is
 documentation/reporting only. It separates correctness, smoke, and performance
@@ -148,7 +166,7 @@ GPU batching/fusion decision (`docs/GPU_BATCHING_FUSION_DECISION.md`) keeps
 batching and fusion advisory-only until measured workload, transfer, equivalence,
 opt-in API, and architecture-decision gates are met.
 
-## Checkpoint: `alpha-0`
+## Checkpoint detail: `alpha-0`
 
 This tag marks the end of the Alpha 0 phase (epic #179): the reference-grade
 simulation core, proven against one real end-to-end scenario, with the first
@@ -178,7 +196,7 @@ semantic domain — it is about trust, usability, and measurement. What landed:
 Alpha 0 is a checkpoint, not a public crates.io release; promotion to a release is
 governed by `docs/RELEASE_CHECKLIST.md`.
 
-## Checkpoint: `alpha-1-runtime`
+## Checkpoint detail: `alpha-1-runtime`
 
 This tag marks the post-Alpha runtime optimization checkpoint (epic #223): the CPU
 reference path remains the source of truth, and the first measured, opt-in and
@@ -204,27 +222,18 @@ internal optimized execution paths have landed since Alpha 0. What changed:
 Alpha 1 is a checkpoint, not a public crates.io release; promotion to a release
 remains governed by `docs/RELEASE_CHECKLIST.md`.
 
-## Next
+## Current Alpha 2 / RC-readiness focus
 
-The reference-grade core is complete and frozen at `alpha-0`, and the first
-optimized execution track — flows and actor-rule execution (#192) — has landed.
-Proximity-query indexing (#217) added an opt-in exact index path for bounded-radius
-queries. Aggregate evaluation now uses precomputed region `(cell, weight)`
-selections built once at simulation construction, avoiding repeated mask-to-list
-conversion. Bridge preparation evaluates aggregates once per tick and feeds both
-aggregate and projection bridges from that single evaluation.
-Aggregate reports and bridge timing are preserved unchanged.
+The reference-grade core is complete and frozen at `alpha-0`; Alpha 1's opt-in CPU
+optimization work and the post-#261 GPU follow-up work have landed. Alpha 2 / RC
+readiness is now about making the public baseline trustworthy for external Rust
+users: current-state docs, preview tagging, API stability labels, publish policy,
+CI gates, and final review signoff.
 
-The next integration track is proving the Bevy adapter boundary (#43): manual
-stepping and report/diagnostic resources in `conflux-bevy`, with no Bevy concepts
-in core simulation crates. Godot remains parked until that boundary is proven.
+The Bevy adapter boundary (#43) remains phase 0: manual stepping and
+report/diagnostic resources in `conflux-bevy`, with no Bevy concepts in core
+simulation crates. Godot remains parked until that boundary is proven further.
+
 Graph-rule kernels remain advisory only under the current hard boundary unless
-that boundary is explicitly reopened.
-
-Deferred GPU work is grouped under #261. Waves 0–3 have landed or produced their
-decision records: Residency resource descriptors (#248), measurement/engine
-guardrails (#250), explicit runtime GPU selection/refusal policy (#246), flow /
-actor / proximity WGSL surfaces (#247, #249, #251), and the advisory-only
-batching/fusion decision (#253), and the graph/event GPU boundary decision (#252).
-The graph/event boundary remains closed: there is still no graph-kernel backend,
-and graph events remain report-only.
+that boundary is explicitly reopened. The graph/event boundary remains closed:
+there is still no graph-kernel backend, and graph events remain report-only.

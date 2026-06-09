@@ -3,9 +3,9 @@
 A concrete, actionable gate for deciding when Conflux is ready to ship. It
 distinguishes two tiers:
 
-- **Preview / internal readiness** — a tagged, known-green checkpoint (today
-  `mvp-cpu-snapshot-v0`) that contributors and agents can rely on. No crates.io
-  publish.
+- **Preview / internal readiness** — a tagged, known-green checkpoint (for example,
+  `alpha-0`, `alpha-1-runtime`, or the next Alpha 2 preview tag) that contributors
+  and agents can rely on. No crates.io publish.
 - **Public crate release readiness** — publishing to crates.io. This is a strict
   superset of preview readiness and has prerequisites that are **not yet met**
   (notably the Residency git-dependency blocker, below).
