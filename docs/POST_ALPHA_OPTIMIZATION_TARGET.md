@@ -80,7 +80,7 @@ the CPU reference scan.
 - No `KNearest` index implementation in this slice; the advisory report already
   explains why it needs a separate expanding-ring strategy.
 - No graph-kernel backend; graph rules remain reference-only under the current hard
-  boundary.
+  boundary, reaffirmed in `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`.
 - No aggregate optimization in this slice.
 - No GPU, Residency, buffer-movement, or shader work.
 - No automatic optimizer or runtime-adaptive planner; selected execution remains
@@ -94,8 +94,9 @@ the CPU reference scan.
   discovery/reporting slice before implementation.
 - **Graph rules** already have `graph_eligibility`, and `trade_load` is an eligible
   candidate shape, but the current project boundary still says there is no
-  graph-kernel backend. Do not select graph kernels until that boundary is explicitly
-  reopened.
+  graph-kernel backend. Do not select graph kernels until that boundary is
+  explicitly reopened through the re-entry gate in
+  `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`.
 - **Graph events** materialize report-only variable-length event lists and are not a
   fixed-buffer kernel target in the current architecture.
 
