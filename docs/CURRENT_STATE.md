@@ -107,7 +107,9 @@ These are enforced and tested; rely on them.
 - **Graph adjacency is bounded.** Incident edges and neighbor nodes are
   precomputed at lowering; there is no generic traversal or gather/scatter.
 - **Events are report-only.** Materializing an event writes no simulation state
-  and is never consumed, queued, or scheduled.
+  and is never consumed, queued, or scheduled. The graph/event GPU boundary
+  decision (`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`) keeps this boundary
+  closed.
 - **Derived columns/channels may not read derived ones.** Rejected at lowering
   (`DerivedReadsDerived` / `FieldDerivedReadsDerived` / `GraphDerivedReadsDerived`).
 - **One writer per stock.** Duplicate writers of a stock/channel are rejected
@@ -124,7 +126,8 @@ These are enforced and tested; rely on them.
 No custom DSL parser. No GPU/shader code outside `conflux-wgsl`. No Residency
 dependency outside `conflux-residency`. Planning is advisory; profile-guided
 planning is optional research. There is no graph-kernel backend — graph rules and
-events run only on the CPU reference path. Enforced mechanically by
+events run only on the CPU reference path, as reaffirmed by
+`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`. Enforced mechanically by
 `conflux-arch-guard`'s `tests/dependency_boundaries.rs`.
 
 The tracked GPU backend pass (#238) did not change those boundaries: it hardened
@@ -222,6 +225,6 @@ Deferred GPU work is grouped under #261. Waves 0–3 have landed or produced the
 decision records: Residency resource descriptors (#248), measurement/engine
 guardrails (#250), explicit runtime GPU selection/refusal policy (#246), flow /
 actor / proximity WGSL surfaces (#247, #249, #251), and the advisory-only
-batching/fusion decision (#253). The remaining wave is the graph/event GPU
-boundary revisit (#252), which still requires an explicit boundary decision before
-any backend implementation.
+batching/fusion decision (#253), and the graph/event GPU boundary decision (#252).
+The graph/event boundary remains closed: there is still no graph-kernel backend,
+and graph events remain report-only.

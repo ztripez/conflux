@@ -58,9 +58,10 @@ These are the domains that still run only on the CPU reference path with no
 opt-in or precomputed path:
 
 - **Graph rules** — advisory kernel eligibility exists; graph-kernel backend is out
-  of scope under the current hard boundary
+  of scope under the current hard boundary, reaffirmed in
+  `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`
 - **Graph events** — report-only variable-length event lists; not a fixed-buffer
-  kernel target
+  kernel target and not consumed, queued, or scheduled
 
 ## Baseline output (Alpha 1)
 

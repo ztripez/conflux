@@ -105,7 +105,9 @@ The excluded scopes are tracked explicitly so they are not lost:
 - exact GPU proximity-query execution: #251;
 - GPU measurement and engine-integration planning: #250
   (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`);
-- graph/event GPU boundary revisit: #252;
+- graph/event GPU boundary decision: #252
+  (`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md` keeps graph/event GPU backends out
+  of scope until the re-entry gate is met);
 - GPU batching/fusion decision: #253
   (`docs/GPU_BATCHING_FUSION_DECISION.md` keeps execution advisory-only until the
   evidence and architecture gates are met).

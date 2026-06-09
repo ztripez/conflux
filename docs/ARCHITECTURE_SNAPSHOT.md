@@ -173,7 +173,8 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   with the reason.
 - **Planner reports** — backend choice + cost hints, fusion candidates, transfer
   advisories, GPU capability for table/field/flow WGSL lowering, proximity-index
-  eligibility, and graph-kernel eligibility (all advisory).
+  eligibility, and graph-kernel eligibility (all advisory). The graph/event GPU
+  boundary decision is recorded in `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`.
 - **Trace + recommendations** — optional, off the execution path.
 - **Baseline report** — `cargo run -p conflux-fixtures --example baseline_report`
   prints the report shape for every canonical scenario in one place (visibility
@@ -232,5 +233,7 @@ readbacks, or approximate proximity search. No engine/ECS concepts in Conflux co
 crates; engine integration must stay in adapter crates such as `conflux-bevy`. The
 graph and event domains exist, but there is **no graph-kernel backend** — graph
 rules and events run only on the CPU reference path — and events are report-only,
-with no queue, consumption, or scheduling. Units are validation metadata, not a
+with no queue, consumption, or scheduling.
+`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md` keeps this boundary closed until a
+future issue satisfies its re-entry gate. Units are validation metadata, not a
 runtime numeric domain, and there is no automatic unit conversion.

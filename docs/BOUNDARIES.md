@@ -119,6 +119,11 @@ fallback/refusal reporting — never hidden behind the reference executor. The
 default runtime path remains reference-only, and planner GPU eligibility remains
 advisory rather than an instruction to execute on the GPU.
 
+Graph and event GPU backends remain out of scope under
+`docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`: graph rules run on the CPU reference
+path, graph events are report-only, and no event queue, consumer, or scheduler is
+introduced through GPU work.
+
 ## Forbidden in Residency
 
 Residency should not grow:
