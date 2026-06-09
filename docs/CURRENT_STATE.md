@@ -14,10 +14,13 @@ Known-green tags so far:
   Alpha 0.
 - `alpha-0` — reference-grade CPU semantics frozen against the graph/event state.
 - `alpha-1-runtime` — first post-Alpha optimized runtime checkpoint.
+- `alpha-2-gpu-boundary` — preview checkpoint for the CPU reference core,
+  optimized CPU/index paths, bounded GPU correctness/reporting surfaces, and Bevy
+  phase-0 adapter boundary.
 
-The GPU follow-up epic (#261) is closed on `main`; it did not cut a tag and did
-not add default or hidden runtime GPU dispatch. Alpha 2 readiness work starts from
-this post-#261 baseline.
+The GPU follow-up epic (#261) is closed on `main`. It did not add default or
+hidden runtime GPU dispatch; the `alpha-2-gpu-boundary` checkpoint records that
+post-#261 boundary explicitly.
 
 ### `mvp-cpu-snapshot-v0`
 
@@ -222,13 +225,52 @@ internal optimized execution paths have landed since Alpha 0. What changed:
 Alpha 1 is a checkpoint, not a public crates.io release; promotion to a release
 remains governed by `docs/RELEASE_CHECKLIST.md`.
 
-## Current Alpha 2 / RC-readiness focus
+## Checkpoint detail: `alpha-2-gpu-boundary`
+
+This tag marks the post-#261 GPU-boundary preview checkpoint (epic #270):
+
+```text
+CPU reference core + optimized CPU/index paths + bounded GPU correctness/reporting surfaces + Bevy phase-0 adapter
+```
+
+What the checkpoint means:
+
+- **CPU reference core remains the source of truth.** Default `Simulation::new` and
+  normal runtime execution stay reference-first and do not require a trace, GPU,
+  Residency, or engine adapter.
+- **Optimized CPU/index paths exist where they are exact or equivalence-checked.**
+  Flow and eligible actor-rule CPU kernels are opt-in with typed fallback/refusal;
+  bounded-radius proximity queries can opt into exact uniform-grid pruning, with
+  the scan remaining the semantic contract.
+- **GPU surfaces are bounded and explicit.** `conflux-wgsl` emits deterministic
+  WGSL for accepted table, bounded 2D field, bounded flow, and bounded actor-rule
+  kernels. Optional `gpu` helpers currently cover table/field CPU-GPU equivalence
+  checks and the exact bounded-radius proximity-query scan helper. Runtime policy
+  may select or refuse `ExecutionPath::Gpu` for eligible table rules, but actual
+  runtime GPU dispatch remains absent from `conflux-runtime`.
+- **GPU ownership boundaries remain closed.** Shader code and optional `wgpu` stay
+  in `conflux-wgsl`; Residency resource mapping stays in `conflux-residency`; core
+  and runtime crates do not depend on `wgpu`, `conflux-wgsl`, Residency, or
+  buffer-movement crates.
+- **Graph and event GPU work remains out of scope.** Graph rules run only on the
+  CPU reference path, graph events remain report-only, and
+  `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md` keeps that boundary closed.
+- **Bevy remains phase-0 adapter-only.** `conflux-bevy` owns Bevy resources,
+  messages, systems, and manual stepping; no Bevy concepts enter the core
+  simulation crates, and Godot remains parked.
+
+Alpha 2 is a preview checkpoint, not a public crates.io release. Public release
+promotion remains governed by `docs/RELEASE_CHECKLIST.md`, including the
+`residency-core` git-dependency blocker recorded in `docs/PUBLISH_POLICY.md`.
+
+## Current RC-readiness focus
 
 The reference-grade core is complete and frozen at `alpha-0`; Alpha 1's opt-in CPU
-optimization work and the post-#261 GPU follow-up work have landed. Alpha 2 / RC
-readiness is now about making the public baseline trustworthy for external Rust
-users: current-state docs, preview tagging, API stability labels, publish policy,
-CI gates, and final review signoff.
+optimization work and the post-#261 GPU follow-up work have landed; and
+`alpha-2-gpu-boundary` records the preview baseline. Remaining RC-readiness work
+is about final verification of that public baseline for external Rust users:
+reviewing stability/release docs for drift, confirming CI and publish gates, and
+collecting final review signoff.
 
 The Bevy adapter boundary (#43) remains phase 0: manual stepping and
 report/diagnostic resources in `conflux-bevy`, with no Bevy concepts in core
