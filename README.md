@@ -111,6 +111,9 @@ example:
 cargo run -p conflux-runtime --example public_rust_usage
 ```
 
+For optimized-path requested/eligible/selected/used/fallback-reason reporting, see
+[`docs/SELECTED_EXECUTION.md`](docs/SELECTED_EXECUTION.md).
+
 The CPU-only vertical slice (MVP1) is in place:
 
 ```text

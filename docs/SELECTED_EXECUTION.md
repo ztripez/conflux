@@ -43,6 +43,24 @@ indexes:
 - **`QueryExecutionMode::RequireIndex`** — index-eligible queries use the index; an
   ineligible query is refused instead of silently scanning.
 
+## Report vocabulary
+
+The selected-execution report uses one vocabulary across rules and queries:
+
+- **requested** — the mode the caller asked for (`ExecutionMode` or
+  `QueryExecutionMode`).
+- **eligible** — the best candidate path the rule or query qualifies for under the
+  request.
+- **selected** — the path policy chose after combining requested mode and
+  eligibility.
+- **used** — the path that actually ran. `None` means a `Require*` mode refused the
+  work instead of silently running a fallback.
+- **fallback reason** — the typed reason a `Prefer*` mode fell back or a `Require*`
+  mode refused.
+
+Use these fields instead of parsing display text. Display suffixes are for humans;
+the typed fields are the contract.
+
 ## Per-rule fields (`RuleFireReport`)
 
 Each table-rule firing carries:
@@ -88,31 +106,59 @@ queries refuse visibly rather than approximate.
 
 ## Worked example
 
-Run the real scenario under a kernel-requesting mode:
+Build a model through the public Rust API, then run it under a kernel-requesting
+mode:
 
 ```rust
-use conflux_core::lower;
-use conflux_fixtures::regional_settlement_ecology;
+use conflux_core::{col, lower, param, Model, Rule, Table};
 use conflux_runtime::{ExecutionMode, Simulation};
 
-let ir = lower(&regional_settlement_ecology()).unwrap();
+let mut store = Table::new("Store", 2);
+store
+    .stock("reserve", vec![10.0, 20.0])
+    .stock("level", vec![5.0, 5.0])
+    .signal("inflow", vec![1.0, 2.0]);
+
+let mut model = Model::new("selected_execution_example");
+model.param("rate", 0.5);
+model.add_table(store);
+model.add_rule(
+    Rule::new("accumulate")
+        .on("Store")
+        .propose("reserve", col("reserve") + col("inflow")),
+);
+model.add_rule(
+    Rule::new("leak")
+        .on("Store")
+        .propose("level", col("level") - param("rate")),
+);
+
+let ir = lower(&model)?;
 let mut sim = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
 let report = sim.run(1);
 println!("{report}");
+# Ok::<(), conflux_core::LowerError>(())
 ```
 
 The rendered report explains each rule's choice in its Display suffix:
 
 ```text
-  rule `store_grain` -> Settlement.grain_store (dt = 1) [cpu-kernel]
-  rule `grow_population` -> Settlement.population (dt = 1) [fell back to reference: reads parameter `growth`; scalar parameter reads are not modeled in MVP2 kernels]
+  rule `accumulate` -> Store.reserve (dt = 1) [cpu-kernel]
+  rule `leak` -> Store.level (dt = 1) [fell back to reference: reads parameter `rate`; scalar parameter reads are not modeled in MVP2 kernels]
 ```
 
-`store_grain` is pure column arithmetic, so it runs on the kernel; `grow_population`
-reads the `growth` parameter, so it is not kernel-eligible and falls back to the
+`accumulate` is pure column arithmetic, so it runs on the kernel; `leak` reads the
+`rate` parameter, so it is not kernel-eligible and falls back to the
 reference — with the specific reason inline. Under `RequireCpuKernel` the same rule
 would instead read `[REFUSED: required kernel unavailable — reads parameter
-`growth`...]` and compute nothing, rather than silently run on the reference.
+`rate`...]` and compute nothing, rather than silently run on the reference.
+
+For a runnable downstream-style example that prints the typed fields directly,
+run:
+
+```sh
+cargo run -p conflux-runtime --example public_rust_usage
+```
 
 ## Establishing kernel equivalence
 
@@ -148,3 +194,15 @@ uniform-grid index — because the index only prunes candidates before applying 
 same exact distance, self-policy, and stable ordering checks. A refused query has
 `used_path: None`, no source results, and `exact: false` because no exact result was
 evaluated.
+
+## Planner reports are advisory
+
+`conflux-planner` may report that a rule is CPU-kernel eligible, WGSL-lowerable, or
+interesting for future optimization. Those reports do not change execution. Only
+the runtime's selected-execution fields (`requested_mode`, `eligible_path`,
+`selected_path`, `used_path`, and `fallback_reason`) say what a `Simulation`
+actually requested and ran.
+
+In particular, planner GPU capability means "WGSL-lowerable" and always reports
+`executed_on_gpu=false` in this slice. It is not a runtime dispatch instruction,
+not an engine integration path, and not a performance claim.
