@@ -20,7 +20,7 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-runtime` equivalence harness | **Stable-enough** | `check_equivalence` / tolerance compares reference vs kernel within a declared tolerance. |
 | `conflux-kernel` | **Stable-enough (bounded subset)** | Kernel IR + CPU executor for the supported elementwise/stencil/flow subset; rejection reasons are typed. Anything outside the subset is reported, not silently handled. |
 | `conflux-planner` reports | **Advisory (shape may evolve)** | The *advisory-only* guarantee is firm (never rewrites the IR or changes execution); the exact report shapes may change as backends evolve. |
-| `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic for accepted table kernels, bounded 2D field kernels, and bounded flow amount/destination kernels. |
+| `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic for accepted table kernels, bounded 2D field kernels, bounded flow amount/destination kernels, and bounded actor-rule kernels. |
 | `conflux-wgsl` `gpu` execution/equivalence | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); table and field CPU/GPU equivalence helpers skip gracefully without a GPU and report mismatches explicitly, and the exact bounded-radius Chebyshev/Manhattan proximity-query scan helper returns explicit `ExactGpuScan` metadata or visible refusal. They do not make runtime GPU execution automatic. |
 | `conflux-runtime` `PreferGpu` / `RequireGpu` policy | **Experimental** | Explicit selected-execution policy only, currently scoped to table-rule runtime GPU eligibility. It may select or refuse `ExecutionPath::Gpu`, but `conflux-runtime` still has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency and does not dispatch GPU work. Flow WGSL capability is planner/backend metadata only; actor-rule CPU kernels are not treated as runtime GPU eligibility. |
 | `conflux-residency` | **Experimental / release-blocked** | The bridge to Residency; release-blocked by the `residency-core` git dependency (see `docs/PUBLISH_POLICY.md`). |
@@ -78,6 +78,6 @@ Do not treat these as public surface, even where Rust visibility would allow it:
   exists), this document (what to rely on), and the fixture/report contracts (how
   reports behave). A change that breaks a fixture contract is a deliberate,
   reviewed contract change, not incidental.
-- A tagged preview (`mvp-cpu-snapshot-v0` today) marks a known-green checkpoint;
-  the release readiness checklist (`docs/RELEASE_CHECKLIST.md`, added later in this
-  release-polish epic) governs promotion to a public crate release.
+- Tagged previews (`mvp-cpu-snapshot-v0`, `alpha-0`, and `alpha-1-runtime` today)
+  mark known-green checkpoints; the release readiness checklist
+  (`docs/RELEASE_CHECKLIST.md`) governs promotion to a public crate release.
