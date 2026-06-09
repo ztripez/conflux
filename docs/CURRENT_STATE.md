@@ -140,7 +140,10 @@ runtime-selected execution path. See `docs/GPU_BACKEND_PASS.md` and
 
 The follow-up GPU measurement plan (`docs/GPU_MEASUREMENT_ENGINE_PLAN.md`) is
 documentation/reporting only. It separates correctness, smoke, and performance
-claims and does not introduce actual runtime GPU dispatch or an optimizer.
+claims and does not introduce actual runtime GPU dispatch or an optimizer. The
+GPU batching/fusion decision (`docs/GPU_BATCHING_FUSION_DECISION.md`) keeps
+batching and fusion advisory-only until measured workload, transfer, equivalence,
+opt-in API, and architecture-decision gates are met.
 
 ## Checkpoint: `alpha-0`
 
@@ -215,6 +218,10 @@ in core simulation crates. Godot remains parked until that boundary is proven.
 Graph-rule kernels remain advisory only under the current hard boundary unless
 that boundary is explicitly reopened.
 
-Deferred GPU work is grouped under #261. Wave 0 consists of the Residency-backed
-GPU resource bridge (#248) and the GPU measurement/engine planning guardrail
-(#250); neither changes the default reference runtime path.
+Deferred GPU work is grouped under #261. Waves 0–3 have landed or produced their
+decision records: Residency resource descriptors (#248), measurement/engine
+guardrails (#250), explicit runtime GPU selection/refusal policy (#246), flow /
+actor / proximity WGSL surfaces (#247, #249, #251), and the advisory-only
+batching/fusion decision (#253). The remaining wave is the graph/event GPU
+boundary revisit (#252), which still requires an explicit boundary decision before
+any backend implementation.

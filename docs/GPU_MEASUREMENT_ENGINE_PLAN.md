@@ -3,8 +3,8 @@
 This document scopes #250. It is a planning and reporting guardrail only: it does
 not add actual runtime GPU dispatch, an applied optimizer, engine-owned GPU
 semantics, or benchmark claims. Batching and fusion are covered here only as
-advisory reporting guardrails; GPU batching/fusion execution remains deferred to
-#253.
+advisory reporting guardrails; #253 evaluated applied GPU batching/fusion and kept
+it advisory-only in `docs/GPU_BATCHING_FUSION_DECISION.md`.
 
 ## Scope
 
@@ -12,6 +12,8 @@ advisory reporting guardrails; GPU batching/fusion execution remains deferred to
 - Keep correctness, smoke, and performance claims separate.
 - Preserve planner batching/fusion as advisory reporting unless a future issue
   explicitly changes that contract.
+- Treat `docs/GPU_BATCHING_FUSION_DECISION.md` as the current decision record for
+  why applied GPU batching/fusion is not implemented yet.
 - Define how engine adapters may surface Conflux GPU reports without owning
   simulation semantics.
 
@@ -76,9 +78,9 @@ and it does not imply a speedup.
 
 The planner may report batching/fusion candidates and transfer advisories. Those
 reports are explanatory: they do not rewrite IR, fuse kernels, batch dispatches,
-change runtime execution, or silently alter semantics. Any future applied batching
-or fusion issue must define an explicit opt-in policy, equivalence checks, and
-visible fallback/refusal reporting before implementation.
+change runtime execution, or silently alter semantics. #253 confirmed this remains
+the contract. Any future applied batching or fusion issue must satisfy the
+re-entry gate in `docs/GPU_BATCHING_FUSION_DECISION.md` before implementation.
 
 ## Engine adapter reporting
 

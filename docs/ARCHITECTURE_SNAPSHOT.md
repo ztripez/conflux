@@ -215,7 +215,9 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 - **Residency** — buffer movement and transfer reporting via the bridge crate; the
   CPU-side `FakeBackend` drives sync cycles today.
 - **Planner** — advisory only. It explains available backends and costs and never
-  rewrites the IR, fuses kernels, or changes execution.
+  rewrites the IR, fuses kernels, batches dispatches, or changes execution. The
+  applied GPU batching/fusion decision is recorded in
+  `docs/GPU_BATCHING_FUSION_DECISION.md`.
 - **Trace / profile-guided** — optional research; normal execution never requires a
   trace, and there is no release compiler or runtime adaptive optimizer.
 - **Bevy adapter** — phase-0 manual-step adapter via `conflux-bevy`; report and
