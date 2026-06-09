@@ -102,6 +102,15 @@ For which APIs are stable enough to build on versus experimental, see
 [`docs/API_STABILITY.md`](docs/API_STABILITY.md). The gate for cutting a preview tag
 or a public crate release is [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
+New Rust users should start with `conflux-core` for model authoring and
+`conflux-runtime` for execution/report reading. See
+[`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) and the downstream-style
+example:
+
+```sh
+cargo run -p conflux-runtime --example public_rust_usage
+```
+
 The CPU-only vertical slice (MVP1) is in place:
 
 ```text
@@ -168,6 +177,7 @@ Run the worked examples:
 
 ```sh
 cargo run -p conflux-runtime --example settlement
+cargo run -p conflux-runtime --example public_rust_usage
 cargo run -p conflux-runtime --example kernel_extraction
 cargo run -p conflux-runtime --example equivalence
 cargo run -p conflux-residency --example residency_bridge
