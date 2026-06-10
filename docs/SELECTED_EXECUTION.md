@@ -113,31 +113,33 @@ mode:
 use conflux_core::{col, lower, param, Model, Rule, Table};
 use conflux_runtime::{ExecutionMode, Simulation};
 
-let mut store = Table::new("Store", 2);
-store
-    .stock("reserve", vec![10.0, 20.0])
-    .stock("level", vec![5.0, 5.0])
-    .signal("inflow", vec![1.0, 2.0]);
+fn main() -> Result<(), conflux_core::LowerError> {
+    let mut store = Table::new("Store", 2);
+    store
+        .stock("reserve", vec![10.0, 20.0])
+        .stock("level", vec![5.0, 5.0])
+        .signal("inflow", vec![1.0, 2.0]);
 
-let mut model = Model::new("selected_execution_example");
-model.param("rate", 0.5);
-model.add_table(store);
-model.add_rule(
-    Rule::new("accumulate")
-        .on("Store")
-        .propose("reserve", col("reserve") + col("inflow")),
-);
-model.add_rule(
-    Rule::new("leak")
-        .on("Store")
-        .propose("level", col("level") - param("rate")),
-);
+    let mut model = Model::new("selected_execution_example");
+    model.param("rate", 0.5);
+    model.add_table(store);
+    model.add_rule(
+        Rule::new("accumulate")
+            .on("Store")
+            .propose("reserve", col("reserve") + col("inflow")),
+    );
+    model.add_rule(
+        Rule::new("leak")
+            .on("Store")
+            .propose("level", col("level") - param("rate")),
+    );
 
-let ir = lower(&model)?;
-let mut sim = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
-let report = sim.run(1);
-println!("{report}");
-# Ok::<(), conflux_core::LowerError>(())
+    let ir = lower(&model)?;
+    let mut sim = Simulation::with_mode(ir, ExecutionMode::PreferCpuKernel);
+    let report = sim.run(1);
+    println!("{report}");
+    Ok(())
+}
 ```
 
 The rendered report explains each rule's choice in its Display suffix:
