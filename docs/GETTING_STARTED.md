@@ -48,6 +48,9 @@ The public usage example does not request experimental GPU execution. Runtime GP
 policy can select or refuse `ExecutionPath::Gpu` for eligible table rules, but
 actual runtime GPU dispatch remains absent from `conflux-runtime`.
 
+For the complete requested/eligible/selected/used/fallback-reason vocabulary, see
+[`docs/SELECTED_EXECUTION.md`](SELECTED_EXECUTION.md).
+
 ## Optional visibility layers
 
 After the core + runtime path is clear, optional crates provide more reports:

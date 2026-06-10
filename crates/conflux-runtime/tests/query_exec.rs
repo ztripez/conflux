@@ -336,6 +336,11 @@ fn k_nearest_falls_back_or_is_refused_by_index_mode() {
         !required.exact,
         "a refused query did not evaluate an exact result"
     );
+    let rendered = format!("{required}");
+    assert!(
+        rendered.contains("REFUSED: required query index unavailable"),
+        "{rendered}"
+    );
 }
 
 #[test]
