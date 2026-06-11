@@ -25,7 +25,7 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-runtime` `PreferGpu` / `RequireGpu` policy | **Experimental** | Explicit selected-execution policy only, currently scoped to table-rule runtime GPU eligibility. It may select or refuse `ExecutionPath::Gpu`, but `conflux-runtime` still has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency and does not dispatch GPU work. Flow WGSL capability is planner/backend metadata only; actor-rule CPU kernels are not treated as runtime GPU eligibility. |
 | `conflux-residency` | **Experimental / release-blocked** | The bridge to Residency; release-blocked by the `residency-core` git dependency (see `docs/PUBLISH_POLICY.md`). |
 | `conflux-trace` | **Experimental (research)** | Trace schema + profile-guided recommendations. Off the execution path; normal runs never require it. |
-| `conflux-bevy` | **Experimental adapter** | Phase-0 Bevy integration: manual stepping and report/diagnostic resources. Bevy types are adapter-only and may change while the boundary is proven. |
+| `conflux-bevy` | **Internal experimental adapter** | Phase-0 Bevy integration: manual stepping and report/diagnostic resources. It is `publish = false` and excluded from the first public crate release; Bevy types are adapter-only and may change while the boundary is proven. |
 
 ## Explicitly experimental surfaces
 
@@ -61,9 +61,9 @@ fallback reasons, and the equivalence/comparison status), see
 
 Do not treat these as public surface, even where Rust visibility would allow it:
 
-- **`conflux-fixtures`** and **`conflux-arch-guard`** — internal (`publish = false`):
-  test-support scenarios and the dependency-boundary guard. Fixtures are contracts,
-  not an authoring layer.
+- **`conflux-bevy`**, **`conflux-fixtures`**, and **`conflux-arch-guard`** — internal
+  (`publish = false`): the preview Bevy adapter, test-support scenarios, and the
+  dependency-boundary guard. Fixtures are contracts, not an authoring layer.
 - **`pub(crate)` items and lowering submodules** — lowering internals
   (`lower/*`), executor internals, and any non–re-exported type are implementation
   detail. The public surface of each crate is what its `lib.rs` re-exports.

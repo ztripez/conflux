@@ -18,34 +18,58 @@ Every workspace crate has an explicit decision.
 | `conflux-planner` | **Public** | tooling reading advisory reports |
 | `conflux-trace` | **Public** | profile-guided research consumers |
 | `conflux-wgsl` | **Public** | GPU backend consumers (`gpu` feature opt-in) |
-| `conflux-residency` | **Public (blocked)** | Residency-backed execution — see below |
+| `conflux-residency` | **Public (blocked by #283)** | Residency-backed execution — see below |
+| `conflux-bevy` | **Internal** (`publish = false`) | Bevy adapter preview only |
 | `conflux-fixtures` | **Internal** (`publish = false`) | test support only |
 | `conflux-arch-guard` | **Internal** (`publish = false`) | the dependency-boundary guard test |
 
-- The eight public crates are the workspace's intended public API surface. They
-  form a closed dependency set (e.g. `conflux-core` needs `conflux-ir`;
-  `conflux-runtime` needs `conflux-core`/`-ir`/`-kernel`), so publishing any of
-  them requires publishing its closure.
-- `conflux-fixtures` and `conflux-arch-guard` are marked `publish = false` in their
-  manifests and must stay so. Fixtures are scenario **contracts** (test support),
-  not an API; the arch-guard crate hosts only a boundary test. The
-  dependency-boundary guard already forbids any *normal* (non-dev) dependency on
-  `conflux-fixtures`.
+- The eight public crates are the workspace's intended public API surface for the
+  first public crate release. They form a closed dependency set (e.g.
+  `conflux-core` needs `conflux-ir`; `conflux-runtime` needs
+  `conflux-core`/`-ir`/`-kernel`; `conflux-planner` reads
+  `conflux-residency` transfer reports), so publishing any of them requires
+  publishing its closure.
+- `conflux-bevy`, `conflux-fixtures`, and `conflux-arch-guard` are marked
+  `publish = false` in their manifests and must stay so for the first public
+  crate release. The Bevy adapter remains a phase-0/phase-1 preview integration,
+  fixtures are scenario **contracts** (test support), and the arch-guard crate
+  hosts only a boundary test. The dependency-boundary guard already forbids any
+  *normal* (non-dev) dependency on `conflux-fixtures`.
+
+## Release-readiness decision for the first public crate release
+
+Conflux chooses **Option A: full crate set later** for the first public crate
+release.
+
+The first public crates.io release must not exclude only `conflux-residency` while
+still describing the remaining public crates as release-ready. `conflux-planner`
+has a normal dependency on `conflux-residency` because planner reports read
+Residency transfer summaries. Publishing a smaller set would therefore require a
+separate dependency-shape decision and would not be the current intended public
+API surface.
+
+The release prerequisite is tracked in #283: make `residency-core` available
+through a crates.io-compatible path, then replace the pinned git dependency before
+public publish dry-runs. Until #283 is complete, no crate that depends on the
+Residency closure is release-ready for crates.io.
 
 ### `conflux-residency` is blocked from crates.io
 
 `conflux-residency` is intended public, but it depends on `residency-core`, which
 is a **pinned git dependency** (see the workspace `Cargo.toml`). crates.io forbids
-git dependencies, so `conflux-residency` cannot be published until `residency-core`
-is itself released to crates.io. Until then it is publishable in principle but
-release-blocked; this is the one known blocker for a full crates.io release.
+git dependencies, so `conflux-residency` cannot be published until
+`residency-core` is itself released to crates.io or an explicitly approved
+crates.io-compatible replacement path exists. Until then it is publishable in
+principle but release-blocked; this is the one known blocker for the full
+crates.io release, tracked by #283.
 
 ## Package metadata
 
 - **license**, **repository**, **edition**, **rust-version** are inherited from
   `[workspace.package]` so every crate is consistent.
-- **description** is set per crate (each public crate now carries one — a
-  crates.io requirement). The internal crates omit it (they are never published).
+- **description** is set per public crate — a crates.io requirement. Internal
+  crates may carry a description for local documentation, but that metadata does
+  not make them publishable; `publish = false` is authoritative.
 - **version** — all crates are at `0.1.0` today. Before the first publish, the
   inter-crate `[workspace.dependencies]` path entries must also gain `version`
   requirements (path-only deps cannot be published); this is a deliberate,
