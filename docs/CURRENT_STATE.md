@@ -269,9 +269,8 @@ release is the full intended public crate set, deferred until #283 resolves the
 The reference-grade core is complete and frozen at `alpha-0`; Alpha 1's opt-in CPU
 optimization work and the post-#261 GPU follow-up work have landed; and
 `alpha-2-gpu-boundary` records the preview baseline. Remaining RC-readiness work
-is about final verification of that public baseline for external Rust users:
-reviewing stability/release docs for drift, confirming CI and publish gates, and
-collecting final review signoff.
+is gated by `docs/RC_READINESS.md`: fix any hard blocker it names, or cut the RC
+preview tag if every hard blocker passes.
 
 The Bevy adapter boundary (#43) remains phase 0: manual stepping and
 report/diagnostic resources in `conflux-bevy`, with no Bevy concepts in core

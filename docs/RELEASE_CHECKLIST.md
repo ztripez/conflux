@@ -20,6 +20,10 @@ promotion only; the source of truth for *what exists* is
 
 Cut a preview tag only when all of the following hold.
 
+For the Alpha 2 release-candidate preview, use
+[`docs/RC_READINESS.md`](RC_READINESS.md) as the concrete hard-blocker checklist.
+This section remains the general preview-readiness tier.
+
 ### CI / build (all enforced by `.github/workflows/ci.yml`)
 
 - [ ] `main` is green: `cargo fmt --all --check`, `cargo clippy --workspace
