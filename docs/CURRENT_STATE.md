@@ -274,7 +274,9 @@ collecting final review signoff.
 
 The Bevy adapter boundary (#43) remains phase 0: manual stepping and
 report/diagnostic resources in `conflux-bevy`, with no Bevy concepts in core
-simulation crates. Godot remains parked until that boundary is proven further.
+simulation crates. The proposed phase 1 ladder is documented in
+`docs/BEVY_ADAPTER_PHASE1_PLAN.md`; it keeps engine integration adapter-owned.
+Godot remains parked until that boundary is proven further.
 
 Graph-rule kernels remain advisory only under the current hard boundary unless
 that boundary is explicitly reopened. The graph/event boundary remains closed:
