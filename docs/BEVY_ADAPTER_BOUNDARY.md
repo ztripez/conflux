@@ -3,6 +3,10 @@
 Phase 0 of the Bevy adapter proves that an engine integration can observe and
 drive Conflux without moving engine concepts into the simulation crates.
 
+The phase 1 planning ladder is recorded in
+[`docs/BEVY_ADAPTER_PHASE1_PLAN.md`](BEVY_ADAPTER_PHASE1_PLAN.md). It extends the
+adapter ergonomics track without changing this boundary.
+
 The boundary is deliberately narrow:
 
 ```text
