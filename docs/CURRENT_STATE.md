@@ -260,7 +260,8 @@ What the checkpoint means:
   simulation crates, and Godot remains parked.
 
 Alpha 2 is a preview checkpoint, not a public crates.io release. Public release
-promotion remains governed by `docs/RELEASE_CHECKLIST.md`, including the
+promotion remains governed by `docs/RELEASE_CHECKLIST.md`. The first public crate
+release is the full intended public crate set, deferred until #283 resolves the
 `residency-core` git-dependency blocker recorded in `docs/PUBLISH_POLICY.md`.
 
 ## Current RC-readiness focus

@@ -8,7 +8,9 @@ distinguishes two tiers:
   and agents can rely on. No crates.io publish.
 - **Public crate release readiness** — publishing to crates.io. This is a strict
   superset of preview readiness and has prerequisites that are **not yet met**
-  (notably the Residency git-dependency blocker, below).
+  (notably the Residency git-dependency blocker, below). The first public crate
+  release is the full intended public crate set; it is deferred until the
+  Residency prerequisite in #283 is complete.
 
 This checklist must not market future features as implemented. It governs
 promotion only; the source of truth for *what exists* is
@@ -59,20 +61,22 @@ Everything in Tier 1, **plus**:
 ### Publish policy & metadata
 
 - [ ] [`docs/PUBLISH_POLICY.md`](PUBLISH_POLICY.md) decisions are current: every
-      crate has an explicit decision; `conflux-fixtures` and `conflux-arch-guard`
-      remain `publish = false`.
+      crate has an explicit decision; `conflux-bevy`, `conflux-fixtures`, and
+      `conflux-arch-guard` remain `publish = false`.
 - [ ] Every publishable crate has `description`; `license` / `repository` are set
       (inherited from `[workspace.package]`).
 - [ ] Inter-crate `[workspace.dependencies]` path entries carry `version`
       requirements (path-only deps cannot be published).
 
-### Known blocker — must be resolved or scoped out
+### Known blocker — must be resolved before public publish
 
-- [ ] **`residency-core` git dependency.** `conflux-residency` cannot be published
-      while it depends on `residency-core` via git (crates.io forbids git deps).
-      Either publish `residency-core` to crates.io first, or exclude
-      `conflux-residency` (and any crate that needs it) from the release set and
-      say so explicitly. See `docs/PUBLISH_POLICY.md`.
+- [ ] **`residency-core` git dependency (#283).** The release-readiness decision is
+      **full crate set later**, not a scoped first public cut. `conflux-residency`
+      cannot be published while it depends on `residency-core` via git
+      (crates.io forbids git deps), and `conflux-planner` has a normal dependency
+      on `conflux-residency` for transfer-report inputs. Resolve #283 first, then
+      replace the pinned git dependency with a crates.io-compatible version before
+      public publish dry-runs. See `docs/PUBLISH_POLICY.md`.
 
 ### Versioning & changelog
 
@@ -97,11 +101,11 @@ Everything in Tier 1, **plus**:
 - [ ] Current non-goals (see `AGENTS.md` and the snapshot's "Current non-goals")
       are not contradicted by release copy.
 
-### Dry-run publish (once the blocker is resolved)
+### Dry-run publish (once #283 is resolved)
 
 - [ ] `cargo publish --dry-run` succeeds for each publishable crate in dependency
       order (`conflux-ir` → `conflux-core` → `conflux-kernel` → … ). This is gated
-      on the `residency-core` blocker and the path-dep `version` requirements
+      on #283 and the path-dep `version` requirements
       above, so it is not run in CI today.
 
 ## Required manual verification commands

@@ -55,8 +55,9 @@ crates/
 - **conflux-trace** is a standalone schema + recommendation crate, off the
   execution path. It imports transfer summaries as plain totals (never Residency
   directly) and turns a recorded trace into profile-guided recommendations.
-- **conflux-fixtures** and **conflux-arch-guard** are internal: test-support and a
-  dependency-boundary guard respectively. Both are `publish = false`.
+- **conflux-bevy**, **conflux-fixtures**, and **conflux-arch-guard** are internal:
+  a preview engine adapter, test-support, and a dependency-boundary guard
+  respectively. All three are `publish = false`.
 
 ## Domains
 
