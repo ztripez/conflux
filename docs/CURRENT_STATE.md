@@ -17,6 +17,9 @@ Known-green tags so far:
 - `alpha-2-gpu-boundary` — preview checkpoint for the CPU reference core,
   optimized CPU/index paths, bounded GPU correctness/reporting surfaces, and Bevy
   phase-0 adapter boundary.
+- `alpha-2-rc1` — first Alpha 2 release-candidate preview, not a public
+  crates.io release; cut from green `main` after the hard RC blocker gate in
+  `docs/RC_READINESS.md` passed.
 
 The GPU follow-up epic (#261) is closed on `main`. It did not add default or
 hidden runtime GPU dispatch; the `alpha-2-gpu-boundary` checkpoint records that
@@ -267,10 +270,10 @@ release is the full intended public crate set, deferred until #283 resolves the
 ## Current RC-readiness focus
 
 The reference-grade core is complete and frozen at `alpha-0`; Alpha 1's opt-in CPU
-optimization work and the post-#261 GPU follow-up work have landed; and
-`alpha-2-gpu-boundary` records the preview baseline. Remaining RC-readiness work
-is gated by `docs/RC_READINESS.md`: fix any hard blocker it names, or cut the RC
-preview tag if every hard blocker passes.
+optimization work and the post-#261 GPU follow-up work have landed;
+`alpha-2-gpu-boundary` records the GPU-boundary preview baseline; and
+`alpha-2-rc1` records the first Alpha 2 RC preview. Future RC readiness remains
+governed by `docs/RC_READINESS.md`.
 
 The Bevy adapter boundary (#43) remains phase 0: manual stepping and
 report/diagnostic resources in `conflux-bevy`, with no Bevy concepts in core
