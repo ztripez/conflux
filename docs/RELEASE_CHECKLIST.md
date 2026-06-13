@@ -8,9 +8,10 @@ distinguishes two tiers:
   and agents can rely on. No crates.io publish.
 - **Public crate release readiness** — publishing to crates.io. This is a strict
   superset of preview readiness and has prerequisites that are **not yet met**
-  (notably the Residency git-dependency blocker, below). The first public crate
-  release is the full intended public crate set; it is deferred until the
-  Residency prerequisite in #283 is complete.
+  (notably publish metadata, path dependency version requirements, changelog, and
+  dry-run publication). The first public crate release is the full intended
+  public crate set; #283's former Residency git-dependency blocker is resolved by
+  the folded compatibility surface and must remain verified.
 
 This checklist must not market future features as implemented. It governs
 promotion only; the source of truth for *what exists* is
@@ -72,15 +73,15 @@ Everything in Tier 1, **plus**:
 - [ ] Inter-crate `[workspace.dependencies]` path entries carry `version`
       requirements (path-only deps cannot be published).
 
-### Known blocker — must be resolved before public publish
+### Known prerequisite — verify before public publish
 
-- [ ] **`residency-core` git dependency (#283).** The release-readiness decision is
-      **full crate set later**, not a scoped first public cut. `conflux-residency`
-      cannot be published while it depends on `residency-core` via git
-      (crates.io forbids git deps), and `conflux-planner` has a normal dependency
-      on `conflux-residency` for transfer-report inputs. Resolve #283 first, then
-      replace the pinned git dependency with a crates.io-compatible version before
-      public publish dry-runs. See `docs/PUBLISH_POLICY.md`.
+- [ ] **Folded Residency dependency shape (#283).** The release-readiness decision
+      is **full crate set later**, not a scoped first public cut. Verify that
+      external `residency-core` remains absent from manifests/lockfile, that
+      `conflux-residency` exposes only the folded
+      `conflux_residency::residency_core` compatibility surface, and that the arch
+      guard rejects reintroducing the git dependency before public publish
+      dry-runs. See `docs/PUBLISH_POLICY.md`.
 
 ### Versioning & changelog
 
@@ -105,12 +106,12 @@ Everything in Tier 1, **plus**:
 - [ ] Current non-goals (see `AGENTS.md` and the snapshot's "Current non-goals")
       are not contradicted by release copy.
 
-### Dry-run publish (once #283 is resolved)
+### Dry-run publish
 
 - [ ] `cargo publish --dry-run` succeeds for each publishable crate in dependency
       order (`conflux-ir` → `conflux-core` → `conflux-kernel` → … ). This is gated
-      on #283 and the path-dep `version` requirements
-      above, so it is not run in CI today.
+      on the path-dep `version` requirements above and the folded Residency
+      dependency-shape verification, so it is not run in CI today.
 
 ## Required manual verification commands
 

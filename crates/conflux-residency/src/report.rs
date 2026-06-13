@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use residency_core::TransferReport;
+use crate::residency_core::TransferReport;
 
 /// The outcome of syncing a kernel's output buffer through Residency.
 ///

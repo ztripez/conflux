@@ -64,7 +64,7 @@ crates/
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
   conflux-bevy/      # Bevy adapter (manual stepping + report resources)
   conflux-planner/   # advisory optimization & planning reports (reads backends)
-  conflux-residency/ # bridge to Residency (the only crate that depends on it)
+  conflux-residency/ # bridge-local folded Residency compatibility surface
   conflux-runtime/   # scheduler, reports, CPU reference execution
   conflux-trace/     # trace artifacts + profile-guided recommendations (research)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)
@@ -139,13 +139,13 @@ each rule as a matched kernel run or a fallback to the reference with its reason
 lowered to executable buffers and compared separately across the CPU and GPU
 paths — see the MVP5 paragraph below.)
 
-The Residency bridge (MVP4) connects Conflux numeric resources to
-[Residency](https://github.com/ztripez/residency) through the `conflux-residency`
-crate. It maps a kernel's column buffers to Residency resource descriptors and
-view requests and drives a sync cycle through Residency's `SyncGraph` and a
-backend (the CPU-side `FakeBackend` for now), embedding Residency's transfer
-report in a Conflux report. Residency owns generation tracking, patches,
-readbacks, and transfer planning; only `conflux-residency` depends on it.
+The Residency bridge connects Conflux numeric resources to a folded
+Residency-style compatibility surface through the `conflux-residency` crate. It
+maps a kernel's column buffers to bridge-local resource descriptors and view
+requests, drives a sync cycle through `conflux_residency::residency_core::SyncGraph`
+and a backend (the CPU-side `FakeBackend` for now), and embeds the folded transfer
+report in a Conflux report. External `residency-core` is no longer a workspace
+dependency.
 
 The GPU compute backend (MVP5 and follow-up #261) lives in `conflux-wgsl`: it
 lowers accepted table, bounded 2D field, bounded flow, and bounded actor-rule

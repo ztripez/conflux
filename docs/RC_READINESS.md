@@ -107,8 +107,8 @@ experimental or advisory:
   change execution.
 - `conflux-trace` profile-guided recommendations. They are research-only and off
   the normal execution path.
-- `conflux-residency`. It remains experimental and release-blocked for crates.io by
-  #283.
+- `conflux-residency`. It remains experimental; #283 folds the former external
+  Residency dependency into the bridge-local compatibility surface.
 - `conflux-bevy`. It is an internal, `publish = false`, experimental adapter.
 - Unit conversions. Conversions are declared and validated but not applied at
   runtime.
@@ -134,7 +134,7 @@ These items are not RC blockers because they are intentionally out of scope:
 - Bevy phase-1 implementation work beyond the plan in
   `docs/BEVY_ADAPTER_PHASE1_PLAN.md`.
 - Public crates.io publication. The first public crate release is deferred until
-  #283 resolves the `residency-core` git-dependency blocker.
+  the folded Residency dependency shape from #283 is verified in release dry-runs.
 
 ## Release-set decision status
 

@@ -119,8 +119,9 @@ The excluded scopes were tracked explicitly in the closed follow-up epic #261:
 - Planner reports distinguish WGSL-lowerable table/field/flow/actor-rule kernels
   from kernels actually dispatched on GPU.
 - `conflux-wgsl` remains the shader-lowering boundary.
-- `conflux-residency` remains the only Conflux crate depending on
-  `residency-core`.
+- `conflux-residency` owns the folded
+  `conflux_residency::residency_core` compatibility surface; no Conflux crate
+  depends on external `residency-core`.
 - `wgpu` remains optional and confined to `conflux-wgsl`.
 - Core/runtime crates remain free of backend, Residency, and buffer-movement
   dependencies.

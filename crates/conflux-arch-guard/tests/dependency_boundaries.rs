@@ -71,10 +71,11 @@ fn collect_boundary_violations(packages: &[Value]) -> Vec<String> {
             let optional = dep["optional"].as_bool().unwrap_or(false);
             let kind = kind_label(dep);
 
-            // residency-core may appear only in conflux-residency.
-            if dep_name == "residency-core" && name != "conflux-residency" {
+            // External residency-core is forbidden after folding it into
+            // conflux-residency's local residency_core module.
+            if dep_name == "residency-core" {
                 violations.push(format!(
-                    "`{name}` depends on `residency-core` ({kind}); allowed only in conflux-residency"
+                    "`{name}` depends on external `residency-core` ({kind}); use the folded `conflux_residency::residency_core` module"
                 ));
             }
 
@@ -225,6 +226,22 @@ fn other_conflux_crates_may_not_depend_on_the_bevy_adapter() {
         violation.contains("conflux-planner")
             && violation.contains("conflux-bevy")
             && violation.contains("allowed only in conflux-bevy")
+    }));
+}
+
+#[test]
+fn external_residency_core_is_forbidden_everywhere() {
+    let packages = vec![package(
+        "conflux-residency",
+        &[dep("residency-core", "normal", false)],
+    )];
+
+    let violations = collect_boundary_violations(&packages);
+
+    assert!(violations.iter().any(|violation| {
+        violation.contains("conflux-residency")
+            && violation.contains("external `residency-core`")
+            && violation.contains("folded `conflux_residency::residency_core`")
     }));
 }
 
