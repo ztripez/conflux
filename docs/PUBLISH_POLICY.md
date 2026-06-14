@@ -18,7 +18,7 @@ Every workspace crate has an explicit decision.
 | `conflux-planner` | **Public** | tooling reading advisory reports |
 | `conflux-trace` | **Public** | profile-guided research consumers |
 | `conflux-wgsl` | **Public** | GPU backend consumers (`gpu` feature opt-in) |
-| `conflux-residency` | **Public** | Folded Residency compatibility surface and bridge sync helpers — see below |
+| `conflux-residency` | **Public, experimental** | Folded Residency compatibility surface and bridge sync helpers — see below |
 | `conflux-bevy` | **Internal** (`publish = false`) | Bevy adapter preview only |
 | `conflux-fixtures` | **Internal** (`publish = false`) | test support only |
 | `conflux-arch-guard` | **Internal** (`publish = false`) | the dependency-boundary guard test |
@@ -49,10 +49,17 @@ separate dependency-shape decision and would not be the current intended public
 API surface.
 
 The release prerequisite tracked in #283 was to remove the pinned git dependency
-from the public crate closure. The chosen path folds the required Residency core
-compatibility surface into `conflux-residency` as
-`conflux_residency::residency_core`; external `residency-core` is now forbidden in
-the workspace and must stay absent before public publish dry-runs.
+from the public crate closure. That blocker is resolved: the required Residency
+core compatibility surface is folded into `conflux-residency` as
+`conflux_residency::residency_core`, and external `residency-core` is now
+forbidden in the workspace.
+
+This makes `conflux-residency` publishable as part of the intended public crate
+set; it does **not** promote the Residency API to stable. Public-release work must
+still complete the Tier 2 checklist: inter-crate path dependencies need `version`
+requirements, a changelog is still required, publish dry-runs must pass, and the
+architecture guard must continue to prove that external `residency-core` has not
+returned.
 
 ### `conflux-residency` uses a folded compatibility surface
 
@@ -61,6 +68,12 @@ the workspace and must stay absent before public publish dry-runs.
 `conflux_residency::residency_core` facade; implementation submodules stay
 private inside the bridge crate, and the arch guard rejects any reintroduced
 external `residency-core` dependency.
+
+The folded facade exists so Conflux can publish a self-contained release set while
+keeping the buffer-movement boundary explicit. `conflux-residency` owns the
+bridge-local descriptors, transfer planning, generation tracking, patches,
+readbacks, and reports; `conflux-core`, `conflux-runtime`, and `conflux-bevy` do
+not own Residency lifecycle or transfer policy.
 
 ## Package metadata
 

@@ -8,10 +8,10 @@ distinguishes two tiers:
   and agents can rely on. No crates.io publish.
 - **Public crate release readiness** — publishing to crates.io. This is a strict
   superset of preview readiness and has prerequisites that are **not yet met**
-  (notably publish metadata, path dependency version requirements, changelog, and
-  dry-run publication). The first public crate release is the full intended
-  public crate set; #283's former Residency git-dependency blocker is resolved by
-  the folded compatibility surface and must remain verified.
+  (notably path dependency version requirements, changelog, and dry-run
+  publication). The first public crate release is the full intended public crate
+  set; #283's former Residency git-dependency blocker is resolved by the folded
+  compatibility surface and must remain verified.
 
 This checklist must not market future features as implemented. It governs
 promotion only; the source of truth for *what exists* is
@@ -73,15 +73,16 @@ Everything in Tier 1, **plus**:
 - [ ] Inter-crate `[workspace.dependencies]` path entries carry `version`
       requirements (path-only deps cannot be published).
 
-### Known prerequisite — verify before public publish
+### Known prerequisite — keep verified before public publish
 
 - [ ] **Folded Residency dependency shape (#283).** The release-readiness decision
-      is **full crate set later**, not a scoped first public cut. Verify that
+      is **full crate set later**, not a scoped first public cut. The old external
+      `residency-core` git blocker is gone; before publishing, re-verify that
       external `residency-core` remains absent from manifests/lockfile, that
       `conflux-residency` exposes only the folded
       `conflux_residency::residency_core` compatibility surface, and that the arch
-      guard rejects reintroducing the git dependency before public publish
-      dry-runs. See `docs/PUBLISH_POLICY.md`.
+      guard still rejects reintroducing the dependency. See
+      `docs/PUBLISH_POLICY.md` and `docs/RESIDENCY_DEPENDENCY_PROOF.md`.
 
 ### Versioning & changelog
 

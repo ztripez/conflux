@@ -49,7 +49,9 @@ crates/
   `conflux_residency::residency_core` compatibility surface. It maps CPU kernel
   buffers and lowered WGSL shader bindings to Residency-style descriptors and
   drives a sync cycle, embedding folded transfer reports. No workspace crate
-  depends on external `residency-core`.
+  depends on external `residency-core`. The folded surface is self-contained in
+  this crate and remains experimental; it does not make core/runtime/Bevy crates
+  responsible for Residency lifecycle or transfer policy.
 - **conflux-planner** reads the kernel / WGSL / Residency reports and produces
   advisory reports (backend choice, static cost hints, fusion candidates, transfer
   notes, proximity-index eligibility, and graph-kernel eligibility). It never
@@ -221,8 +223,9 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   Measurement and engine-integration claims are scoped by
   `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`, which separates correctness, smoke, and
   performance evidence.
-- **Residency** — buffer movement and transfer reporting via the bridge crate; the
-  CPU-side `FakeBackend` drives sync cycles today.
+- **Residency** — buffer movement and transfer reporting via the self-contained
+  bridge crate; the CPU-side `FakeBackend` drives sync cycles today. External
+  `residency-core` is absent from the dependency graph.
 - **Planner** — advisory only. It explains available backends and costs and never
   rewrites the IR, fuses kernels, batches dispatches, or changes execution. The
   applied GPU batching/fusion decision is recorded in
