@@ -15,7 +15,14 @@ impl SyncGraph {
         id: ResourceId,
         records: Vec<T>,
     ) -> Result<Generation, SubmitEventError> {
-        let (record_size, record_count, upload_policy, expected_element, head_now) = {
+        let (
+            record_size,
+            record_count,
+            upload_policy,
+            has_initial_upload,
+            expected_element,
+            head_now,
+        ) = {
             let state = self
                 .resources
                 .get(&id)
@@ -27,6 +34,7 @@ impl SyncGraph {
                 record_size,
                 record_count,
                 state.contract.upload,
+                state.has_initial_upload,
                 state.layout.element_type(),
                 state.event_head,
             )
@@ -38,12 +46,22 @@ impl SyncGraph {
                 actual: T::ELEMENT_TYPE,
             });
         }
-        if matches!(upload_policy, UploadPolicy::Deny) {
-            let warn = SyncWarning::UploadPolicyViolation {
-                resource: id.clone(),
-            };
-            self.push_warning(warn);
-            return Err(SubmitEventError::UploadDenied { id });
+        match upload_policy {
+            UploadPolicy::Deny => {
+                let warn = SyncWarning::UploadPolicyViolation {
+                    resource: id.clone(),
+                };
+                self.push_warning(warn);
+                return Err(SubmitEventError::UploadDenied { id });
+            }
+            UploadPolicy::InitialOnly if has_initial_upload => {
+                let warn = SyncWarning::UploadPolicyViolation {
+                    resource: id.clone(),
+                };
+                self.push_warning(warn);
+                return Err(SubmitEventError::InitialUploadConsumed { id });
+            }
+            UploadPolicy::InitialOnly | UploadPolicy::PatchesAllowed => {}
         }
 
         let mut bytes: Vec<u8> = bytemuck::cast_slice(&records).to_vec();
@@ -112,6 +130,9 @@ impl SyncGraph {
                 .ok_or_else(|| SubmitEventError::UnknownResource { id: id.clone() })?;
             state.current_generation = state.current_generation.next();
             state.event_head = new_head;
+            if upload_policy == UploadPolicy::InitialOnly {
+                state.has_initial_upload = true;
+            }
             state.current_generation
         };
 

@@ -288,9 +288,18 @@ impl SyncGraph {
     ///
     /// # Errors
     ///
-    /// Returns [`SubmitEventError`] for unknown resources, non-event-ring
-    /// resources, upload denial, record element type mismatches, or event-head
-    /// arithmetic overflow.
+    /// Returns [`SubmitEventError::UnknownResource`] if `resource` is not registered.
+    /// Returns [`SubmitEventError::NotEventRing`] if `resource` does not use an
+    /// [`ResourceLayout::EventRing`] layout.
+    /// Returns [`SubmitEventError::UploadDenied`] if the resource contract uses
+    /// [`crate::residency_core::contract::UploadPolicy::Deny`].
+    /// Returns [`SubmitEventError::InitialUploadConsumed`] if the resource contract
+    /// uses [`crate::residency_core::contract::UploadPolicy::InitialOnly`] and an
+    /// earlier event append already consumed the single allowed upload.
+    /// Returns [`SubmitEventError::ElementTypeMismatch`] if the appended record type
+    /// does not match the event-ring record type.
+    /// Returns [`SubmitEventError::EventHeadOverflow`] if event-ring logical head or
+    /// byte-offset arithmetic cannot be represented.
     pub fn submit_event_append<T: PodElement>(
         &mut self,
         resource: impl Into<ResourceId>,

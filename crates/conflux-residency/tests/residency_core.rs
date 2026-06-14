@@ -2,9 +2,9 @@ use conflux_residency::residency_core::{
     Authority, BasicDiagnostics, ChunkId, DiagnosticAttachment, DiagnosticLayout,
     DiagnosticReadbackPolicy, ElementType, FakeBackend, FakeBackendError, Freshness, Generation,
     ReadbackError, ReadbackPolicy, ReadbackStatus, RegisterError, Residency, ResidencyBackend,
-    ResizeOp, ResizePolicy, ResourceDesc, ResourceId, ResourceLayout, SubmitPatchError,
-    SummaryKind, SyncContract, SyncGraph, SyncWarning, TransferPlan, UploadPolicy, ViewRequest,
-    ViewRequestError, ViewSelector,
+    ResizeOp, ResizePolicy, ResourceDesc, ResourceId, ResourceLayout, SubmitEventError,
+    SubmitPatchError, SummaryKind, SyncContract, SyncGraph, SyncWarning, TransferPlan,
+    UploadPolicy, ViewRequest, ViewRequestError, ViewSelector,
 };
 
 fn cpu_contract() -> SyncContract {
@@ -199,6 +199,45 @@ fn folded_fake_backend_serves_rows_chunks_summaries_and_event_candidates() {
         resource: events,
         dropped: 1,
     }));
+}
+
+#[test]
+fn folded_event_ring_initial_only_allows_one_append() {
+    let mut graph = SyncGraph::new();
+    let mut backend = FakeBackend::new();
+    let events = register_desc_with_backend(
+        &mut graph,
+        &mut backend,
+        ResourceDesc::new(
+            "initial-events",
+            ResourceLayout::EventRing {
+                record: ElementType::U32,
+                record_count: 4,
+            },
+            contract(
+                UploadPolicy::InitialOnly,
+                ReadbackPolicy::ViewsAllowed,
+                ResizePolicy::Fixed,
+            ),
+        ),
+    );
+
+    let first_generation = graph
+        .submit_event_append(events.clone(), vec![1_u32, 2])
+        .unwrap();
+    assert_eq!(first_generation, Generation(1));
+
+    let second = graph
+        .submit_event_append(events.clone(), vec![3_u32])
+        .unwrap_err();
+    let SubmitEventError::InitialUploadConsumed { id } = second else {
+        panic!("expected InitialUploadConsumed, got {second:?}");
+    };
+    assert_eq!(id, events);
+    let report = graph.take_report();
+    assert!(report
+        .warnings
+        .contains(&SyncWarning::UploadPolicyViolation { resource: events }));
 }
 
 #[test]
