@@ -112,18 +112,12 @@ impl SyncContract {
     }
 }
 
-/// Errors produced by `SyncContract::validate` and `SyncContractBuilder::build`.
+/// Errors produced by `SyncContract::validate`.
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
     /// CPU-authoritative resources must allow some CPU upload path.
     #[error("CpuAuthoritative requires uploads but UploadPolicy is Deny — no side can author the resource")]
     CpuAuthoritativeWithoutUploads,
-    /// A required builder field was not provided.
-    #[error("SyncContractBuilder is missing required field `{field}`")]
-    MissingField {
-        /// Name of the missing builder field.
-        field: &'static str,
-    },
 }
 
 /// Legal-but-surprising combinations surfaced by `SyncContract::lint`.
@@ -147,88 +141,5 @@ impl core::fmt::Display for ContractLint {
                 "CPU-resident resource only exposes Snapshot views; routine reads are denied",
             ),
         }
-    }
-}
-
-/// Builder that enforces every field is set before construction and runs the
-/// hard validation pass at `build` time.
-#[derive(Default, Clone, Debug)]
-pub struct SyncContractBuilder {
-    residency: Option<Residency>,
-    authority: Option<Authority>,
-    upload: Option<UploadPolicy>,
-    readback: Option<ReadbackPolicy>,
-    resize: Option<ResizePolicy>,
-}
-
-impl SyncContractBuilder {
-    /// Creates an empty builder that requires every contract field before build.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the physical residency policy.
-    #[must_use]
-    pub fn residency(mut self, value: Residency) -> Self {
-        self.residency = Some(value);
-        self
-    }
-
-    /// Sets the mutation authority policy.
-    #[must_use]
-    pub fn authority(mut self, value: Authority) -> Self {
-        self.authority = Some(value);
-        self
-    }
-
-    /// Sets the CPU upload policy.
-    #[must_use]
-    pub fn upload(mut self, value: UploadPolicy) -> Self {
-        self.upload = Some(value);
-        self
-    }
-
-    /// Sets the CPU readback policy.
-    #[must_use]
-    pub fn readback(mut self, value: ReadbackPolicy) -> Self {
-        self.readback = Some(value);
-        self
-    }
-
-    /// Sets the backend resize policy.
-    #[must_use]
-    pub fn resize(mut self, value: ResizePolicy) -> Self {
-        self.resize = Some(value);
-        self
-    }
-
-    /// Assemble and validate the contract.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContractError::MissingField`] when a required contract field was
-    /// not set. Returns [`ContractError::CpuAuthoritativeWithoutUploads`] when
-    /// contract validation rejects the completed policy set.
-    pub fn build(self) -> Result<SyncContract, ContractError> {
-        let contract = SyncContract {
-            residency: self
-                .residency
-                .ok_or(ContractError::MissingField { field: "residency" })?,
-            authority: self
-                .authority
-                .ok_or(ContractError::MissingField { field: "authority" })?,
-            upload: self
-                .upload
-                .ok_or(ContractError::MissingField { field: "upload" })?,
-            readback: self
-                .readback
-                .ok_or(ContractError::MissingField { field: "readback" })?,
-            resize: self
-                .resize
-                .ok_or(ContractError::MissingField { field: "resize" })?,
-        };
-        contract.validate()?;
-        Ok(contract)
     }
 }

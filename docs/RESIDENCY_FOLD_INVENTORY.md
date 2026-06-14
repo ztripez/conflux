@@ -44,7 +44,7 @@ These items are used by `crates/conflux-residency/src/map.rs`, `sync.rs`, or
 | Summary selectors | `SummaryKind`, `MinMaxF32` | Not used by Conflux bridge calls today, but required by the current `ViewSelector` and `ViewRequestError` public surface. |
 | Typed patches | `PodElement`, `TypedPatch`, `Patch` | `SyncGraph::submit_typed_patch::<f32>` requires `PodElement` and constructs `TypedPatch`; the current graph API also exposes raw `Patch` through untyped patch submission. |
 | Public signature support | `ContractError`, `ContractLint`, `ReadbackError`, `ResizeOp`, `ChunkId`, `ChunkedLayoutInfo`, `TransferBudget`, `AuthorityError`, `SubmitEventError` | Required to keep the folded public `SyncGraph`, `SyncContract`, `ResourceLayout`, `TransferPlan`, `ViewSelector`, `ViewRequestError`, `ReadbackStatus`, `TransferReport`, and `SyncWarning` signatures compatible. |
-| Current re-export compatibility | `SyncContractBuilder`, `BasicDiagnostics` | Not used by Conflux bridge calls today, but retained by the folded compatibility facade because they were previously re-exported by `residency-core`. |
+| Current re-export compatibility | `BasicDiagnostics` | Retained by the folded compatibility facade because Conflux diagnostics tests and bridge-facing diagnostic attachments use the folded basic diagnostics size/layout. `SyncContractBuilder` was deliberately not retained after #289 because no in-workspace production, test, or example consumer uses it. |
 
 ## Test/example and smoke-gate surface
 
@@ -168,9 +168,9 @@ tests, or downstream Conflux crates:
   copied public signatures that currently reference them;
 - `ContractLint` if #288 keeps `SyncWarning::ContractLint` or
   `SyncContract::lint` public;
-- `SyncContractBuilder` and `BasicDiagnostics` must either remain public to
-  preserve the current re-export surface or be named as deliberately narrowed
-  compatibility removals in the #288 PR.
+- `BasicDiagnostics` remains public for bridge diagnostics. `SyncContractBuilder`
+  is a deliberately narrowed compatibility removal after #289 because no active
+  Conflux consumer uses it.
 
 ### `pub(crate)` or private
 
