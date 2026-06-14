@@ -108,7 +108,8 @@ experimental or advisory:
 - `conflux-trace` profile-guided recommendations. They are research-only and off
   the normal execution path.
 - `conflux-residency`. It remains experimental; #283 folds the former external
-  Residency dependency into the bridge-local compatibility surface.
+  Residency dependency into the bridge-local compatibility surface, removing the
+  old git-dependency blocker without promoting the API to stable.
 - `conflux-bevy`. It is an internal, `publish = false`, experimental adapter.
 - Unit conversions. Conversions are declared and validated but not applied at
   runtime.
@@ -133,8 +134,10 @@ These items are not RC blockers because they are intentionally out of scope:
 - Godot integration.
 - Bevy phase-1 implementation work beyond the plan in
   `docs/BEVY_ADAPTER_PHASE1_PLAN.md`.
-- Public crates.io publication. The first public crate release is deferred until
-  the folded Residency dependency shape from #283 is verified in release dry-runs.
+- Public crates.io publication. The folded Residency dependency shape from #283 is
+  complete, but the first public crate release is still deferred until the Tier 2
+  checklist in `docs/RELEASE_CHECKLIST.md` is complete, including versioned path
+  dependencies, changelog, and publish dry-runs that re-verify the folded shape.
 
 ## Release-set decision status
 

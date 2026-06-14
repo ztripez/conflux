@@ -23,7 +23,7 @@ pre-release guide, not a SemVer guarantee.
 | `conflux-wgsl` emitter | **Stable-enough** | WGSL emission + resource requirements are inspectable and deterministic for accepted table kernels, bounded 2D field kernels, bounded flow amount/destination kernels, and bounded actor-rule kernels. |
 | `conflux-wgsl` `gpu` execution/equivalence | **Experimental** | Behind the off-by-default `gpu` feature (wgpu); table and field CPU/GPU equivalence helpers skip gracefully without a GPU and report mismatches explicitly, and the exact bounded-radius Chebyshev/Manhattan proximity-query scan helper returns explicit `ExactGpuScan` metadata or visible refusal. They do not make runtime GPU execution automatic. |
 | `conflux-runtime` `PreferGpu` / `RequireGpu` policy | **Experimental** | Explicit selected-execution policy only, currently scoped to table-rule runtime GPU eligibility. It may select or refuse `ExecutionPath::Gpu`, but `conflux-runtime` still has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency and does not dispatch GPU work. Flow WGSL capability is planner/backend metadata only; actor-rule CPU kernels are not treated as runtime GPU eligibility. |
-| `conflux-residency` | **Experimental** | Bridge-local folded Residency compatibility surface plus Conflux mapping/sync helpers. No external `residency-core` git dependency remains. |
+| `conflux-residency` | **Experimental** | Bridge-local folded Residency compatibility surface plus Conflux mapping/sync helpers. No external `residency-core` git dependency remains, but the folded facade is not a stable standalone Residency API. |
 | `conflux-trace` | **Experimental (research)** | Trace schema + profile-guided recommendations. Off the execution path; normal runs never require it. |
 | `conflux-bevy` | **Internal experimental adapter** | Phase-0 Bevy integration: manual stepping and report/diagnostic resources. It is `publish = false` and excluded from the first public crate release; Bevy types are adapter-only and may change while the boundary is proven. |
 
@@ -44,6 +44,13 @@ Named so they are not mistaken for stable contracts:
 - **Events** — declared and materialized **report-only**: events appear in the step report but are never consumed, queued, or scheduled, and only graph-origin events are supported in this slice.
 - **Scale links / projections beyond region→table** — only the region→table relationship is supported; other combinations are rejected at lowering.
 - **Bevy adapter** (`conflux-bevy`) — experimental phase-0 adapter. It is not a stable engine API, does not make Conflux actors into Bevy entities, and requires Bevy/Rust versions isolated to that adapter crate.
+- **Residency compatibility surface** (`conflux-residency`) — self-contained and
+  publishable with the intended crate set, but still experimental. The folded
+  `conflux_residency::residency_core` facade is the only supported public path for
+  bridge-local transfer descriptors, plans, reports, and fake-backend tests. Do
+  not treat it as a separately versioned Residency product or as permission to add
+  Residency lifecycle ownership to `conflux-core`, `conflux-runtime`, or
+  `conflux-bevy`.
 
 ## Report contracts are stronger than incidental examples
 
