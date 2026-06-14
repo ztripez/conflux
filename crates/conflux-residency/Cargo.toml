@@ -11,7 +11,7 @@ rust-version.workspace = true
 conflux-ir.workspace = true
 conflux-kernel.workspace = true
 conflux-wgsl.workspace = true
-residency-core.workspace = true
+bytemuck = { version = "1.16", features = ["derive"] }
 thiserror.workspace = true
 
 [dev-dependencies]

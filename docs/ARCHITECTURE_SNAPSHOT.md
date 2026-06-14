@@ -45,9 +45,11 @@ crates/
   requirements. Optional GPU execution/equivalence helpers and the exact
   bounded-radius proximity-query scan helper live behind the off-by-default `gpu`
   feature; the emitter side needs no `wgpu`.
-- **conflux-residency** is the only crate that depends on `residency-core`. It maps
-  CPU kernel buffers and lowered WGSL shader bindings to Residency descriptors and
-  drives a sync cycle, embedding Residency's transfer report.
+- **conflux-residency** owns the folded bridge-local
+  `conflux_residency::residency_core` compatibility surface. It maps CPU kernel
+  buffers and lowered WGSL shader bindings to Residency-style descriptors and
+  drives a sync cycle, embedding folded transfer reports. No workspace crate
+  depends on external `residency-core`.
 - **conflux-planner** reads the kernel / WGSL / Residency reports and produces
   advisory reports (backend choice, static cost hints, fusion candidates, transfer
   notes, proximity-index eligibility, and graph-kernel eligibility). It never

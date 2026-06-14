@@ -59,8 +59,9 @@ After the core + runtime path is clear, optional crates provide more reports:
   output. It never rewrites the IR or changes execution.
 - `conflux-wgsl` emits inspectable WGSL for accepted bounded kernels. Its optional
   `gpu` feature is experimental and not part of the default runtime path.
-- `conflux-residency` maps Conflux resources into Residency descriptors; it is the
-  only crate that depends on `residency-core`.
+- `conflux-residency` maps Conflux resources into the folded
+  `conflux_residency::residency_core` compatibility surface; no workspace crate
+  depends on external `residency-core`.
 
 For the full current surface and stability notes, see
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) and

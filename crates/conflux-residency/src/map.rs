@@ -6,15 +6,15 @@
 //! It never registers, patches, reads back, or transfers — Residency owns all of
 //! that.
 
+use crate::residency_core::{
+    Authority, DiagnosticAttachment, DiagnosticLayout, DiagnosticReadbackPolicy, ElementType,
+    Freshness, ReadbackPolicy, Residency, ResizePolicy, ResourceDesc, ResourceId, ResourceLayout,
+    SyncContract, UploadPolicy, ViewRequest, ViewSelector,
+};
 use conflux_kernel::{Kernel, KernelBinding, ScalarType};
 use conflux_wgsl::{
     diagnostic_buffer_byte_len, Access, BindingRequirement, BindingSource, FieldBindingRequirement,
     FieldBindingSource, FieldShaderModule, ShaderModule,
-};
-use residency_core::{
-    Authority, DiagnosticAttachment, DiagnosticLayout, DiagnosticReadbackPolicy, ElementType,
-    Freshness, ReadbackPolicy, Residency, ResizePolicy, ResourceDesc, ResourceId, ResourceLayout,
-    SyncContract, UploadPolicy, ViewRequest, ViewSelector,
 };
 
 const GENERATED_RESOURCE_NAMESPACE: &str = "$conflux-generated";
@@ -73,7 +73,7 @@ pub fn gpu_input_contract() -> SyncContract {
 /// CPU uploads are allowed for initial contents only; subsequent authoring belongs
 /// to GPU dispatches. A caller must register the descriptor, let the backend
 /// perform the GPU write, and then call
-/// [`residency_core::SyncGraph::submit_gpu_mutation`] so Residency, not Conflux,
+/// [`crate::residency_core::SyncGraph::submit_gpu_mutation`] so Residency, not Conflux,
 /// advances the generation.
 pub fn gpu_output_contract() -> SyncContract {
     SyncContract {
@@ -353,6 +353,10 @@ fn hex_encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::residency_core::{
+        Authority, DiagnosticLayout, DiagnosticReadbackPolicy, ElementType, ReadbackPolicy,
+        Residency, ResourceLayout, SyncGraph, UploadPolicy,
+    };
     use conflux_ir::{Cadence, ValueKind};
     use conflux_kernel::{
         FieldKernelShape, Kernel, KernelBinding, KernelExpr, KernelShape, ScalarType,
@@ -360,10 +364,6 @@ mod tests {
     use conflux_wgsl::{
         Access, BindingRequirement, BindingSource, FieldBindingRequirement, FieldBindingSource,
         FieldShaderModule, ShaderModule,
-    };
-    use residency_core::{
-        Authority, DiagnosticLayout, DiagnosticReadbackPolicy, ReadbackPolicy, Residency,
-        ResourceLayout, SyncGraph, UploadPolicy,
     };
 
     use super::{field_shader_resource_descs, shader_resource_descs, ResourceMappingError};
@@ -418,7 +418,7 @@ mod tests {
         assert_eq!(
             descs[0].layout,
             ResourceLayout::Dense1D {
-                element: residency_core::ElementType::F32,
+                element: ElementType::F32,
                 len: 4
             }
         );
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(
             descs[0].layout,
             ResourceLayout::Dense2D {
-                element: residency_core::ElementType::F32,
+                element: ElementType::F32,
                 width: 3,
                 height: 2
             }
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(
             descs[1].layout,
             ResourceLayout::Dense2D {
-                element: residency_core::ElementType::U32,
+                element: ElementType::U32,
                 width: 3,
                 height: 2
             }

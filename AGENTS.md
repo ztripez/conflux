@@ -61,7 +61,9 @@ path, and events are report-only (no queue, consumption, or scheduling).
 
 Dependency boundaries, enforced by the crate graph:
 
-- `residency-core` is allowed **only** in `conflux-residency`.
+- External `residency-core` is forbidden in every workspace crate; the folded
+  `conflux_residency::residency_core` module is the bridge-local canonical
+  compatibility surface.
 - WGSL emission and the optional `wgpu` dependency live **only** in
   `conflux-wgsl` (wgpu is behind its `gpu` feature, off by default).
 - The core crates (`conflux-core`, `conflux-ir`, `conflux-kernel`,
@@ -115,7 +117,7 @@ crates/
   conflux-kernel/    # bounded numeric kernel IR + CPU executor
   conflux-bevy/      # Bevy adapter (manual stepping + report resources)
   conflux-planner/   # advisory optimization & planning reports (reads backends)
-  conflux-residency/ # bridge to Residency (the only crate that depends on it)
+  conflux-residency/ # bridge-local folded Residency compatibility surface
   conflux-runtime/   # scheduler, reports, CPU reference execution
   conflux-trace/     # trace artifacts + profile-guided recommendations (research)
   conflux-wgsl/      # WGSL compute backend (optional wgpu behind `gpu` feature)

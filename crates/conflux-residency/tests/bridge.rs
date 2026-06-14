@@ -1,10 +1,60 @@
 use conflux_core::{col, lower, Model, Rule, Table};
 use conflux_kernel::{execute_elementwise, extract, ScalarType};
-use conflux_residency::residency_core::{ElementType, FakeBackend, ResourceLayout, SyncGraph};
+use conflux_residency::residency_core::{
+    BackendResourceHandle, BackendSubmission, ElementType, FakeBackend, PlannedReadback,
+    ReadbackError, ReadbackId, ReadbackStatus, ReadbackToken, ResidencyBackend, ResourceDesc,
+    ResourceLayout, SyncGraph, TransferPlan,
+};
 use conflux_residency::{
     cpu_kernel_contract, element_type, kernel_resource_descs, output_view_request,
-    sync_kernel_output,
+    sync_kernel_output, BridgeError,
 };
+
+#[derive(Debug)]
+struct PendingThenFailedBackend {
+    polls: usize,
+}
+
+impl ResidencyBackend for PendingThenFailedBackend {
+    type Error = std::convert::Infallible;
+
+    fn create_resource<R>(
+        &mut self,
+        _desc: &ResourceDesc<R>,
+    ) -> Result<BackendResourceHandle, Self::Error> {
+        Ok(BackendResourceHandle(0))
+    }
+
+    fn execute_transfer_plan(
+        &mut self,
+        plan: &TransferPlan,
+    ) -> Result<BackendSubmission, Self::Error> {
+        Ok(BackendSubmission {
+            uploaded_bytes: plan.expected_upload_bytes,
+            downloaded_bytes: 0,
+            readback_tokens: Vec::new(),
+        })
+    }
+
+    fn request_readback(&mut self, request: PlannedReadback) -> Result<ReadbackToken, Self::Error> {
+        Ok(ReadbackToken {
+            id: ReadbackId(1),
+            resource: request.resource,
+            freshness: request.freshness,
+        })
+    }
+
+    fn poll_readback(&mut self, _token: &ReadbackToken) -> Result<ReadbackStatus, Self::Error> {
+        self.polls += 1;
+        if self.polls == 1 {
+            Ok(ReadbackStatus::Pending)
+        } else {
+            Ok(ReadbackStatus::Failed(ReadbackError::Backend {
+                message: "injected failure".to_string(),
+            }))
+        }
+    }
+}
 
 fn combine_model() -> Model {
     let mut cell = Table::new("Cell", 3);
@@ -73,6 +123,25 @@ fn sync_cycle_round_trips_output_and_embeds_transfer_report() {
     assert_eq!(report.output_resource, "Cell.value");
     // 3 f32 elements uploaded and read back; Residency owns these numbers.
     assert_eq!(report.transfer.uploaded_bytes, 12);
+    assert_eq!(report.transfer.downloaded_bytes, 12);
     assert_eq!(report.transfer.readbacks_completed, 1);
     assert!(report.transfer.warnings.is_empty());
+}
+
+#[test]
+fn sync_cycle_preserves_failed_readback_error_after_pending_poll() {
+    let ir = lower(&combine_model()).unwrap();
+    let kernel = &extract(&ir).accepted[0];
+    let columns = vec![vec![1.0, 2.0, 3.0], vec![10.0, 20.0, 30.0]];
+    let outputs = execute_elementwise(kernel, &columns);
+
+    let mut graph = SyncGraph::new();
+    let mut backend = PendingThenFailedBackend { polls: 0 };
+    let error = sync_kernel_output(kernel, &outputs, &mut graph, &mut backend).unwrap_err();
+
+    assert!(matches!(
+        error,
+        BridgeError::ReadbackFailed(ReadbackError::Backend { .. })
+    ));
+    assert_eq!(backend.polls, 2);
 }

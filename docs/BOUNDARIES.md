@@ -46,14 +46,17 @@ If a change is about **where buffer-backed data lives or how it crosses CPU/GPU*
 
 ## Dependency direction
 
-Residency is integrated through a single bridge crate, `conflux-residency`. It is
-the **only** crate allowed to depend on `residency-core`.
+Residency is integrated through a single bridge crate, `conflux-residency`.
+External `residency-core` is forbidden in every workspace crate; the folded
+`conflux_residency::residency_core` module is the bridge-local canonical
+compatibility surface.
 
 - `conflux-core`, `conflux-ir`, `conflux-kernel`, and `conflux-runtime` must not
   depend on Residency, wgpu, or any buffer-transfer crate.
-- `conflux-residency` maps Conflux numeric resources to Residency resource
-  descriptors and view requests and embeds Residency transfer reports. It does
-  not reimplement generation tracking, patches, readbacks, or transfer planning.
+- `conflux-residency` maps Conflux numeric resources to folded Residency-style
+  resource descriptors and view requests and embeds folded transfer reports. It
+  owns the bridge-local generation tracking, patches, readbacks, and transfer
+  planning needed for that compatibility surface.
 - `conflux-wgsl` is the only crate that emits shader source or depends on
   `wgpu` (behind its `gpu` feature). GPU/shader concerns never enter the core
   crates.
@@ -86,7 +89,8 @@ manifests via `cargo metadata --no-deps` and fails (under the normal `cargo test
 so in CI) if any rule is broken, naming the offending crate and dependency. The
 enforced rules:
 
-- `residency-core` may appear only in `conflux-residency`.
+- External `residency-core` may not appear in any workspace crate; use the folded
+  `conflux_residency::residency_core` module.
 - `wgpu` may appear only in `conflux-wgsl`, and only as an optional dependency
   behind the `gpu` feature.
 - core crates (`conflux-core`, `conflux-ir`, `conflux-kernel`, `conflux-runtime`)

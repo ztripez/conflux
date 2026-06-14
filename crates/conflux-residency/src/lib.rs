@@ -8,12 +8,16 @@
 //! [`residency_core::SyncGraph`] and a [`residency_core::ResidencyBackend`],
 //! embedding Residency's transfer report in a Conflux-side report.
 //!
-//! It deliberately does not reimplement generation tracking, patches, readbacks,
-//! GPU mutation tracking, or transfer planning — those stay in Residency. No
-//! other Conflux crate depends on Residency (see `docs/BOUNDARIES.md`).
+//! The folded [`residency_core`] module contains the bridge-local implementation
+//! of generation tracking, patches, readbacks, GPU mutation tracking, and transfer
+//! planning. Those buffer-residency mechanics remain quarantined in this crate:
+//! other Conflux crates may consume the public bridge report types, but no core
+//! simulation crate owns Residency-style buffer movement or depends on the
+//! external `residency-core` crate.
 
 mod map;
 mod report;
+pub mod residency_core;
 mod sync;
 
 pub use map::{
@@ -25,8 +29,5 @@ pub use map::{
 pub use report::ResidencyReport;
 pub use sync::{sync_kernel_output, BridgeError};
 
-// Re-export the Residency core so callers can drive a backend without adding a
-// separate dependency.
-pub use residency_core;
-
+/// Stable label identifying the Conflux-to-Residency bridge boundary.
 pub const CRATE_BOUNDARY: &str = "conflux <-> residency numeric resource bridge";

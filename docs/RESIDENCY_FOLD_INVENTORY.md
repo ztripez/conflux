@@ -1,24 +1,28 @@
 # Residency fold inventory
 
-This inventory scopes the smallest `residency-core` surface that
-`conflux-residency` currently needs before the implementation is folded into this
-repository. It is a design record for #287 and does not move code or change
-runtime behavior.
+This inventory is the historical #287 design record that scoped the smallest
+`residency-core` surface to fold into this repository. #288 superseded the
+pre-fold dependency shape by importing that surface under
+`crates/conflux-residency/src/residency_core/` and removing the external git
+dependency. The current canonical truth is that external `residency-core` is
+forbidden and `conflux_residency::residency_core` is the folded bridge-local
+compatibility surface.
 
-## Current dependency shape
+## Pre-fold dependency shape (superseded by #288)
 
-`conflux-residency` is the only Conflux crate that depends directly on
-`residency-core` (`crates/conflux-residency/Cargo.toml`). The workspace pins that
-dependency to the external `ztripez/residency` git repository in the root
-`Cargo.toml`. The fold source is `ztripez/residency` at revision
+Before #288, `conflux-residency` was the only Conflux crate that depended
+directly on external `residency-core` (`crates/conflux-residency/Cargo.toml`).
+The workspace pinned that dependency to the external `ztripez/residency` git
+repository in the root `Cargo.toml`. #288 removed that dependency; the fold source
+was `ztripez/residency` at revision
 `6b34193d65f67f89fe8f68611ea12eb15311257f`.
 
-The bridge also re-exports the external crate as
+Before #288, the bridge re-exported the external crate as
 `conflux_residency::residency_core` from `crates/conflux-residency/src/lib.rs` so
-downstream Conflux crates and examples can construct a `SyncGraph`, drive a
+downstream Conflux crates and examples could construct a `SyncGraph`, drive a
 backend, and read `TransferReport` without adding their own direct dependency.
-That re-export is part of the compatibility surface that #288 must preserve or
-replace deliberately.
+#288 replaced that re-export with a folded local module that preserves the same
+compatibility path.
 
 ## Runtime-essential surface
 
@@ -39,8 +43,8 @@ These items are used by `crates/conflux-residency/src/map.rs`, `sync.rs`, or
 | Generations | `Generation` | Public field/type plumbing in freshness, views, readbacks, and sync graph state. |
 | Summary selectors | `SummaryKind`, `MinMaxF32` | Not used by Conflux bridge calls today, but required by the current `ViewSelector` and `ViewRequestError` public surface. |
 | Typed patches | `PodElement`, `TypedPatch`, `Patch` | `SyncGraph::submit_typed_patch::<f32>` requires `PodElement` and constructs `TypedPatch`; the current graph API also exposes raw `Patch` through untyped patch submission. |
-| Public signature support | `ContractError`, `ContractLint`, `ReadbackError`, `ResizeOp`, `ChunkId`, `ChunkedLayoutInfo`, `TransferBudget`, `AuthorityError`, `SubmitEventError` | Required if #288 keeps the copied public `SyncGraph`, `SyncContract`, `ResourceLayout`, `TransferPlan`, `ViewSelector`, `ViewRequestError`, `ReadbackStatus`, `TransferReport`, and `SyncWarning` signatures unchanged; otherwise #288 must explicitly document and review the narrowed API surface. |
-| Current re-export compatibility | `SyncContractBuilder`, `BasicDiagnostics` | Not used by Conflux bridge calls today, but currently re-exported by `residency-core`; #288 must either keep them public for compatibility or name them as deliberate compatibility removals. |
+| Public signature support | `ContractError`, `ContractLint`, `ReadbackError`, `ResizeOp`, `ChunkId`, `ChunkedLayoutInfo`, `TransferBudget`, `AuthorityError`, `SubmitEventError` | Required to keep the folded public `SyncGraph`, `SyncContract`, `ResourceLayout`, `TransferPlan`, `ViewSelector`, `ViewRequestError`, `ReadbackStatus`, `TransferReport`, and `SyncWarning` signatures compatible. |
+| Current re-export compatibility | `SyncContractBuilder`, `BasicDiagnostics` | Not used by Conflux bridge calls today, but retained by the folded compatibility facade because they were previously re-exported by `residency-core`. |
 
 ## Test/example and smoke-gate surface
 
@@ -178,7 +182,7 @@ Do not publish a broader, general-purpose Residency API from Conflux in this
 track. The goal is to remove the external git dependency while preserving the
 current bridge behavior, not to promote Residency as a stable public subsystem.
 
-## Risks for #288
+## Risks recorded for #288 (historical)
 
 1. **Public re-export compatibility.** Removing or renaming
    `conflux_residency::residency_core` would break planner imports, examples, and
@@ -190,8 +194,8 @@ current bridge behavior, not to promote Residency as a stable public subsystem.
    view-request, and view-decode errors. Replacing those types changes public error
    matching and display text.
 4. **Typed patch dependencies.** Folded code uses bytemuck-backed typed patch and
-   view casting. `conflux-residency` will need any required normal crates.io
-   dependency declared directly after the git dependency is removed.
+   view casting. #288 declared the required normal crates.io dependency directly
+   after removing the git dependency.
 5. **Boundary drift.** Folding code must not move Residency concepts into
    `conflux-core`, `conflux-ir`, `conflux-kernel`, `conflux-runtime`, or Bevy.
 6. **Over-copying.** Copying unused `residency-core` features would increase
@@ -199,7 +203,7 @@ current bridge behavior, not to promote Residency as a stable public subsystem.
 7. **Under-copying test support.** Omitting `FakeBackend` would force broader test
    and example rewrites in the same slice.
 
-## #288 handoff checklist
+## #288 handoff checklist (completed by the fold import)
 
 - Copy only the modules listed in this document unless compilation proves another
   dependency is required.

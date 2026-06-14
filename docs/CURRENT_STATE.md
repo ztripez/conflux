@@ -100,9 +100,10 @@ canonical scenario.
   rules/flows from work actually run on GPU; planner-produced entries do not imply
   GPU dispatch. The proximity-index
   eligibility report now lines up with the opt-in exact uniform-grid query path.
-- **Residency / GPU**: `conflux-residency` (the only crate depending on Residency)
-  and `conflux-wgsl` (WGSL emission plus optional, experimental `wgpu`
-  correctness checks behind the `gpu` feature).
+- **Residency / GPU**: `conflux-residency` owns the folded bridge-local
+  `conflux_residency::residency_core` compatibility surface, and `conflux-wgsl`
+  owns WGSL emission plus optional, experimental `wgpu` correctness checks behind
+  the `gpu` feature.
 - **Bevy adapter**: `conflux-bevy` is adapter-only. It maps a `Simulation` and its
   reports into Bevy resources/messages for manual stepping; Bevy dependencies are
   mechanically forbidden outside the adapter crate.
@@ -264,8 +265,9 @@ What the checkpoint means:
 
 Alpha 2 is a preview checkpoint, not a public crates.io release. Public release
 promotion remains governed by `docs/RELEASE_CHECKLIST.md`. The first public crate
-release is the full intended public crate set, deferred until #283 resolves the
-`residency-core` git-dependency blocker recorded in `docs/PUBLISH_POLICY.md`.
+release is the full intended public crate set; #283 removes the former
+`residency-core` git-dependency blocker by folding the required compatibility
+surface into `conflux-residency`.
 
 ## Current RC-readiness focus
 

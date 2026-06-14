@@ -5,11 +5,11 @@
 //! calls the [`SyncGraph`] and a [`ResidencyBackend`] — it never reimplements any
 //! of that logic.
 
-use conflux_kernel::Kernel;
-use residency_core::{
-    Freshness, ReadbackStatus, RegisterError, ResidencyBackend, SubmitPatchError, SyncGraph,
-    ViewDecodeError, ViewRequestError,
+use crate::residency_core::{
+    Freshness, ReadbackError, ReadbackStatus, RegisterError, ResidencyBackend, SubmitPatchError,
+    SyncGraph, ViewDecodeError, ViewRequestError,
 };
+use conflux_kernel::Kernel;
 
 use crate::map::{column_resource_desc, cpu_kernel_contract, output_view_request};
 use crate::report::ResidencyReport;
@@ -18,16 +18,22 @@ use crate::report::ResidencyReport;
 /// error type.
 #[derive(Debug, thiserror::Error)]
 pub enum BridgeError<B> {
+    /// Resource registration failed before backend allocation.
     #[error("residency registration failed: {0}")]
     Register(#[from] RegisterError),
+    /// CPU patch validation or queuing failed.
     #[error("residency patch failed: {0}")]
     Patch(#[from] SubmitPatchError),
+    /// Output view request failed before backend readback.
     #[error("residency view request failed: {0}")]
     View(#[from] ViewRequestError),
+    /// Readback bytes could not be decoded as the expected output type.
     #[error("residency view decode failed: {0}")]
     Decode(#[from] ViewDecodeError),
-    #[error("readback failed")]
-    ReadbackFailed,
+    /// Readback polling completed with an explicit readback failure.
+    #[error("readback failed: {0}")]
+    ReadbackFailed(ReadbackError),
+    /// Backend allocation, transfer, or polling failed.
     #[error("backend error: {0}")]
     Backend(B),
 }
@@ -39,6 +45,12 @@ pub enum BridgeError<B> {
 ///
 /// `output_values` are the kernel's per-row outputs (for example from
 /// `conflux_kernel::execute_elementwise`).
+///
+/// # Errors
+///
+/// Returns [`BridgeError`] when resource registration, backend allocation, patch
+/// submission, transfer execution, view planning, readback polling, or readback
+/// byte decoding fails.
 pub fn sync_kernel_output<B: ResidencyBackend>(
     kernel: &Kernel,
     output_values: &[f32],
@@ -72,10 +84,10 @@ pub fn sync_kernel_output<B: ResidencyBackend>(
             .map_err(BridgeError::Backend)?
         {
             ReadbackStatus::Ready(result) => break result,
-            // Cooperative spin; a real async backend (MVP5) should replace this
-            // with a budgeted wait rather than a hot loop.
+            // Cooperative spin; a production async backend should replace this
+            // test-oriented polling with a budgeted wait rather than a hot loop.
             ReadbackStatus::Pending => std::thread::yield_now(),
-            ReadbackStatus::Failed(_) => return Err(BridgeError::ReadbackFailed),
+            ReadbackStatus::Failed(error) => return Err(BridgeError::ReadbackFailed(error)),
         }
     };
     graph.note_readback_completed(result.bytes.len() as u64);

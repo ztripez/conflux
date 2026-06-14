@@ -18,7 +18,7 @@ Every workspace crate has an explicit decision.
 | `conflux-planner` | **Public** | tooling reading advisory reports |
 | `conflux-trace` | **Public** | profile-guided research consumers |
 | `conflux-wgsl` | **Public** | GPU backend consumers (`gpu` feature opt-in) |
-| `conflux-residency` | **Public (blocked by #283)** | Residency-backed execution — see below |
+| `conflux-residency` | **Public** | Folded Residency compatibility surface and bridge sync helpers — see below |
 | `conflux-bevy` | **Internal** (`publish = false`) | Bevy adapter preview only |
 | `conflux-fixtures` | **Internal** (`publish = false`) | test support only |
 | `conflux-arch-guard` | **Internal** (`publish = false`) | the dependency-boundary guard test |
@@ -48,20 +48,19 @@ Residency transfer summaries. Publishing a smaller set would therefore require a
 separate dependency-shape decision and would not be the current intended public
 API surface.
 
-The release prerequisite is tracked in #283: make `residency-core` available
-through a crates.io-compatible path, then replace the pinned git dependency before
-public publish dry-runs. Until #283 is complete, no crate that depends on the
-Residency closure is release-ready for crates.io.
+The release prerequisite tracked in #283 was to remove the pinned git dependency
+from the public crate closure. The chosen path folds the required Residency core
+compatibility surface into `conflux-residency` as
+`conflux_residency::residency_core`; external `residency-core` is now forbidden in
+the workspace and must stay absent before public publish dry-runs.
 
-### `conflux-residency` is blocked from crates.io
+### `conflux-residency` uses a folded compatibility surface
 
-`conflux-residency` is intended public, but it depends on `residency-core`, which
-is a **pinned git dependency** (see the workspace `Cargo.toml`). crates.io forbids
-git dependencies, so `conflux-residency` cannot be published until
-`residency-core` is itself released to crates.io or an explicitly approved
-crates.io-compatible replacement path exists. Until then it is publishable in
-principle but release-blocked; this is the one known blocker for the full
-crates.io release, tracked by #283.
+`conflux-residency` is intended public and no longer depends on an external
+`residency-core` git dependency. Its public compatibility path is the folded
+`conflux_residency::residency_core` facade; implementation submodules stay
+private inside the bridge crate, and the arch guard rejects any reintroduced
+external `residency-core` dependency.
 
 ## Package metadata
 
