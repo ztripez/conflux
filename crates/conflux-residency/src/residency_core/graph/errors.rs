@@ -188,6 +188,12 @@ pub enum SubmitEventError {
         /// Resource whose upload policy rejected the append.
         id: ResourceId,
     },
+    /// An `InitialOnly` event ring already received its one allowed append.
+    #[error("resource `{id}` already received its only allowed event append (`InitialOnly`)")]
+    InitialUploadConsumed {
+        /// Resource whose initial append was already consumed.
+        id: ResourceId,
+    },
     /// Event record type does not match the event-ring layout.
     #[error(
         "event record type {actual:?} does not match resource `{id}` record type {expected:?}"
