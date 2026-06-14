@@ -30,7 +30,7 @@ mod view;
 pub use backend::{BackendResourceHandle, BackendSubmission, ResidencyBackend};
 pub use contract::{
     Authority, ContractError, ContractLint, ReadbackPolicy, Residency, ResizePolicy, SyncContract,
-    SyncContractBuilder, UploadPolicy,
+    UploadPolicy,
 };
 pub use diagnostics::{
     BasicDiagnostics, DiagnosticAttachment, DiagnosticLayout, DiagnosticReadbackPolicy,
