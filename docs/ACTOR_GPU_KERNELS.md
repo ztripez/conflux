@@ -24,8 +24,8 @@ it is not hidden runtime GPU execution.
   WGSL strings and resource requirements.
 - Runtime/core crates do not depend on `conflux-wgsl` and do not dispatch actor
   GPU work implicitly.
-- Planner results remain advisory. `executed_on_gpu=false` is still required
-  unless a caller performs an explicit GPU dispatch outside the planner report.
+- Planner results remain advisory WGSL capability only. Actual GPU execution state
+  belongs in runtime/backend execution reports, not planner reports.
 - Residency remains outside this slice; buffer residency, uploads, readbacks, and
   synchronization are not implemented here.
 

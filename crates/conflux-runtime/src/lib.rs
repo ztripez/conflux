@@ -43,10 +43,12 @@ pub use report::{
     ActorMoveOutcome, ActorMovementReport, ActorOutcome, ActorQueryInputBinding,
     ActorRuleBlockedReason, ActorRuleFireReport, AggregateReport, AssessmentOutcome,
     AssessmentSummary, BridgeReport, ComparisonStatus, FieldCellOutcome, FieldRuleFireReport,
-    FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, GraphEventInstance,
-    GraphEventPayloadValue, GraphEventReport, GraphNodeOutcome, GraphRuleFireReport,
-    ProjectionBridgeReport, ProjectionReport, QueryIndexRejectionReason, QueryNeighbor,
-    QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
+    FlowDestination, FlowFireReport, FlowSummary, FlowTransfer, GpuAttachmentAvailability,
+    GpuAttachmentUnavailableReason, GpuEquivalenceNotCheckedReason, GpuEquivalenceStatus,
+    GpuEvidenceUnavailableReason, GpuExecutionReport, GpuResidencyMapping, GpuWgslEvidence,
+    GraphEventInstance, GraphEventPayloadValue, GraphEventReport, GraphNodeOutcome,
+    GraphRuleFireReport, ProjectionBridgeReport, ProjectionReport, QueryIndexRejectionReason,
+    QueryNeighbor, QueryReport, QuerySourceResult, Report, RowOutcome, RuleFireReport, StepReport,
 };
 pub use selection::{
     ExecutionMode, ExecutionPath, FallbackReason, QueryExecutionMode, QueryExecutionPath,

@@ -121,7 +121,12 @@ Runtime GPU selected-execution policy exists as explicit opt-in reporting for
 eligible table rules: it may select or refuse `ExecutionPath::Gpu`, but it does
 not dispatch hardware work. The default runtime path remains reference-only, and
 planner GPU eligibility remains advisory rather than an instruction to execute on
-the GPU.
+the GPU. `RuleFireReport` selected-execution fields own requested, selected, used,
+refused, and CPU-fallback state. `RuleFireReport::gpu` records only attached or
+missing WGSL, Residency mapping, transfer/readback, and equivalence/check evidence.
+Residency transfer/readback reports do not move into runtime; backend and bridge
+crates attach their own reports at their boundaries while runtime records only
+availability/status.
 
 Graph and event GPU backends remain out of scope under
 `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`: graph rules run on the CPU reference

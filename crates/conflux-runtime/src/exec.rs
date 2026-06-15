@@ -23,8 +23,8 @@ use crate::graph_event_exec;
 use crate::graph_exec;
 use crate::plan::ExecutionPlan;
 use crate::report::{
-    AggregateReport, AssessmentOutcome, BridgeReport, ComparisonStatus, ProjectionBridgeReport,
-    Report, RowOutcome, RuleFireReport, StepReport,
+    AggregateReport, AssessmentOutcome, BridgeReport, ComparisonStatus, GpuExecutionReport,
+    ProjectionBridgeReport, Report, RowOutcome, RuleFireReport, StepReport,
 };
 use crate::selection::{
     resolve_path, table_rule_eligible_path, ExecutionMode, ExecutionPath, QueryExecutionMode,
@@ -478,6 +478,7 @@ impl Simulation {
                 fallback_reason,
                 kernel_rejection,
                 comparison_status,
+                gpu: GpuExecutionReport::from_selection(mode, selected_path, used_path),
             });
         }
 

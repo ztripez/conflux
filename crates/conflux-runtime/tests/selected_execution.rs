@@ -4,7 +4,11 @@ use conflux_core::{
     cell, col, field_lit, lit, lower, param, ActorRule, ActorSet, Assessment, EdgePolicy, Field,
     Flow, Grid2, Model, Rule, Table,
 };
-use conflux_runtime::{ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason, Simulation};
+use conflux_runtime::{
+    ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason, GpuAttachmentAvailability,
+    GpuAttachmentUnavailableReason, GpuEquivalenceStatus, GpuEvidenceUnavailableReason,
+    GpuResidencyMapping, GpuWgslEvidence, Simulation,
+};
 
 /// A `Store` table with one kernel-eligible rule (`accumulate`, pure column
 /// arithmetic) and one ineligible rule (`leak`, reads a parameter).
@@ -194,13 +198,51 @@ fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() 
         ComparisonStatus::IsReference,
         "fallback is reference execution, not a hidden GPU run"
     );
+    assert_eq!(
+        accumulate.gpu.wgsl_evidence,
+        GpuWgslEvidence::NotAttached(GpuEvidenceUnavailableReason::RuntimeDoesNotOwnWgslBackend),
+        "runtime kernel eligibility is only a GPU policy proxy, not WGSL backend proof"
+    );
+    assert_eq!(
+        accumulate.gpu.residency_mapping,
+        GpuResidencyMapping::NotAttached(
+            GpuEvidenceUnavailableReason::RuntimeDoesNotOwnResidencyMapping
+        )
+    );
+    assert_eq!(
+        accumulate.gpu.transfer_availability,
+        GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
+    assert_eq!(
+        accumulate.gpu.readback_availability,
+        GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
+    assert_eq!(
+        accumulate.gpu.equivalence_status,
+        GpuEquivalenceStatus::NotApplicable
+    );
     assert_eq!(sim.column("Store", "reserve"), Some(&[11.0, 22.0][..]));
 
     let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
     assert_eq!(leak.eligible_path, ExecutionPath::Reference);
     assert_eq!(leak.selected_path, ExecutionPath::Reference);
     assert_eq!(leak.used_path, Some(ExecutionPath::Reference));
-    assert_eq!(leak.fallback_reason, Some(FallbackReason::NotWgslLowerable));
+    assert_eq!(
+        leak.fallback_reason,
+        Some(FallbackReason::GpuPolicyUnsupported)
+    );
+    assert_eq!(
+        leak.gpu.wgsl_evidence,
+        GpuWgslEvidence::NotAttached(GpuEvidenceUnavailableReason::RuntimeDoesNotOwnWgslBackend)
+    );
+    assert_eq!(
+        leak.gpu.residency_mapping,
+        GpuResidencyMapping::NotApplicable
+    );
+    assert_eq!(
+        leak.gpu.transfer_availability,
+        GpuAttachmentAvailability::NotApplicable
+    );
     assert!(leak.kernel_rejection.is_some());
     assert_eq!(sim.column("Store", "level"), Some(&[4.5, 4.5][..]));
 }
@@ -219,13 +261,24 @@ fn require_gpu_refuses_without_hidden_reference_or_gpu_execution() {
         Some(FallbackReason::RequiredGpuUnavailable)
     );
     assert_eq!(accumulate.comparison_status, ComparisonStatus::NotRun);
+    assert_eq!(
+        accumulate.gpu.wgsl_evidence,
+        GpuWgslEvidence::NotAttached(GpuEvidenceUnavailableReason::RuntimeDoesNotOwnWgslBackend)
+    );
+    assert_eq!(
+        accumulate.gpu.transfer_availability,
+        GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
     assert!(accumulate.rows.is_empty());
 
     let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
     assert_eq!(leak.eligible_path, ExecutionPath::Reference);
     assert_eq!(leak.selected_path, ExecutionPath::Gpu);
     assert_eq!(leak.used_path, None);
-    assert_eq!(leak.fallback_reason, Some(FallbackReason::NotWgslLowerable));
+    assert_eq!(
+        leak.fallback_reason,
+        Some(FallbackReason::GpuPolicyUnsupported)
+    );
     assert!(leak.kernel_rejection.is_some());
     assert!(leak.rows.is_empty());
 
@@ -241,7 +294,7 @@ fn gpu_modes_do_not_treat_flow_cpu_kernels_as_gpu_eligibility() {
     assert_eq!(prefer_flow.used_path, Some(ExecutionPath::Reference));
     assert_eq!(
         prefer_flow.fallback_reason,
-        Some(FallbackReason::NotWgslLowerable)
+        Some(FallbackReason::GpuPolicyUnsupported)
     );
     assert_eq!(
         prefer.field_channel("Terrain", "water"),
@@ -255,7 +308,7 @@ fn gpu_modes_do_not_treat_flow_cpu_kernels_as_gpu_eligibility() {
     assert_eq!(require_flow.used_path, None);
     assert_eq!(
         require_flow.fallback_reason,
-        Some(FallbackReason::NotWgslLowerable)
+        Some(FallbackReason::GpuPolicyUnsupported)
     );
     assert!(require_flow.transfers.is_empty());
     assert_eq!(
@@ -273,7 +326,7 @@ fn gpu_modes_do_not_treat_actor_cpu_kernels_as_gpu_eligibility() {
     assert_eq!(prefer_rule.used_path, Some(ExecutionPath::Reference));
     assert_eq!(
         prefer_rule.fallback_reason,
-        Some(FallbackReason::NotWgslLowerable)
+        Some(FallbackReason::GpuPolicyUnsupported)
     );
     assert_eq!(
         prefer.actor_channel("Herd", "energy"),
@@ -287,7 +340,7 @@ fn gpu_modes_do_not_treat_actor_cpu_kernels_as_gpu_eligibility() {
     assert_eq!(require_rule.used_path, None);
     assert_eq!(
         require_rule.fallback_reason,
-        Some(FallbackReason::NotWgslLowerable)
+        Some(FallbackReason::GpuPolicyUnsupported)
     );
     assert!(require_rule.actors.is_empty());
     assert_eq!(

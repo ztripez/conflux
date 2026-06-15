@@ -205,13 +205,15 @@ fn report_display_is_stable_and_inspectable() {
         "{text}"
     );
     assert!(
-        text.contains("gpu capability: 1 WGSL-lowerable, 0 actually run on GPU (advisory)"),
+        text.contains("gpu capability: 1 WGSL-lowerable (advisory; no execution state)"),
         "{text}"
     );
     assert!(
-        text.contains("TABLE `combine` on `Cell`: WGSL-lowerable=true, executed_on_gpu=false"),
+        text.contains("TABLE `combine` on `Cell`: WGSL-lowerable=true"),
         "{text}"
     );
+    assert!(!text.contains("executed_on_gpu"), "{text}");
+    assert!(!text.contains("actually run on GPU"), "{text}");
     assert!(text.contains("fusion candidates: 1"), "{text}");
 }
 
@@ -225,15 +227,6 @@ fn reports_table_gpu_capability_without_claiming_execution() {
     assert_eq!(report.gpu.table_rules[0].table, "Cell");
     assert_eq!(report.gpu.table_rules[1].table, "Cell");
     assert_eq!(report.gpu.table_rules[2].table, "Cell");
-    assert!(
-        report
-            .gpu
-            .table_rules
-            .iter()
-            .all(|rule| !rule.executed_on_gpu),
-        "planner-produced table capability must not claim GPU execution"
-    );
-
     let by_name = |name: &str| {
         report
             .gpu
@@ -245,12 +238,10 @@ fn reports_table_gpu_capability_without_claiming_execution() {
 
     let combine = by_name("combine");
     assert!(combine.wgsl_lowerable);
-    assert!(!combine.executed_on_gpu);
     assert!(combine.rejection.is_none());
 
     let overflow = by_name("overflow");
     assert!(!overflow.wgsl_lowerable);
-    assert!(!overflow.executed_on_gpu);
     match &overflow.rejection {
         Some(TableGpuRejection::WgslRejected {
             reason: WgslError::NonFiniteLiteral { value, .. },
@@ -291,7 +282,6 @@ fn reports_field_stencil_gpu_capability_without_claiming_execution() {
     assert_eq!(field.grid, (3, 3));
     assert_eq!(field.stencil_radius, Some(1));
     assert!(field.wgsl_lowerable);
-    assert!(!field.executed_on_gpu);
     assert!(field.rejection.is_none());
 }
 
@@ -310,7 +300,6 @@ fn reports_field_gpu_rejections_as_structured_reasons() {
     let report = plan_for(&model);
     let field = &report.gpu.field_rules[0];
     assert!(!field.wgsl_lowerable);
-    assert!(!field.executed_on_gpu);
     assert!(matches!(
         field.rejection,
         Some(FieldGpuRejection::NotFieldKernelLowerable { .. })
@@ -334,7 +323,6 @@ fn reports_field_wgsl_rejections_as_structured_reasons() {
     assert_eq!(field.rule, "overflow_field");
     assert_eq!(field.field, "Terrain");
     assert!(!field.wgsl_lowerable);
-    assert!(!field.executed_on_gpu);
     match &field.rejection {
         Some(FieldGpuRejection::WgslRejected {
             reason: WgslError::NonFiniteLiteral { value, .. },
@@ -366,10 +354,8 @@ fn reports_flow_gpu_capability_without_claiming_execution() {
     assert_eq!(flow.grid, (3, 1));
     assert_eq!(flow.stencil_radius, Some(0));
     assert!(flow.wgsl_lowerable);
-    assert!(!flow.executed_on_gpu);
     assert!(flow.rejection.is_none());
     assert_eq!(report.gpu.wgsl_lowerable_count(), 1);
-    assert_eq!(report.gpu.executed_on_gpu_count(), 0);
     let display = report.gpu.to_string();
     assert!(display.contains("1 WGSL-lowerable"));
     assert!(display.contains("FLOW `runoff`"));
@@ -393,7 +379,6 @@ fn reports_flow_gpu_rejections_as_structured_reasons() {
     let report = plan_for(&model);
     let flow = &report.gpu.flows[0];
     assert!(!flow.wgsl_lowerable);
-    assert!(!flow.executed_on_gpu);
     assert!(matches!(
         flow.rejection,
         Some(FlowGpuRejection::NotFlowKernelLowerable { .. })
@@ -419,7 +404,6 @@ fn reports_flow_wgsl_rejections_as_structured_reasons() {
     let flow = &report.gpu.flows[0];
     assert_eq!(flow.flow, "overflow_amount");
     assert!(!flow.wgsl_lowerable);
-    assert!(!flow.executed_on_gpu);
     match &flow.rejection {
         Some(FlowGpuRejection::WgslRejected {
             reason: WgslError::NonFiniteLiteral { value, .. },
@@ -453,10 +437,8 @@ fn reports_actor_gpu_capability_without_claiming_execution() {
     assert_eq!(actor.field, "Terrain");
     assert_eq!(actor.actor_count, 2);
     assert!(actor.wgsl_lowerable);
-    assert!(!actor.executed_on_gpu);
     assert!(actor.rejection.is_none());
     assert_eq!(report.gpu.wgsl_lowerable_count(), 1);
-    assert_eq!(report.gpu.executed_on_gpu_count(), 0);
     assert!(report.gpu.to_string().contains("ACTOR `graze`"));
 }
 
@@ -481,7 +463,6 @@ fn reports_actor_gpu_rejections_as_structured_reasons() {
     let report = plan_for(&model);
     let actor = &report.gpu.actor_rules[0];
     assert!(!actor.wgsl_lowerable);
-    assert!(!actor.executed_on_gpu);
     assert!(matches!(
         actor.rejection,
         Some(ActorGpuRejection::NotActorKernelLowerable { .. })

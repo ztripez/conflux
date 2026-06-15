@@ -8,9 +8,9 @@ use conflux_wgsl::WgslError;
 /// Advisory GPU capability for table, field, flow, and actor-rule kernels.
 ///
 /// This report is about capability only: whether a table rule, field rule, flow,
-/// or actor rule can be lowered to WGSL.
-/// It is not an execution report, does not imply GPU dispatch, and is always
-/// produced without mutating the IR or selecting a runtime backend.
+/// or actor rule can be lowered to WGSL. It is not an execution report, does not
+/// imply GPU dispatch, and is always produced without mutating the IR or selecting
+/// a runtime backend.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GpuCapabilityReport {
     /// Table-rule GPU capability entries, in IR rule order.
@@ -32,11 +32,6 @@ pub struct TableGpuCapability {
     pub table: String,
     /// True when the table rule extracted as a kernel and lowered to WGSL.
     pub wgsl_lowerable: bool,
-    /// True only when a runtime GPU path actually dispatched this rule.
-    ///
-    /// The planner never dispatches work, so entries produced by
-    /// [`crate::plan`] are always `false`.
-    pub executed_on_gpu: bool,
     /// Structured reason the table rule is not WGSL-lowerable, when rejected.
     pub rejection: Option<TableGpuRejection>,
 }
@@ -55,11 +50,6 @@ pub struct FieldGpuCapability {
     /// True when the field rule extracted as a bounded field kernel and lowered to
     /// WGSL.
     pub wgsl_lowerable: bool,
-    /// True only when a runtime GPU path actually dispatched this field rule.
-    ///
-    /// The planner never dispatches work, so entries produced by
-    /// [`crate::plan`] are always `false`.
-    pub executed_on_gpu: bool,
     /// Structured reason the field rule is not WGSL-lowerable, when rejected.
     pub rejection: Option<FieldGpuRejection>,
 }
@@ -79,11 +69,6 @@ pub struct FlowGpuCapability {
     pub stencil_radius: Option<i32>,
     /// True when the flow extracted as a bounded flow kernel and lowered to WGSL.
     pub wgsl_lowerable: bool,
-    /// True only when a runtime GPU path actually dispatched this flow.
-    ///
-    /// The planner never dispatches work, so entries produced by
-    /// [`crate::plan`] are always `false`.
-    pub executed_on_gpu: bool,
     /// Structured reason the flow is not WGSL-lowerable, when rejected.
     pub rejection: Option<FlowGpuRejection>,
 }
@@ -102,11 +87,6 @@ pub struct ActorGpuCapability {
     /// True when the actor rule extracted as a bounded actor kernel and lowered to
     /// WGSL.
     pub wgsl_lowerable: bool,
-    /// True only when a runtime GPU path actually dispatched this actor rule.
-    ///
-    /// The planner never dispatches work, so entries produced by
-    /// [`crate::plan`] are always `false`.
-    pub executed_on_gpu: bool,
     /// Structured reason the actor rule is not WGSL-lowerable, when rejected.
     pub rejection: Option<ActorGpuRejection>,
 }
@@ -190,30 +170,6 @@ impl GpuCapabilityReport {
                 .filter(|rule| rule.wgsl_lowerable)
                 .count()
     }
-
-    /// Returns how many table rules, field rules, flows, and actor rules were actually
-    /// dispatched on a GPU.
-    pub fn executed_on_gpu_count(&self) -> usize {
-        self.table_rules
-            .iter()
-            .filter(|rule| rule.executed_on_gpu)
-            .count()
-            + self
-                .field_rules
-                .iter()
-                .filter(|rule| rule.executed_on_gpu)
-                .count()
-            + self
-                .flows
-                .iter()
-                .filter(|flow| flow.executed_on_gpu)
-                .count()
-            + self
-                .actor_rules
-                .iter()
-                .filter(|rule| rule.executed_on_gpu)
-                .count()
-    }
 }
 
 impl fmt::Display for TableGpuRejection {
@@ -264,15 +220,14 @@ impl fmt::Display for GpuCapabilityReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "gpu capability: {} WGSL-lowerable, {} actually run on GPU (advisory)",
-            self.wgsl_lowerable_count(),
-            self.executed_on_gpu_count()
+            "gpu capability: {} WGSL-lowerable (advisory; no execution state)",
+            self.wgsl_lowerable_count()
         )?;
         for rule in &self.table_rules {
             write!(
                 f,
-                "  TABLE `{}` on `{}`: WGSL-lowerable={}, executed_on_gpu={}",
-                rule.rule, rule.table, rule.wgsl_lowerable, rule.executed_on_gpu
+                "  TABLE `{}` on `{}`: WGSL-lowerable={}",
+                rule.rule, rule.table, rule.wgsl_lowerable
             )?;
             if let Some(rejection) = &rule.rejection {
                 write!(f, " ({rejection})")?;
@@ -282,8 +237,8 @@ impl fmt::Display for GpuCapabilityReport {
         for rule in &self.field_rules {
             write!(
                 f,
-                "  FIELD `{}` on `{}`: WGSL-lowerable={}, executed_on_gpu={}",
-                rule.rule, rule.field, rule.wgsl_lowerable, rule.executed_on_gpu
+                "  FIELD `{}` on `{}`: WGSL-lowerable={}",
+                rule.rule, rule.field, rule.wgsl_lowerable
             )?;
             if let Some(radius) = rule.stencil_radius {
                 write!(
@@ -300,8 +255,8 @@ impl fmt::Display for GpuCapabilityReport {
         for flow in &self.flows {
             write!(
                 f,
-                "  FLOW `{}` on `{}.{}`: WGSL-lowerable={}, executed_on_gpu={}",
-                flow.flow, flow.field, flow.channel, flow.wgsl_lowerable, flow.executed_on_gpu
+                "  FLOW `{}` on `{}.{}`: WGSL-lowerable={}",
+                flow.flow, flow.field, flow.channel, flow.wgsl_lowerable
             )?;
             if let Some(radius) = flow.stencil_radius {
                 write!(
@@ -318,13 +273,8 @@ impl fmt::Display for GpuCapabilityReport {
         for rule in &self.actor_rules {
             write!(
                 f,
-                "  ACTOR `{}` on `{}`: WGSL-lowerable={}, executed_on_gpu={} [field {}, actors {}]",
-                rule.rule,
-                rule.actor_set,
-                rule.wgsl_lowerable,
-                rule.executed_on_gpu,
-                rule.field,
-                rule.actor_count
+                "  ACTOR `{}` on `{}`: WGSL-lowerable={} [field {}, actors {}]",
+                rule.rule, rule.actor_set, rule.wgsl_lowerable, rule.field, rule.actor_count
             )?;
             if let Some(rejection) = &rule.rejection {
                 write!(f, " ({rejection})")?;

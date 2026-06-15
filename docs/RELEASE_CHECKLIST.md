@@ -101,6 +101,10 @@ Everything in Tier 1, **plus**:
       execution, and actual runtime GPU dispatch. Actual runtime GPU dispatch does
       not exist today; policy-level `PreferGpu` / `RequireGpu` reporting is
       experimental.
+- [ ] Planner reports are described only as advisory capability reports. Runtime GPU
+      request, selection, execution, refusal, and CPU fallback are described as
+      top-level selected-execution fields, while transfer/readback availability and
+      equivalence/check evidence are described as `RuleFireReport::gpu` fields.
 - [ ] GPU correctness, smoke, and performance wording follows
       `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`; release copy does not treat shader
       eligibility or hardware correctness examples as performance evidence.

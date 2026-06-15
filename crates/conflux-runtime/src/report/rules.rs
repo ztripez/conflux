@@ -2,7 +2,7 @@ use conflux_kernel::RejectionReason;
 
 use crate::selection::{ExecutionMode, ExecutionPath, FallbackReason};
 
-use super::AssessmentOutcome;
+use super::{AssessmentOutcome, GpuExecutionReport};
 
 /// One firing of one rule on one tick.
 #[derive(Clone, Debug)]
@@ -18,9 +18,9 @@ pub struct RuleFireReport {
     /// The candidate optimized path the rule qualifies for under the requested mode.
     ///
     /// `CpuKernel` means the rule is eligible for CPU-kernel execution. `Gpu` means
-    /// GPU policy was requested and kernel extraction accepted the table rule as the
-    /// runtime-local proxy for the bounded WGSL-shaped subset. `Reference` means no
-    /// optimized path was selected or eligibility was not evaluated under
+    /// GPU policy was requested and the table rule passed the runtime-local GPU
+    /// policy precondition. `Reference` means no optimized path was selected or
+    /// eligibility was not evaluated under
     /// [`ExecutionMode::ReferenceOnly`].
     pub eligible_path: ExecutionPath,
     /// The path resolution chose given the requested mode and the rule's
@@ -32,8 +32,8 @@ pub struct RuleFireReport {
     /// Why the rule did not run on the requested optimized path, if applicable.
     ///
     /// CPU-kernel modes report kernel eligibility failures. GPU modes report whether
-    /// the rule could not reach the WGSL-shaped subset or the runtime GPU path is not
-    /// wired in.
+    /// the rule/domain is outside the runtime-local GPU policy or the runtime GPU
+    /// path is not wired in.
     pub fallback_reason: Option<FallbackReason>,
     /// The specific, typed extraction reason the rule has no kernel, when a kernel
     /// path was requested but unavailable (the detail behind a `NotKernelEligible` /
@@ -42,6 +42,13 @@ pub struct RuleFireReport {
     pub kernel_rejection: Option<RejectionReason>,
     /// How the used path relates to the reference (the source of truth).
     pub comparison_status: ComparisonStatus,
+    /// GPU-adjacent evidence fields for this firing.
+    ///
+    /// Selected-execution state remains canonical in `requested_mode`,
+    /// `selected_path`, `used_path`, and `fallback_reason`. This field records only
+    /// backend or Residency evidence availability that can be attached without
+    /// making the runtime own shader lowering, GPU dispatch, or buffer residency.
+    pub gpu: GpuExecutionReport,
 }
 
 /// How a rule's execution relates to the reference path. The reference is the
@@ -104,8 +111,11 @@ impl RuleFireReport {
             (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
                 format!(" [fell back to reference: {}]", why())
             }
-            (Some(ExecutionPath::Reference), Some(FallbackReason::NotWgslLowerable)) => {
-                format!(" [fell back to reference: not WGSL-lowerable — {}]", why())
+            (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPolicyUnsupported)) => {
+                format!(
+                    " [fell back to reference: GPU policy unsupported — {}]",
+                    why()
+                )
             }
             (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPathUnavailable)) => {
                 " [fell back to reference: GPU path unavailable]".to_string()
@@ -113,8 +123,8 @@ impl RuleFireReport {
             (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
                 format!(" [REFUSED: required kernel unavailable — {}]", why())
             }
-            (None, Some(FallbackReason::NotWgslLowerable)) => {
-                format!(" [REFUSED: not WGSL-lowerable — {}]", why())
+            (None, Some(FallbackReason::GpuPolicyUnsupported)) => {
+                format!(" [REFUSED: GPU policy unsupported — {}]", why())
             }
             (None, Some(FallbackReason::RequiredGpuUnavailable)) => {
                 " [REFUSED: required GPU unavailable]".to_string()

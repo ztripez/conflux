@@ -139,7 +139,6 @@ fn gpu_eligible_numeric_reaches_the_gpu_backend() {
         .expect("fixture exposes table GPU capability in planner report");
     assert_eq!(gpu_capability.table, "Cell");
     assert!(gpu_capability.wgsl_lowerable);
-    assert!(!gpu_capability.executed_on_gpu);
 
     // And it lowers cleanly to WGSL.
     let kernels = extract(&ir);
@@ -163,7 +162,6 @@ fn regional_ecology_field_rule_reports_typed_wgsl_capability_without_gpu_executi
     assert_eq!(grow_crop.field, "Terrain");
     assert_eq!(grow_crop.grid, (2, 2));
     assert_eq!(grow_crop.stencil_radius, Some(0));
-    assert!(!grow_crop.executed_on_gpu);
     assert!(!grow_crop.wgsl_lowerable);
     match &grow_crop.rejection {
         Some(FieldGpuRejection::WgslRejected {

@@ -16,10 +16,9 @@ pub struct OptimizationReport {
     pub fusion: Vec<FusionGroup>,
     /// Advisory GPU capability for table, field, flow, and actor-rule kernels.
     ///
-    /// This distinguishes WGSL-lowerable table rules, field rules, flows, and actor
-    /// rules from work actually run on a GPU. The planner never dispatches GPU work,
-    /// so its entries report
-    /// `executed_on_gpu == false`.
+    /// This reports WGSL lowerability only. Actual GPU request, selection,
+    /// execution, refusal, fallback, transfer/readback availability, and equivalence
+    /// state live in runtime execution reports, not planner reports.
     pub gpu: super::GpuCapabilityReport,
 }
 

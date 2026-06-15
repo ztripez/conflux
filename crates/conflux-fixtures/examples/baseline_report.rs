@@ -342,8 +342,8 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
     }
     for table in &plan.gpu.table_rules {
         println!(
-            "    gpu capability table `{}`: WGSL-lowerable={}, executed_on_gpu={}",
-            table.rule, table.wgsl_lowerable, table.executed_on_gpu
+            "    gpu capability table `{}`: WGSL-lowerable={}",
+            table.rule, table.wgsl_lowerable
         );
         if let Some(rejection) = &table.rejection {
             println!("        gpu rejection: {rejection}");
@@ -351,10 +351,9 @@ fn report_scenario(name: &str, build: &fn() -> conflux_core::Model) {
     }
     for field in &plan.gpu.field_rules {
         println!(
-            "    gpu capability field `{}`: WGSL-lowerable={}, executed_on_gpu={} grid={}x{} radius={}",
+            "    gpu capability field `{}`: WGSL-lowerable={} grid={}x{} radius={}",
             field.rule,
             field.wgsl_lowerable,
-            field.executed_on_gpu,
             field.grid.0,
             field.grid.1,
             field

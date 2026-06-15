@@ -95,17 +95,26 @@ canonical scenario.
 - **Advisory planning + profile-guided research**: `conflux-planner` (advisory
   only, never rewrites the IR — backend choice, cost hints, fusion candidates,
   transfer notes, GPU capability for table/field/flow/actor WGSL lowering,
-  proximity-index eligibility, and graph-kernel eligibility) and `conflux-trace` (optional, off
-  the execution path). The GPU capability report distinguishes WGSL-lowerable
-  rules/flows from work actually run on GPU; planner-produced entries do not imply
-  GPU dispatch. The proximity-index
-  eligibility report now lines up with the opt-in exact uniform-grid query path.
-- **Residency / GPU**: `conflux-residency` owns the folded bridge-local
-  `conflux_residency::residency_core` compatibility surface and has no external
-  `residency-core` git dependency. It remains experimental and owns only the
-  bridge-local buffer-movement descriptors, plans, reports, fake backend, and sync
-  helpers. `conflux-wgsl` owns WGSL emission plus optional, experimental `wgpu`
-  correctness checks behind the `gpu` feature.
+  proximity-index eligibility, and graph-kernel eligibility) and `conflux-trace`
+  (optional, off the execution path). The GPU capability report records only WGSL
+  lowerability; runtime GPU request, selection, execution, refusal, and CPU
+  fallback live in `RuleFireReport` selected-execution fields, while
+  `RuleFireReport::gpu` records attached or missing WGSL, Residency mapping,
+  transfer/readback, and equivalence/check evidence. The proximity-index eligibility
+  report now lines up with the opt-in exact uniform-grid query path.
+- **Residency / GPU**: GPU execution is a first-class selected-execution contract
+  for the RC surface, not a planner side effect or hidden future add-on. Current
+  `conflux-runtime` policy can request, select, refuse, or visibly fall back from
+  `ExecutionPath::Gpu` for table rules and reports that selected-execution state on
+  `RuleFireReport`; `RuleFireReport::gpu` does not claim true WGSL lowerability
+  unless backend evidence is attached. Actual hardware dispatch remains outside
+  runtime until a boundary-safe executor attaches backend reports.
+  `conflux-residency` owns the
+  folded bridge-local `conflux_residency::residency_core` compatibility surface and
+  has no external `residency-core` git dependency. It remains experimental and owns
+  only the bridge-local buffer-movement descriptors, plans, reports, fake backend,
+  and sync helpers. `conflux-wgsl` owns WGSL emission plus optional, experimental
+  `wgpu` correctness checks behind the `gpu` feature.
 - **Bevy adapter**: `conflux-bevy` is adapter-only. It maps a `Simulation` and its
   reports into Bevy resources/messages for manual stepping; Bevy dependencies are
   mechanically forbidden outside the adapter crate.
