@@ -88,6 +88,13 @@ Each table-rule firing carries:
   planner capability report, and it does not duplicate the selected-execution
   fields above.
 
+For explicit GPU policy, `RuleFireReport` also provides derived accessors over the
+canonical fields: `gpu_requested()`, `gpu_selected()`, `gpu_executed()`,
+`gpu_fallback_reason()`, and `gpu_refusal_reason()`. These methods do not store a
+second state machine; they are the recommended way to ask whether a GPU request was
+made, whether runtime policy actually selected `ExecutionPath::Gpu`, whether GPU
+work executed, and which typed reason explains a fallback or refusal.
+
 `RuleFireReport::gpu` keeps backend/bridge evidence separate from selection:
 
 - `wgsl_evidence` — evidence about WebGPU Shading Language (WGSL) lowering.
@@ -107,9 +114,11 @@ Each table-rule firing carries:
   as backend-specific equivalence reports from `conflux-wgsl`.
 
 GPU modes in this slice are explicit policy/reporting modes, not hidden hardware
-dispatch. `selected_path: Gpu` records the requested policy decision; `used_path`
-remains `Reference` for visible prefer-mode fallback or `None` for require-mode
-refusal until a later boundary-safe GPU executor exists.
+dispatch. `selected_path: Gpu` records that runtime policy selected a GPU-shaped
+table-rule path; `used_path` remains `Reference` for visible prefer-mode fallback
+or `None` for require-mode refusal until a later boundary-safe GPU executor exists.
+Rules outside the runtime GPU policy keep `selected_path: Reference` and carry
+`GpuPolicyUnsupported` as the typed fallback/refusal reason.
 
 `PreferGpu` means: if runtime policy selects a GPU-shaped table-rule path but no
 boundary-safe GPU executor/report attachments are available, run the CPU reference

@@ -119,6 +119,24 @@ pub enum FallbackReason {
     RequiredGpuUnavailable,
 }
 
+impl FallbackReason {
+    /// Returns whether the fallback or refusal reason describes explicit GPU
+    /// selected execution.
+    ///
+    /// Returns `true` for [`FallbackReason::GpuPolicyUnsupported`],
+    /// [`FallbackReason::GpuPathUnavailable`], and
+    /// [`FallbackReason::RequiredGpuUnavailable`]. Returns `false` for CPU-kernel
+    /// fallback and refusal reasons.
+    pub fn is_gpu_reason(self) -> bool {
+        matches!(
+            self,
+            FallbackReason::GpuPolicyUnsupported
+                | FallbackReason::GpuPathUnavailable
+                | FallbackReason::RequiredGpuUnavailable
+        )
+    }
+}
+
 /// How the caller wants proximity queries evaluated. The default
 /// ([`QueryExecutionMode::ReferenceOnly`]) uses the exact CPU scan. The indexed
 /// modes are explicit opt-ins: an index is an execution strategy, never a change to
@@ -265,7 +283,7 @@ pub(crate) fn resolve_path(
             Some(FallbackReason::GpuPolicyUnsupported),
         ),
         (ExecutionPath::Reference | ExecutionPath::CpuKernel, ExecutionMode::RequireGpu) => (
-            ExecutionPath::Gpu,
+            ExecutionPath::Reference,
             None,
             Some(FallbackReason::GpuPolicyUnsupported),
         ),
@@ -379,7 +397,7 @@ mod tests {
         );
         assert_eq!(
             resolve_path(Reference, RequireGpu),
-            (Gpu, None, Some(FallbackReason::GpuPolicyUnsupported))
+            (Reference, None, Some(FallbackReason::GpuPolicyUnsupported))
         );
     }
 
