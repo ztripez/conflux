@@ -193,6 +193,14 @@ fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() 
         accumulate.fallback_reason,
         Some(FallbackReason::GpuPathUnavailable)
     );
+    assert!(accumulate.gpu_requested());
+    assert!(accumulate.gpu_selected());
+    assert!(!accumulate.gpu_executed());
+    assert_eq!(
+        accumulate.gpu_fallback_reason(),
+        Some(FallbackReason::GpuPathUnavailable)
+    );
+    assert_eq!(accumulate.gpu_refusal_reason(), None);
     assert_eq!(
         accumulate.comparison_status,
         ComparisonStatus::IsReference,
@@ -231,6 +239,14 @@ fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() 
         leak.fallback_reason,
         Some(FallbackReason::GpuPolicyUnsupported)
     );
+    assert!(leak.gpu_requested());
+    assert!(!leak.gpu_selected());
+    assert!(!leak.gpu_executed());
+    assert_eq!(
+        leak.gpu_fallback_reason(),
+        Some(FallbackReason::GpuPolicyUnsupported)
+    );
+    assert_eq!(leak.gpu_refusal_reason(), None);
     assert_eq!(
         leak.gpu.wgsl_evidence,
         GpuWgslEvidence::NotAttached(GpuEvidenceUnavailableReason::RuntimeDoesNotOwnWgslBackend)
@@ -260,6 +276,14 @@ fn require_gpu_refuses_without_hidden_reference_or_gpu_execution() {
         accumulate.fallback_reason,
         Some(FallbackReason::RequiredGpuUnavailable)
     );
+    assert!(accumulate.gpu_requested());
+    assert!(accumulate.gpu_selected());
+    assert!(!accumulate.gpu_executed());
+    assert_eq!(accumulate.gpu_fallback_reason(), None);
+    assert_eq!(
+        accumulate.gpu_refusal_reason(),
+        Some(FallbackReason::RequiredGpuUnavailable)
+    );
     assert_eq!(accumulate.comparison_status, ComparisonStatus::NotRun);
     assert_eq!(
         accumulate.gpu.wgsl_evidence,
@@ -273,10 +297,18 @@ fn require_gpu_refuses_without_hidden_reference_or_gpu_execution() {
 
     let leak = step.rules.iter().find(|r| r.rule == "leak").unwrap();
     assert_eq!(leak.eligible_path, ExecutionPath::Reference);
-    assert_eq!(leak.selected_path, ExecutionPath::Gpu);
+    assert_eq!(leak.selected_path, ExecutionPath::Reference);
     assert_eq!(leak.used_path, None);
     assert_eq!(
         leak.fallback_reason,
+        Some(FallbackReason::GpuPolicyUnsupported)
+    );
+    assert!(leak.gpu_requested());
+    assert!(!leak.gpu_selected());
+    assert!(!leak.gpu_executed());
+    assert_eq!(leak.gpu_fallback_reason(), None);
+    assert_eq!(
+        leak.gpu_refusal_reason(),
         Some(FallbackReason::GpuPolicyUnsupported)
     );
     assert!(leak.kernel_rejection.is_some());

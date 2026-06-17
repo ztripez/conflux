@@ -218,7 +218,8 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   `docs/GPU_BACKEND_PASS.md`; it keeps GPU correctness work in `conflux-wgsl`.
   Runtime GPU policy can explicitly request, select, refuse, or fall back from
   `ExecutionPath::Gpu`; that state is recorded in `RuleFireReport` selected-execution
-  fields while `RuleFireReport::gpu` records only GPU-adjacent evidence availability.
+  fields and exposed through derived GPU accessors while `RuleFireReport::gpu`
+  records only GPU-adjacent evidence availability.
   Actual GPU dispatch is still absent from `conflux-runtime` so the runtime keeps no `wgpu`,
   `conflux-wgsl`, Residency, or buffer-movement dependency. The current runtime GPU
   policy is table-rule scoped.

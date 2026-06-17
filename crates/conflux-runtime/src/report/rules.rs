@@ -91,6 +91,71 @@ impl RuleFireReport {
             rejected: self.rows.len() - committed,
         }
     }
+
+    /// Returns whether the caller requested GPU selected execution for this rule firing.
+    ///
+    /// This method is derived from [`RuleFireReport::requested_mode`] and returns
+    /// `true` for [`ExecutionMode::PreferGpu`] and [`ExecutionMode::RequireGpu`],
+    /// including firings that later fall back to [`ExecutionPath::Reference`] or are
+    /// refused with `used_path == None`. This method does not inspect
+    /// [`RuleFireReport::gpu`], which stores backend and Residency evidence only.
+    pub fn gpu_requested(&self) -> bool {
+        self.requested_mode.requests_gpu()
+    }
+
+    /// Returns whether runtime policy selected a GPU-shaped execution path for this
+    /// rule firing.
+    ///
+    /// This method is derived from [`RuleFireReport::selected_path`] and returns
+    /// `true` only when the selected path is [`ExecutionPath::Gpu`]. A selected GPU
+    /// path is a runtime policy decision, not proof that GPU work executed and not
+    /// evidence from [`RuleFireReport::gpu`].
+    pub fn gpu_selected(&self) -> bool {
+        self.selected_path == ExecutionPath::Gpu
+    }
+
+    /// Returns whether this rule firing actually used a GPU execution path.
+    ///
+    /// This method is derived from [`RuleFireReport::used_path`] and returns `true`
+    /// only when the used path is `Some(ExecutionPath::Gpu)`. This method does not
+    /// inspect [`RuleFireReport::gpu`], which records backend and Residency evidence
+    /// attached to the firing.
+    pub fn gpu_executed(&self) -> bool {
+        self.used_path == Some(ExecutionPath::Gpu)
+    }
+
+    /// Returns the GPU-specific reason a GPU request ran on the CPU reference path.
+    ///
+    /// Returns `Some(reason)` when GPU selected execution was requested, the used
+    /// path is `Some(ExecutionPath::Reference)`, and
+    /// [`RuleFireReport::fallback_reason`] is a GPU-specific [`FallbackReason`].
+    /// Returns `None` for non-GPU modes, GPU refusals, actual GPU execution, and
+    /// CPU-kernel fallback or refusal reasons. This method reads selected-execution
+    /// fields only; [`RuleFireReport::gpu`] remains evidence-only.
+    pub fn gpu_fallback_reason(&self) -> Option<FallbackReason> {
+        if self.gpu_requested() && self.used_path == Some(ExecutionPath::Reference) {
+            self.fallback_reason.filter(|reason| reason.is_gpu_reason())
+        } else {
+            None
+        }
+    }
+
+    /// Returns the GPU-specific reason a GPU request was refused without running a
+    /// rule.
+    ///
+    /// Returns `Some(reason)` when GPU selected execution was requested, the used
+    /// path is `None`, and [`RuleFireReport::fallback_reason`] is a GPU-specific
+    /// [`FallbackReason`]. Returns `None` for non-GPU modes, reference fallbacks,
+    /// actual GPU execution, and CPU-kernel fallback or refusal reasons. This method
+    /// reads selected-execution fields only; [`RuleFireReport::gpu`] remains
+    /// evidence-only.
+    pub fn gpu_refusal_reason(&self) -> Option<FallbackReason> {
+        if self.gpu_requested() && self.used_path.is_none() {
+            self.fallback_reason.filter(|reason| reason.is_gpu_reason())
+        } else {
+            None
+        }
+    }
 }
 
 impl RuleFireReport {
