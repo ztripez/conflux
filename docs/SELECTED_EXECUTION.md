@@ -20,15 +20,15 @@ policy, and ordering.
 - **`RequireCpuKernel`** — kernel-eligible rules run on the kernel; an ineligible
   rule is **refused** (not silently run on the reference), so nothing is computed
   for it that tick.
-- **`PreferGpu`** — GPU-shaped table rules select the `Gpu` path, then visibly
-  fall back to the reference with `GpuPathUnavailable` because `conflux-runtime`
-  has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency. Rules
-  that cannot reach the bounded WGSL-shaped subset fall back with
-  `NotWgslLowerable`.
-- **`RequireGpu`** — GPU-shaped table rules select the `Gpu` path, then are
+- **`PreferGpu`** — runtime GPU-policy table rules select the `Gpu` path, then
+  visibly fall back to the reference with `GpuPathUnavailable` because
+  `conflux-runtime` has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement
+  dependency. Rules/domains outside the runtime GPU policy fall back with
+  `GpuPolicyUnsupported`.
+- **`RequireGpu`** — runtime GPU-policy table rules select the `Gpu` path, then are
   refused with `RequiredGpuUnavailable` until a boundary-safe GPU executor exists.
-  Rules that cannot reach the bounded WGSL-shaped subset are refused with
-  `NotWgslLowerable`. No reference fallback is hidden.
+  Rules/domains outside the runtime GPU policy are refused with
+  `GpuPolicyUnsupported`. No reference fallback is hidden.
 
 Proximity-query indexing is an independent opt-in. Use
 `Simulation::with_query_mode(ir, query_mode)` for query-only selection or
@@ -68,15 +68,15 @@ Each table-rule firing carries:
 - `requested_mode` — the mode the run asked for.
 - `eligible_path` — the candidate path the table rule qualifies for under the
   requested mode: `CpuKernel` for CPU-kernel eligibility, `Gpu` when GPU policy was
-  requested and kernel extraction accepted the rule as the runtime-local
-  WGSL-shaped eligibility proxy, or `Reference` when no optimized path is selected.
+  requested and the rule passed the runtime-local GPU policy precondition, or
+  `Reference` when no optimized path is selected.
 - `selected_path` — the path policy chose given the mode and eligibility.
 - `used_path` — the path actually executed; `None` means the rule was **refused**
   because a required CPU-kernel or GPU path was unavailable, so no rows were
   evaluated.
 - `fallback_reason` — `NotKernelEligible` (preferred-but-ineligible → ran on the
   reference), `RequiredKernelUnavailable` (required-but-ineligible → refused),
-  `NotWgslLowerable`, `GpuPathUnavailable`, or `RequiredGpuUnavailable`.
+  `GpuPolicyUnsupported`, `GpuPathUnavailable`, or `RequiredGpuUnavailable`.
 - `kernel_rejection` — the **specific, typed** extraction reason behind a fallback
   (e.g. `ReadsParameter { name: "growth" }`), so the report self-explains *why*
   there is no kernel without consulting the planner.
@@ -84,16 +84,45 @@ Each table-rule firing carries:
   `DeferredToEquivalenceHarness` (ran on the kernel; equivalence is the harness's
   job, within tolerance), `DeferredToGpuEquivalenceHarness` (reserved for future
   actual GPU runs), or `NotRun` (refused).
+- `gpu` — GPU-adjacent evidence for this firing. It is runtime report state, not a
+  planner capability report, and it does not duplicate the selected-execution
+  fields above.
+
+`RuleFireReport::gpu` keeps backend/bridge evidence separate from selection:
+
+- `wgsl_evidence` — evidence about WebGPU Shading Language (WGSL) lowering.
+  `conflux-runtime` does not depend on `conflux-wgsl`, so kernel extraction alone
+  never becomes true WGSL proof. Runtime reports `NotAttached` until a backend
+  boundary attaches `Lowerable` or `NotLowerable` evidence.
+- `residency_mapping` — evidence about Residency-compatible resource mapping.
+  Residency owns movement and lifecycle of buffer-backed data; runtime stores only
+  `NotApplicable`, `NotAttached`, `Mappable`, or `NotMappable`, never Residency
+  descriptors or transfer internals.
+- `transfer_availability` — whether a Residency transfer-report attachment exists,
+  is not applicable, or is absent with a typed reason.
+- `readback_availability` — whether backend readback or diagnostic attachment data
+  exists, is not applicable, or is absent with a typed reason.
+- `equivalence_status` — runtime-level status for an attached GPU/reference check:
+  `NotApplicable`, `NotChecked`, `Passed`, or `Failed`. This is not the same type
+  as backend-specific equivalence reports from `conflux-wgsl`.
 
 GPU modes in this slice are explicit policy/reporting modes, not hidden hardware
 dispatch. `selected_path: Gpu` records the requested policy decision; `used_path`
 remains `Reference` for visible prefer-mode fallback or `None` for require-mode
 refusal until a later boundary-safe GPU executor exists.
 
+`PreferGpu` means: if runtime policy selects a GPU-shaped table-rule path but no
+boundary-safe GPU executor/report attachments are available, run the CPU reference
+path and report a typed CPU fallback in `fallback_reason`. `RequireGpu` means: if
+runtime policy cannot both select and execute the GPU path, refuse the firing and
+report a typed refusal in `fallback_reason`; it must not silently run the reference
+path. Neither mode lets `conflux-runtime` claim true WGSL lowerability without
+attached backend evidence.
+
 GPU policy is table-rule scoped in this slice. Flow and actor-rule CPU kernels are
 not GPU eligibility: under `PreferGpu` those domains visibly fall back to reference
-with `NotWgslLowerable`, and under `RequireGpu` they are refused with
-`NotWgslLowerable`.
+with `GpuPolicyUnsupported`, and under `RequireGpu` they are refused with
+`GpuPolicyUnsupported`.
 
 The optional `conflux-wgsl` `gpu` feature also exposes an experimental proximity
 query hardware helper for equivalence/measurement work outside normal runtime
@@ -200,11 +229,13 @@ evaluated.
 ## Planner reports are advisory
 
 `conflux-planner` may report that a rule is CPU-kernel eligible, WGSL-lowerable, or
-interesting for future optimization. Those reports do not change execution. Only
-the runtime's selected-execution fields (`requested_mode`, `eligible_path`,
-`selected_path`, `used_path`, and `fallback_reason`) say what a `Simulation`
-actually requested and ran.
+interesting for future optimization. Those reports do not change execution and do
+not contain runtime GPU execution fields. Only the runtime's selected-execution
+fields (`requested_mode`, `eligible_path`, `selected_path`, `used_path`, and
+`fallback_reason`) say what a `Simulation` actually requested, selected, ran,
+refused, or fell back from. `RuleFireReport::gpu` records only attached or missing
+GPU-adjacent evidence.
 
-In particular, planner GPU capability means "WGSL-lowerable" and always reports
-`executed_on_gpu=false` in this slice. It is not a runtime dispatch instruction,
-not an engine integration path, and not a performance claim.
+Planner GPU capability means "WGSL-lowerable" only. It is not a runtime dispatch
+instruction, not an engine integration path, not a Residency mapping report, not a
+transfer/readback report, and not a performance claim.

@@ -5,6 +5,7 @@
 
 mod actor;
 mod flow;
+mod gpu;
 mod graph;
 mod projection;
 mod query;
@@ -20,6 +21,11 @@ pub use actor::{
 };
 pub use conflux_ir::{QueryNeighbor, QuerySourceResult};
 pub use flow::{FlowDestination, FlowFireReport, FlowSummary, FlowTransfer};
+pub use gpu::{
+    GpuAttachmentAvailability, GpuAttachmentUnavailableReason, GpuEquivalenceNotCheckedReason,
+    GpuEquivalenceStatus, GpuEvidenceUnavailableReason, GpuExecutionReport, GpuResidencyMapping,
+    GpuWgslEvidence,
+};
 pub use graph::{
     GraphEventInstance, GraphEventPayloadValue, GraphEventReport, GraphNodeOutcome,
     GraphRuleFireReport,

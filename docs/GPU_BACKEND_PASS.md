@@ -25,7 +25,9 @@ The pass is correctness-first. On `main`, it provides:
   implying automatic runtime execution.
 
 The runtime still does not dispatch rules on GPU. Planner reports and fixture
-output use `executed_on_gpu=false` for planner-produced capability entries.
+output expose WGSL lowerability only; runtime request/selection/use/refusal state
+lives in top-level `RuleFireReport` selected-execution fields, while
+`RuleFireReport::gpu` records attached or missing GPU-adjacent evidence.
 
 ## Ownership split
 
@@ -116,8 +118,8 @@ The excluded scopes were tracked explicitly in the closed follow-up epic #261:
 ## Acceptance for this boundary
 
 - Docs distinguish current implementation from deferred runtime/resource GPU work.
-- Planner reports distinguish WGSL-lowerable table/field/flow/actor-rule kernels
-  from kernels actually dispatched on GPU.
+- Planner reports name WGSL-lowerable table/field/flow/actor-rule kernels without
+  carrying actual GPU execution state.
 - `conflux-wgsl` remains the shader-lowering boundary.
 - `conflux-residency` owns the folded
   `conflux_residency::residency_core` compatibility surface; no Conflux crate

@@ -25,4 +25,4 @@ This preserves the current flow contract:
 This is a backend/correctness surface, not runtime GPU dispatch. `conflux-runtime`
 still has no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency.
 Planner flow GPU entries are advisory capability only and keep
-`executed_on_gpu=false`.
+actual execution state out of planner reports.

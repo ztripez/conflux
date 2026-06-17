@@ -71,6 +71,10 @@ is acceptable for the RC smoke gate; a mismatch or build/test failure is not.
       release.
 - [ ] Release notes distinguish WGSL-lowerable, hardware-check executed,
       policy-selected/refused GPU execution, and actual runtime GPU dispatch.
+- [ ] Release notes name `RuleFireReport` selected-execution fields as the runtime
+      GPU request/selection/refusal/fallback contract, name `RuleFireReport::gpu`
+      as GPU-adjacent evidence availability, and do not put actual execution state
+      in planner reports.
 - [ ] Release notes do not describe experimental or deferred surfaces as stable.
 - [ ] Release notes link to `docs/API_STABILITY.md`, `docs/SELECTED_EXECUTION.md`,
       and `docs/PUBLISH_POLICY.md` for the stable-enough, selected-execution, and
@@ -98,7 +102,11 @@ experimental or advisory:
   These modes are currently scoped to table-rule runtime GPU eligibility: they may
   select or refuse `ExecutionPath::Gpu` for eligible table rules, but actual
   runtime GPU dispatch is still absent. Flow and actor-rule WGSL capability is
-  planner/backend metadata only, not runtime GPU eligibility.
+  planner/backend metadata only, not runtime GPU eligibility. Runtime GPU reports
+  keep GPU requested/selected/used/refused/fallback state in the top-level
+  selected-execution fields and use `RuleFireReport::gpu` only for attached or
+  missing WGSL, Residency mapping, transfer/readback, and equivalence/check
+  evidence.
 - `conflux-planner` reports. Backend-choice, static-cost, fusion-candidate,
   transfer, GPU-capability for table/field/flow/actor WGSL lowerability,
   flow-optimization, actor-rule-optimization, aggregate-optimization,

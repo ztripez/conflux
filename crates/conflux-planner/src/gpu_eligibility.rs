@@ -29,9 +29,8 @@ use crate::report::{
 ///
 /// A [`GpuCapabilityReport`] that records WGSL lowerability for table rules,
 /// field rules, flows, and actor rules. The report is advisory only: it checks
-/// whether kernels can lower to WGSL, does not dispatch GPU work, does not mutate
-/// the IR, and entries produced by the planner always report
-/// `executed_on_gpu == false`.
+/// whether kernels can lower to WGSL, does not dispatch GPU work, and does not
+/// mutate the IR.
 pub fn gpu_capability(ir: &SimIr) -> GpuCapabilityReport {
     crate::plan(ir).gpu
 }
@@ -100,7 +99,6 @@ fn actor_capabilities(
                 field: field.name.clone(),
                 actor_count: actor_set.count,
                 wgsl_lowerable,
-                executed_on_gpu: false,
                 rejection,
             }
         })
@@ -120,7 +118,6 @@ fn table_capabilities(rules: &[RulePlan]) -> Vec<TableGpuCapability> {
                 rule: rule.rule.clone(),
                 table: rule.table.clone(),
                 wgsl_lowerable,
-                executed_on_gpu: false,
                 rejection,
             }
         })
@@ -179,7 +176,6 @@ fn flow_capabilities(
                 grid: (field.grid.width, field.grid.height),
                 stencil_radius: kernel.map(|kernel| kernel.stencil_radius),
                 wgsl_lowerable,
-                executed_on_gpu: false,
                 rejection,
             }
         })
@@ -237,7 +233,6 @@ fn field_capabilities(
                 grid: (field.grid.width, field.grid.height),
                 stencil_radius: kernel.map(|kernel| kernel.stencil_radius),
                 wgsl_lowerable,
-                executed_on_gpu: false,
                 rejection,
             }
         })

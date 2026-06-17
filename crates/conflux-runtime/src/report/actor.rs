@@ -76,7 +76,7 @@ impl ActorRuleFireReport {
             (Some(ExecutionPath::Reference), Some(FallbackReason::NotKernelEligible)) => {
                 format!(" [fell back to reference: {}]", why())
             }
-            (Some(ExecutionPath::Reference), Some(FallbackReason::NotWgslLowerable)) => {
+            (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPolicyUnsupported)) => {
                 " [fell back to reference: actor GPU path unsupported]".to_string()
             }
             (Some(ExecutionPath::Reference), Some(FallbackReason::GpuPathUnavailable)) => {
@@ -85,7 +85,7 @@ impl ActorRuleFireReport {
             (None, Some(FallbackReason::RequiredKernelUnavailable)) => {
                 format!(" [REFUSED: required kernel unavailable — {}]", why())
             }
-            (None, Some(FallbackReason::NotWgslLowerable)) => {
+            (None, Some(FallbackReason::GpuPolicyUnsupported)) => {
                 " [REFUSED: actor GPU path unsupported]".to_string()
             }
             (None, Some(FallbackReason::RequiredGpuUnavailable)) => {

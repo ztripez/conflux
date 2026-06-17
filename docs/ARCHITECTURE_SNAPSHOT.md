@@ -166,10 +166,14 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
 ## Report surfaces
 
 - **Step / run report** — per rule (table, field, actor, graph) the raw proposed
-  value, old value, commit/reject, and per-assessment outcome; plus per-tick
-  bridges, flows (with conservation summary), actor movements, projection bridges,
-  and report-only graph events (event type, source node identity, payload values
-  with units).
+  value, old value, commit/reject, and per-assessment outcome; table-rule reports
+  also carry selected-execution fields and `RuleFireReport::gpu`. The top-level
+  selected-execution fields remain the source of truth for GPU requested/selected/
+  used/refused/fallback state; `RuleFireReport::gpu` records only attached or
+  missing WGSL, Residency mapping, transfer/readback, and GPU/reference check
+  evidence. The report also includes per-tick bridges, flows (with conservation
+  summary), actor movements, projection bridges, and report-only graph events
+  (event type, source node identity, payload values with units).
 - **Read-only projections** — `aggregate_report`, `query_report`,
   `projection_report` summarize current state with provenance (including units and,
   for projections, drift) without mutating. Query reports also carry the requested /
@@ -208,14 +212,16 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   Hardware checks compare GPU buffers against CPU contracts and report explicit
   match, mismatch, or no-adapter skip; they do not silently imply GPU work ran.
   Planner GPU capability reports use this distinction too: `WGSL-lowerable=true`
-  means an emitter accepted the kernel, while `executed_on_gpu=false` means the
-  planner did not dispatch runtime GPU work.
+  means an emitter accepted the kernel, and the planner report has no runtime GPU
+  execution fields.
   The completed GPU backend and follow-up work is scoped in
   `docs/GPU_BACKEND_PASS.md`; it keeps GPU correctness work in `conflux-wgsl`.
-  Runtime GPU policy can explicitly select or refuse `ExecutionPath::Gpu`, but
-  actual GPU dispatch is still absent from `conflux-runtime` so the runtime keeps
-  no `wgpu`, `conflux-wgsl`, Residency, or buffer-movement dependency. The current
-  runtime GPU policy is table-rule scoped.
+  Runtime GPU policy can explicitly request, select, refuse, or fall back from
+  `ExecutionPath::Gpu`; that state is recorded in `RuleFireReport` selected-execution
+  fields while `RuleFireReport::gpu` records only GPU-adjacent evidence availability.
+  Actual GPU dispatch is still absent from `conflux-runtime` so the runtime keeps no `wgpu`,
+  `conflux-wgsl`, Residency, or buffer-movement dependency. The current runtime GPU
+  policy is table-rule scoped.
   Flow WGSL capability is planner/backend metadata only: flow CPU kernels are not
   runtime GPU eligibility, and `conflux-runtime` does not dispatch flow work on
   GPU. Actor-rule WGSL capability is planner/backend metadata only: actor-rule CPU

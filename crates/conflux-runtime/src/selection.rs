@@ -31,13 +31,14 @@ pub enum ExecutionMode {
     /// (reported), never silently run on the reference. Use when a caller wants to
     /// know that the optimized path is genuinely available.
     RequireCpuKernel,
-    /// Prefer explicit GPU execution for WGSL-lowerable table rules. GPU execution
-    /// is not wired into `conflux-runtime`; when unavailable the rule falls back to
-    /// the reference with a typed reason.
+    /// Prefer explicit GPU execution for table rules that pass the runtime-local
+    /// GPU policy precondition. GPU execution is not wired into `conflux-runtime`;
+    /// when unavailable the rule falls back to the reference with a typed reason.
     PreferGpu,
-    /// Require explicit GPU execution for WGSL-lowerable table rules. If the GPU
-    /// path is unavailable or the rule cannot lower to the GPU-shaped subset, the
-    /// rule is refused rather than silently run on the reference.
+    /// Require explicit GPU execution for table rules that pass the runtime-local
+    /// GPU policy precondition. If the GPU path is unavailable or the rule/domain is
+    /// outside that policy, the rule is refused rather than silently run on the
+    /// reference.
     RequireGpu,
 }
 
@@ -45,9 +46,8 @@ impl ExecutionMode {
     /// Whether this mode requests kernel extraction as an eligibility precondition.
     ///
     /// CPU-kernel modes use extracted kernels for execution. GPU modes use extraction
-    /// only as the runtime-local eligibility proxy for table rules that can reach the
-    /// bounded WGSL-shaped subset without making `conflux-runtime` depend on
-    /// `conflux-wgsl` or `wgpu`.
+    /// only as a runtime-local policy precondition for table rules without making
+    /// `conflux-runtime` depend on `conflux-wgsl` or `wgpu`.
     pub fn requests_kernel(self) -> bool {
         matches!(
             self,
@@ -108,9 +108,9 @@ pub enum FallbackReason {
     /// eligible kernel, so it was *refused* rather than silently run on the
     /// reference.
     RequiredKernelUnavailable,
-    /// GPU execution was requested but the rule or domain cannot reach the bounded
-    /// WGSL-shaped subset in this runtime policy slice.
-    NotWgslLowerable,
+    /// GPU execution was requested but the rule or domain is outside the
+    /// runtime-local GPU policy precondition.
+    GpuPolicyUnsupported,
     /// GPU execution was preferred, but this runtime has no boundary-safe GPU
     /// execution backend wired in, so it ran the reference and reported the reason.
     GpuPathUnavailable,
@@ -203,9 +203,9 @@ pub(crate) fn resolve_query_path(
 
 /// Returns the optimized path a table rule qualifies for under the requested mode.
 ///
-/// GPU modes use successful kernel extraction as the runtime-local proxy for the
-/// bounded WGSL-shaped subset. Non-table domains must not use this helper unless
-/// they gain their own GPU eligibility source.
+/// GPU modes use successful kernel extraction as a runtime-local policy
+/// precondition. Non-table domains must not use this helper unless they gain their
+/// own GPU eligibility source.
 pub(crate) fn table_rule_eligible_path(
     kernel_available: bool,
     mode: ExecutionMode,
@@ -262,12 +262,12 @@ pub(crate) fn resolve_path(
         (ExecutionPath::Reference | ExecutionPath::CpuKernel, ExecutionMode::PreferGpu) => (
             ExecutionPath::Reference,
             Some(ExecutionPath::Reference),
-            Some(FallbackReason::NotWgslLowerable),
+            Some(FallbackReason::GpuPolicyUnsupported),
         ),
         (ExecutionPath::Reference | ExecutionPath::CpuKernel, ExecutionMode::RequireGpu) => (
             ExecutionPath::Gpu,
             None,
-            Some(FallbackReason::NotWgslLowerable),
+            Some(FallbackReason::GpuPolicyUnsupported),
         ),
         (ExecutionPath::Gpu, ExecutionMode::PreferGpu) => (
             ExecutionPath::Gpu,
@@ -370,7 +370,7 @@ mod tests {
             (
                 Reference,
                 Some(Reference),
-                Some(FallbackReason::NotWgslLowerable)
+                Some(FallbackReason::GpuPolicyUnsupported)
             )
         );
         assert_eq!(
@@ -379,7 +379,7 @@ mod tests {
         );
         assert_eq!(
             resolve_path(Reference, RequireGpu),
-            (Gpu, None, Some(FallbackReason::NotWgslLowerable))
+            (Gpu, None, Some(FallbackReason::GpuPolicyUnsupported))
         );
     }
 
