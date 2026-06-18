@@ -7,7 +7,7 @@ use conflux_core::{
 use conflux_runtime::{
     ComparisonStatus, ExecutionMode, ExecutionPath, FallbackReason, GpuAttachmentAvailability,
     GpuAttachmentUnavailableReason, GpuEquivalenceStatus, GpuEvidenceUnavailableReason,
-    GpuResidencyMapping, GpuWgslEvidence, Simulation,
+    GpuReadbackEvidence, GpuResidencyMapping, GpuTransferEvidence, GpuWgslEvidence, Simulation,
 };
 
 /// A `Store` table with one kernel-eligible rule (`accumulate`, pure column
@@ -218,12 +218,20 @@ fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() 
         )
     );
     assert_eq!(
-        accumulate.gpu.transfer_availability,
+        accumulate.gpu.transfer_availability(),
         GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
     );
     assert_eq!(
-        accumulate.gpu.readback_availability,
+        accumulate.gpu.transfer_evidence,
+        GpuTransferEvidence::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
+    assert_eq!(
+        accumulate.gpu.readback_availability(),
         GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
+    assert_eq!(
+        accumulate.gpu.readback_evidence,
+        GpuReadbackEvidence::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
     );
     assert_eq!(
         accumulate.gpu.equivalence_status,
@@ -256,8 +264,12 @@ fn prefer_gpu_is_explicit_and_falls_back_when_runtime_gpu_path_is_unavailable() 
         GpuResidencyMapping::NotApplicable
     );
     assert_eq!(
-        leak.gpu.transfer_availability,
+        leak.gpu.transfer_availability(),
         GpuAttachmentAvailability::NotApplicable
+    );
+    assert_eq!(
+        leak.gpu.transfer_evidence,
+        GpuTransferEvidence::NotApplicable
     );
     assert!(leak.kernel_rejection.is_some());
     assert_eq!(sim.column("Store", "level"), Some(&[4.5, 4.5][..]));
@@ -290,8 +302,12 @@ fn require_gpu_refuses_without_hidden_reference_or_gpu_execution() {
         GpuWgslEvidence::NotAttached(GpuEvidenceUnavailableReason::RuntimeDoesNotOwnWgslBackend)
     );
     assert_eq!(
-        accumulate.gpu.transfer_availability,
+        accumulate.gpu.transfer_availability(),
         GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+    );
+    assert_eq!(
+        accumulate.gpu.transfer_evidence,
+        GpuTransferEvidence::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
     );
     assert!(accumulate.rows.is_empty());
 

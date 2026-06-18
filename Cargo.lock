@@ -391,6 +391,7 @@ dependencies = [
  "conflux-core",
  "conflux-ir",
  "conflux-kernel",
+ "conflux-runtime",
  "conflux-wgsl",
  "thiserror 1.0.69",
 ]

@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 conflux-ir.workspace = true
 conflux-kernel.workspace = true
+conflux-runtime.workspace = true
 conflux-wgsl.workspace = true
 bytemuck = { version = "1.16", features = ["derive"] }
 thiserror.workspace = true
