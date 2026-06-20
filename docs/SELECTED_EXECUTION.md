@@ -105,10 +105,18 @@ work executed, and which typed reason explains a fallback or refusal.
   Residency owns movement and lifecycle of buffer-backed data; runtime stores only
   `NotApplicable`, `NotAttached`, `Mappable`, or `NotMappable`, never Residency
   descriptors or transfer internals.
-- `transfer_availability` — whether a Residency transfer-report attachment exists,
-  is not applicable, or is absent with a typed reason.
-- `readback_availability` — whether backend readback or diagnostic attachment data
-  exists, is not applicable, or is absent with a typed reason.
+- `transfer_evidence` — runtime-owned transfer evidence summarized from the
+  Residency boundary: not applicable, not attached, skipped, reported with byte
+  and warning totals, or failed with a typed transfer failure. This is not
+  Residency's full transfer report. `transfer_availability()` is a derived
+  accessor over this evidence, not a second stored state field.
+- `readback_evidence` — runtime-owned readback evidence summarized from the
+  Residency boundary: not applicable, not attached, skipped, read back with
+  request/completion/stale-view totals, incomplete with partial request/completion
+  and stale-view totals, or failed with a typed readback failure. Full-state
+  readbacks are counted explicitly rather than hidden behind success.
+  `readback_availability()` is a derived accessor over this evidence, not a second
+  stored state field.
 - `equivalence_status` — runtime-level status for an attached GPU/reference check:
   `NotApplicable`, `NotChecked`, `Passed`, or `Failed`. This is not the same type
   as backend-specific equivalence reports from `conflux-wgsl`.
@@ -127,6 +135,12 @@ runtime policy cannot both select and execute the GPU path, refuse the firing an
 report a typed refusal in `fallback_reason`; it must not silently run the reference
 path. Neither mode lets `conflux-runtime` claim true WGSL lowerability without
 attached backend evidence.
+
+Residency transfer/readback failures are represented as GPU-specific typed
+fallback/refusal reasons (`GpuResidencyMappingUnavailable`, `GpuTransferFailed`,
+`GpuReadbackUnavailable`, or `GpuReadbackFailed`) plus plain
+runtime evidence summaries. The detailed Residency transfer report stays in
+`conflux-residency`; runtime/core expose only boundary-safe totals and statuses.
 
 GPU policy is table-rule scoped in this slice. Flow and actor-rule CPU kernels are
 not GPU eligibility: under `PreferGpu` those domains visibly fall back to reference

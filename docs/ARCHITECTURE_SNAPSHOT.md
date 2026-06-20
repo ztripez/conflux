@@ -171,7 +171,9 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   selected-execution fields remain the source of truth for GPU requested/selected/
   used/refused/fallback state; `RuleFireReport::gpu` records only attached or
   missing WGSL, Residency mapping, transfer/readback, and GPU/reference check
-  evidence. The report also includes per-tick bridges, flows (with conservation
+  evidence. Transfer/readback evidence in runtime reports is a plain summary adapted
+  by `conflux-residency`; detailed Residency transfer reports stay in the bridge
+  crate. The report also includes per-tick bridges, flows (with conservation
   summary), actor movements, projection bridges, and report-only graph events
   (event type, source node identity, payload values with units).
 - **Read-only projections** — `aggregate_report`, `query_report`,
@@ -231,8 +233,11 @@ Instability and out-of-envelope proposals are reported as data, never clamped.
   `docs/GPU_MEASUREMENT_ENGINE_PLAN.md`, which separates correctness, smoke, and
   performance evidence.
 - **Residency** — buffer movement and transfer reporting via the self-contained
-  bridge crate; the CPU-side `FakeBackend` drives sync cycles today. External
-  `residency-core` is absent from the dependency graph.
+  bridge crate; the CPU-side `FakeBackend` drives sync cycles today.
+  `conflux-residency` adapts folded Residency transfer/readback reports into
+  runtime-owned GPU evidence summaries; runtime/core do not import Residency
+  descriptors, plans, readback tokens, or lifecycle policy. External `residency-core`
+  is absent from the dependency graph.
 - **Planner** — advisory only. It explains available backends and costs and never
   rewrites the IR, fuses kernels, batches dispatches, or changes execution. The
   applied GPU batching/fusion decision is recorded in

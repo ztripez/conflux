@@ -14,10 +14,10 @@ pub struct GpuExecutionReport {
     pub wgsl_evidence: GpuWgslEvidence,
     /// Evidence about Residency resource mapping attached for this firing.
     pub residency_mapping: GpuResidencyMapping,
-    /// Availability of a transfer report attached by the Residency bridge boundary.
-    pub transfer_availability: GpuAttachmentAvailability,
-    /// Availability of readback or diagnostic data attached by a backend boundary.
-    pub readback_availability: GpuAttachmentAvailability,
+    /// Plain transfer evidence summarized from a Residency transfer report.
+    pub transfer_evidence: GpuTransferEvidence,
+    /// Plain readback evidence summarized from a Residency readback report.
+    pub readback_evidence: GpuReadbackEvidence,
     /// Status of GPU/reference checking attached for this firing.
     pub equivalence_status: GpuEquivalenceStatus,
 }
@@ -62,12 +62,13 @@ pub enum GpuResidencyMapping {
     NotMappable,
 }
 
-/// Availability of a GPU-adjacent report attachment.
+/// Derived availability of GPU-adjacent evidence.
 ///
 /// An attachment is a backend-owned or bridge-owned report linked to the runtime
 /// firing. Examples include a Residency transfer report, a readback report, or a
-/// diagnostic report. The runtime stores availability only; detailed attachment
-/// payloads remain owned by the boundary crates that produce them.
+/// diagnostic report. Runtime reports store only availability/status and aggregate
+/// summaries; detailed attachment payloads remain owned by the boundary crates that
+/// produce them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuAttachmentAvailability {
     /// The attachment is not relevant for this firing.
@@ -106,6 +107,119 @@ pub enum GpuAttachmentUnavailableReason {
     BackendReportUnavailable,
 }
 
+/// Plain runtime-owned evidence about GPU data transfer.
+///
+/// This is intentionally not Residency's `TransferReport`. Boundary crates may
+/// translate their own reports into this status, but runtime/core never import
+/// Residency payloads or lifecycle policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuTransferEvidence {
+    /// Transfer evidence is not relevant for this firing.
+    NotApplicable,
+    /// Transfer evidence is relevant but no boundary report was attached.
+    NotAttached(GpuAttachmentUnavailableReason),
+    /// The boundary report says no transfer was needed.
+    Skipped(GpuTransferSkipReason),
+    /// A transfer report was attached and records byte-level movement or warning
+    /// evidence.
+    Reported(GpuTransferSummary),
+    /// The transfer boundary reported a typed failure.
+    Failed(GpuTransferFailureReason),
+}
+
+/// Summary of transfer evidence that runtime reports can expose without owning
+/// Residency's transfer payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpuTransferSummary {
+    /// Bytes uploaded from CPU-visible state to GPU/backend storage.
+    pub uploaded_bytes: u64,
+    /// Bytes downloaded from GPU/backend storage to CPU-visible state.
+    pub downloaded_bytes: u64,
+    /// Number of backend reallocations reported by the transfer boundary.
+    pub reallocations: usize,
+    /// Total bytes added by backend reallocations.
+    pub bytes_reallocated: u64,
+    /// Number of non-fatal transfer warnings emitted by the boundary.
+    pub warnings: usize,
+}
+
+/// Why transfer evidence was skipped rather than recorded as byte movement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuTransferSkipReason {
+    /// The boundary reported that no input changes required transfer work.
+    NoTransferNeeded,
+}
+
+/// Why GPU transfer failed at a boundary that owns buffer movement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuTransferFailureReason {
+    /// Resource mapping or allocation needed before transfer was unavailable.
+    MappingUnavailable,
+    /// Transfer submission failed.
+    TransferFailed,
+}
+
+/// Plain runtime-owned evidence about GPU readback.
+///
+/// This records whether a readback was requested, completed, skipped, or failed
+/// without embedding backend tokens, byte buffers, selectors, or Residency policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuReadbackEvidence {
+    /// Readback evidence is not relevant for this firing.
+    NotApplicable,
+    /// Readback evidence is relevant but no boundary report was attached.
+    NotAttached(GpuAttachmentUnavailableReason),
+    /// The boundary report says no readback was requested.
+    Skipped(GpuReadbackSkipReason),
+    /// A readback report was attached and records request/completion evidence.
+    ReadBack(GpuReadbackSummary),
+    /// The readback boundary reported a typed failure.
+    Failed(GpuReadbackFailureReason),
+    /// A readback report was attached but not every requested readback completed,
+    /// or diagnostic readback counters indicate non-success evidence; the summary
+    /// preserves partial completion, bytes, stalls, stale views, full snapshots, and
+    /// denied-view evidence.
+    Incomplete(GpuReadbackSummary),
+}
+
+/// Summary of readback evidence that runtime reports can expose without owning
+/// Residency's readback payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpuReadbackSummary {
+    /// Readbacks requested from the boundary.
+    pub requested: usize,
+    /// Readbacks reported as completed by the boundary.
+    pub completed: usize,
+    /// Bytes downloaded through readback.
+    pub downloaded_bytes: u64,
+    /// Readbacks that forced a blocking stall.
+    pub forced_stalls: usize,
+    /// Stale views served by the boundary.
+    pub stale_views_served: usize,
+    /// Explicit full-resource snapshots requested by the boundary.
+    pub full_snapshots: usize,
+    /// View requests denied by boundary policy.
+    pub denied_views: usize,
+}
+
+/// Why readback evidence was skipped rather than recorded as completed readback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuReadbackSkipReason {
+    /// The boundary reported that no readback was requested.
+    NotRequested,
+}
+
+/// Why GPU readback failed at a boundary that owns buffer movement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuReadbackFailureReason {
+    /// The boundary could not create or attach the requested readback.
+    ReadbackUnavailable,
+    /// The boundary reported readback completion failure.
+    ReadbackFailed,
+    /// Readback bytes could not be decoded into the expected runtime value type.
+    DecodeFailed,
+}
+
 /// Status of GPU/reference checking for a runtime firing.
 ///
 /// This is runtime report state, not the backend-specific equivalence report type
@@ -133,6 +247,16 @@ pub enum GpuEquivalenceNotCheckedReason {
 }
 
 impl GpuExecutionReport {
+    /// Returns the derived availability of Residency transfer evidence.
+    pub fn transfer_availability(&self) -> GpuAttachmentAvailability {
+        self.transfer_evidence.availability()
+    }
+
+    /// Returns the derived availability of Residency readback evidence.
+    pub fn readback_availability(&self) -> GpuAttachmentAvailability {
+        self.readback_evidence.availability()
+    }
+
     /// Builds GPU-adjacent evidence status from selected-execution policy fields.
     ///
     /// This constructor derives only attachment applicability from the canonical
@@ -160,14 +284,22 @@ impl GpuExecutionReport {
             GpuResidencyMapping::NotApplicable
         };
 
-        let attachment_availability = if executed {
-            GpuAttachmentAvailability::NotAttached(
-                GpuAttachmentUnavailableReason::BackendReportUnavailable,
-            )
+        let attachment_unavailable_reason = if executed {
+            Some(GpuAttachmentUnavailableReason::BackendReportUnavailable)
         } else if selected {
-            GpuAttachmentAvailability::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+            Some(GpuAttachmentUnavailableReason::GpuDidNotExecute)
         } else {
-            GpuAttachmentAvailability::NotApplicable
+            None
+        };
+
+        let transfer_evidence = match attachment_unavailable_reason {
+            Some(reason) => GpuTransferEvidence::NotAttached(reason),
+            None => GpuTransferEvidence::NotApplicable,
+        };
+
+        let readback_evidence = match attachment_unavailable_reason {
+            Some(reason) => GpuReadbackEvidence::NotAttached(reason),
+            None => GpuReadbackEvidence::NotApplicable,
         };
 
         let equivalence_status = if executed {
@@ -181,9 +313,40 @@ impl GpuExecutionReport {
         GpuExecutionReport {
             wgsl_evidence,
             residency_mapping,
-            transfer_availability: attachment_availability,
-            readback_availability: attachment_availability,
+            transfer_evidence,
+            readback_evidence,
             equivalence_status,
+        }
+    }
+}
+
+impl GpuTransferEvidence {
+    /// Returns the derived availability of the transfer evidence attachment.
+    pub const fn availability(&self) -> GpuAttachmentAvailability {
+        match self {
+            GpuTransferEvidence::NotApplicable => GpuAttachmentAvailability::NotApplicable,
+            GpuTransferEvidence::NotAttached(reason) => {
+                GpuAttachmentAvailability::NotAttached(*reason)
+            }
+            GpuTransferEvidence::Skipped(_)
+            | GpuTransferEvidence::Reported(_)
+            | GpuTransferEvidence::Failed(_) => GpuAttachmentAvailability::Available,
+        }
+    }
+}
+
+impl GpuReadbackEvidence {
+    /// Returns the derived availability of the readback evidence attachment.
+    pub const fn availability(&self) -> GpuAttachmentAvailability {
+        match self {
+            GpuReadbackEvidence::NotApplicable => GpuAttachmentAvailability::NotApplicable,
+            GpuReadbackEvidence::NotAttached(reason) => {
+                GpuAttachmentAvailability::NotAttached(*reason)
+            }
+            GpuReadbackEvidence::Skipped(_)
+            | GpuReadbackEvidence::ReadBack(_)
+            | GpuReadbackEvidence::Failed(_)
+            | GpuReadbackEvidence::Incomplete(_) => GpuAttachmentAvailability::Available,
         }
     }
 }
@@ -213,13 +376,21 @@ mod tests {
             )
         );
         assert_eq!(
-            report.transfer_availability,
+            report.transfer_evidence,
+            GpuTransferEvidence::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+        );
+        assert_eq!(
+            report.transfer_availability(),
             GpuAttachmentAvailability::NotAttached(
                 GpuAttachmentUnavailableReason::GpuDidNotExecute
             )
         );
         assert_eq!(
-            report.readback_availability,
+            report.readback_evidence,
+            GpuReadbackEvidence::NotAttached(GpuAttachmentUnavailableReason::GpuDidNotExecute)
+        );
+        assert_eq!(
+            report.readback_availability(),
             GpuAttachmentAvailability::NotAttached(
                 GpuAttachmentUnavailableReason::GpuDidNotExecute
             )
@@ -240,12 +411,14 @@ mod tests {
 
         assert_eq!(report.wgsl_evidence, GpuWgslEvidence::NotApplicable);
         assert_eq!(report.residency_mapping, GpuResidencyMapping::NotApplicable);
+        assert_eq!(report.transfer_evidence, GpuTransferEvidence::NotApplicable);
         assert_eq!(
-            report.transfer_availability,
+            report.transfer_availability(),
             GpuAttachmentAvailability::NotApplicable
         );
+        assert_eq!(report.readback_evidence, GpuReadbackEvidence::NotApplicable);
         assert_eq!(
-            report.readback_availability,
+            report.readback_availability(),
             GpuAttachmentAvailability::NotApplicable
         );
     }
@@ -265,13 +438,25 @@ mod tests {
             )
         );
         assert_eq!(
-            report.transfer_availability,
+            report.transfer_evidence,
+            GpuTransferEvidence::NotAttached(
+                GpuAttachmentUnavailableReason::BackendReportUnavailable
+            )
+        );
+        assert_eq!(
+            report.transfer_availability(),
             GpuAttachmentAvailability::NotAttached(
                 GpuAttachmentUnavailableReason::BackendReportUnavailable
             )
         );
         assert_eq!(
-            report.readback_availability,
+            report.readback_evidence,
+            GpuReadbackEvidence::NotAttached(
+                GpuAttachmentUnavailableReason::BackendReportUnavailable
+            )
+        );
+        assert_eq!(
+            report.readback_availability(),
             GpuAttachmentAvailability::NotAttached(
                 GpuAttachmentUnavailableReason::BackendReportUnavailable
             )

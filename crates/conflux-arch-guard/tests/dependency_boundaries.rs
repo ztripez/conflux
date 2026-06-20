@@ -32,6 +32,7 @@ const FORBIDDEN_IN_CORE: &[&str] = &[
 
 /// Workspace crates other than the adapter must stay free of Bevy dependencies.
 const BEVY_ADAPTER_CRATE: &str = "conflux-bevy";
+const RESIDENCY_BRIDGE_CRATE: &str = "conflux-residency";
 
 fn workspace_manifest() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/conflux-arch-guard; the workspace root is two
@@ -119,6 +120,14 @@ fn collect_boundary_violations(packages: &[Value]) -> Vec<String> {
             if dep_name == BEVY_ADAPTER_CRATE && name != BEVY_ADAPTER_CRATE {
                 violations.push(format!(
                     "`{name}` depends on `{dep_name}` ({kind}); Bevy adapter code is allowed only in conflux-bevy"
+                ));
+            }
+
+            // Engine adapters must consume runtime reports rather than bypassing
+            // selected-execution reporting through the Residency bridge.
+            if name == BEVY_ADAPTER_CRATE && dep_name == RESIDENCY_BRIDGE_CRATE {
+                violations.push(format!(
+                    "`{name}` depends on `{dep_name}` ({kind}); engine adapters must consume runtime reports and cannot bypass the Residency boundary"
                 ));
             }
 
@@ -226,6 +235,22 @@ fn other_conflux_crates_may_not_depend_on_the_bevy_adapter() {
         violation.contains("conflux-planner")
             && violation.contains("conflux-bevy")
             && violation.contains("allowed only in conflux-bevy")
+    }));
+}
+
+#[test]
+fn bevy_adapter_may_not_depend_on_residency_bridge() {
+    let packages = vec![package(
+        "conflux-bevy",
+        &[dep("conflux-residency", "normal", false)],
+    )];
+
+    let violations = collect_boundary_violations(&packages);
+
+    assert!(violations.iter().any(|violation| {
+        violation.contains("conflux-bevy")
+            && violation.contains("conflux-residency")
+            && violation.contains("cannot bypass the Residency boundary")
     }));
 }
 

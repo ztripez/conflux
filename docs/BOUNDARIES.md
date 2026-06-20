@@ -126,7 +126,10 @@ refused, and CPU-fallback state. `RuleFireReport::gpu` records only attached or
 missing WGSL, Residency mapping, transfer/readback, and equivalence/check evidence.
 Residency transfer/readback reports do not move into runtime; backend and bridge
 crates attach their own reports at their boundaries while runtime records only
-availability/status.
+availability/status. `conflux-residency` is the only crate that may adapt folded
+Residency transfer/readback reports into runtime GPU evidence summaries; engine
+adapters must consume `conflux-runtime` reports and must not depend on
+`conflux-residency` to bypass that boundary.
 
 Graph and event GPU backends remain out of scope under
 `docs/GRAPH_EVENT_GPU_BOUNDARY_DECISION.md`: graph rules run on the CPU reference

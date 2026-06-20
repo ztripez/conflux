@@ -23,7 +23,9 @@ pub use conflux_ir::{QueryNeighbor, QuerySourceResult};
 pub use flow::{FlowDestination, FlowFireReport, FlowSummary, FlowTransfer};
 pub use gpu::{
     GpuAttachmentAvailability, GpuAttachmentUnavailableReason, GpuEquivalenceNotCheckedReason,
-    GpuEquivalenceStatus, GpuEvidenceUnavailableReason, GpuExecutionReport, GpuResidencyMapping,
+    GpuEquivalenceStatus, GpuEvidenceUnavailableReason, GpuExecutionReport, GpuReadbackEvidence,
+    GpuReadbackFailureReason, GpuReadbackSkipReason, GpuReadbackSummary, GpuResidencyMapping,
+    GpuTransferEvidence, GpuTransferFailureReason, GpuTransferSkipReason, GpuTransferSummary,
     GpuWgslEvidence,
 };
 pub use graph::{

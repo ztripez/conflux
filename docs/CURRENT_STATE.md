@@ -100,15 +100,18 @@ canonical scenario.
   lowerability; runtime GPU request, selection, execution, refusal, and CPU
   fallback live in `RuleFireReport` selected-execution fields, while
   `RuleFireReport::gpu` records attached or missing WGSL, Residency mapping,
-  transfer/readback, and equivalence/check evidence. The proximity-index eligibility
-  report now lines up with the opt-in exact uniform-grid query path.
+  transfer/readback, and equivalence/check evidence. Transfer/readback evidence is
+  runtime-owned summary data adapted by `conflux-residency`; Residency's detailed
+  transfer reports stay in the bridge crate. The proximity-index eligibility report
+  now lines up with the opt-in exact uniform-grid query path.
 - **Residency / GPU**: GPU execution is a first-class selected-execution contract
   for the RC surface, not a planner side effect or hidden future add-on. Current
   `conflux-runtime` policy can request, select, refuse, or visibly fall back from
   `ExecutionPath::Gpu` for table rules and reports that selected-execution state on
   `RuleFireReport`; `RuleFireReport::gpu` does not claim true WGSL lowerability
-  unless backend evidence is attached. Actual hardware dispatch remains outside
-  runtime until a boundary-safe executor attaches backend reports.
+  unless backend evidence is attached and does not embed Residency descriptors,
+  plans, tokens, or buffers. Actual hardware dispatch remains outside runtime until
+  a boundary-safe executor attaches backend reports.
   `conflux-residency` owns the
   folded bridge-local `conflux_residency::residency_core` compatibility surface and
   has no external `residency-core` git dependency. It remains experimental and owns

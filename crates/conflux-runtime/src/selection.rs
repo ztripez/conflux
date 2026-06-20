@@ -117,22 +117,37 @@ pub enum FallbackReason {
     /// GPU execution was required, but this runtime has no boundary-safe GPU
     /// execution backend wired in, so the rule was refused.
     RequiredGpuUnavailable,
+    /// GPU execution could not proceed because Residency mapping evidence or
+    /// allocation was unavailable at the buffer-movement boundary.
+    GpuResidencyMappingUnavailable,
+    /// GPU execution reached the Residency transfer boundary, but the transfer
+    /// failed and was reported as a GPU data-movement failure.
+    GpuTransferFailed,
+    /// GPU execution could not proceed because readback support or its readback
+    /// report was unavailable.
+    GpuReadbackUnavailable,
+    /// GPU execution reached the readback boundary, but readback failed or could not
+    /// be decoded and was reported as a GPU data-movement failure.
+    GpuReadbackFailed,
 }
 
 impl FallbackReason {
-    /// Returns whether the fallback or refusal reason describes explicit GPU
-    /// selected execution.
+    /// Returns whether the fallback or refusal reason was caused by an explicit GPU
+    /// request.
     ///
-    /// Returns `true` for [`FallbackReason::GpuPolicyUnsupported`],
-    /// [`FallbackReason::GpuPathUnavailable`], and
-    /// [`FallbackReason::RequiredGpuUnavailable`]. Returns `false` for CPU-kernel
-    /// fallback and refusal reasons.
+    /// Returns `true` for GPU policy/path reasons, Residency mapping failures,
+    /// Residency transfer failures, and readback failures or unavailability. Returns
+    /// `false` for CPU-kernel fallback and refusal reasons.
     pub fn is_gpu_reason(self) -> bool {
         matches!(
             self,
             FallbackReason::GpuPolicyUnsupported
                 | FallbackReason::GpuPathUnavailable
                 | FallbackReason::RequiredGpuUnavailable
+                | FallbackReason::GpuResidencyMappingUnavailable
+                | FallbackReason::GpuTransferFailed
+                | FallbackReason::GpuReadbackUnavailable
+                | FallbackReason::GpuReadbackFailed
         )
     }
 }
@@ -399,6 +414,10 @@ mod tests {
             resolve_path(Reference, RequireGpu),
             (Reference, None, Some(FallbackReason::GpuPolicyUnsupported))
         );
+        assert!(FallbackReason::GpuResidencyMappingUnavailable.is_gpu_reason());
+        assert!(FallbackReason::GpuTransferFailed.is_gpu_reason());
+        assert!(FallbackReason::GpuReadbackUnavailable.is_gpu_reason());
+        assert!(FallbackReason::GpuReadbackFailed.is_gpu_reason());
     }
 
     #[test]
